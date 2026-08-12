@@ -639,3 +639,35 @@ def test_receipt_returns_stripe_hosted_url_once_payment_intent_exists(client, br
     response = client.get(f"/brands/campaigns/{created['id']}/receipt", headers=brand_headers)
     assert response.status_code == 200
     assert response.json()["receipt_url"].startswith("https://stripe.example.com/receipts/pi_fake")
+
+
+# ---------------------------------------------------------------------
+# GET /brands/campaigns (list), GET /brands/campaigns/:id/reps (list)
+# (Prompt 16 coverage gap fill -- only the single-campaign GET and the
+# /reps/browse variant were previously exercised)
+# ---------------------------------------------------------------------
+
+
+def test_list_campaigns_returns_only_own_campaigns(client, db, brand_headers, onboarded_brand):
+    created = client.post("/brands/campaigns", json=_BASE_CAMPAIGN_BODY, headers=brand_headers).json()
+
+    response = client.get("/brands/campaigns", headers=brand_headers)
+    assert response.status_code == 200
+    ids = {c["id"] for c in response.json()}
+    assert created["id"] in ids
+
+
+def test_list_campaigns_role_enforcement_rejects_non_brand(client, auth_headers_factory):
+    response = client.get("/brands/campaigns", headers=auth_headers_factory("rep"))
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "role_mismatch"
+
+
+def test_list_campaign_reps_returns_invited_rep(client, db, brand_headers, onboarded_brand):
+    created = client.post("/brands/campaigns", json=_BASE_CAMPAIGN_BODY, headers=brand_headers).json()
+    rep_id = _seed_rep(db)
+    client.post(f"/brands/campaigns/{created['id']}/reps/invite", json={"rep_ids": [rep_id]}, headers=brand_headers)
+
+    response = client.get(f"/brands/campaigns/{created['id']}/reps", headers=brand_headers)
+    assert response.status_code == 200
+    assert rep_id in {r["rep_id"] for r in response.json()}

@@ -186,6 +186,25 @@ def test_queue_brands_lists_pending_brand(client, db, admin_headers):
     assert body[0]["pending_reason"] == "awaiting_admin_approval"
 
 
+def test_queue_recruiters_lists_pending_recruiter(client, db, admin_headers):
+    user_id = _seed_pending_recruiter(db)
+    response = client.get("/admin/queue/recruiters", headers=admin_headers)
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) == 1
+    assert body[0]["user_id"] == user_id
+
+
+def test_queue_reps_is_always_empty(client, db, admin_headers):
+    # Reps never sit in an admin-approval pending state (see
+    # _require_reviewable_type's docstring) -- this asserts the queue
+    # route itself works and returns nothing to review, not just that
+    # approve/reject 400s for rep account_type.
+    response = client.get("/admin/queue/reps", headers=admin_headers)
+    assert response.status_code == 200
+    assert response.json() == []
+
+
 def test_approving_pending_brand_activates_and_unblocks_campaign_creation(client, db, admin_headers):
     user_id = _seed_pending_brand(db)
 

@@ -52,6 +52,28 @@ jobs:
         working-directory: apps/api
         run: python -m pytest -q
 
+  web-unit-tests:
+    name: Web unit tests (Vitest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.0.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run Vitest suite
+        working-directory: apps/web
+        run: pnpm test
+
   web-build:
     name: Web build & typecheck
     runs-on: ubuntu-latest

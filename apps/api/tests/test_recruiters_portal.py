@@ -603,3 +603,55 @@ def test_subscription_deleted_deactivates_and_blocks_credit_spend(client, db, mo
     rejected = client.get(f"/recruiters/reps/{rep_id}", headers=recruiter_headers)
     assert rejected.status_code == 403
     assert rejected.json()["error"]["code"] == "subscription_inactive"
+
+
+# ---------------------------------------------------------------------
+# POST /recruiters/subscribe, GET /recruiters/messages (Prompt 16
+# coverage gap fill)
+# ---------------------------------------------------------------------
+
+
+def test_subscribe_returns_checkout_url(client, db, recruiter_headers, onboarded_recruiter, settings, monkeypatch):
+    monkeypatch.setattr(settings, "recruiter_price_id_monthly", "price_test_monthly")
+
+    class _Session:
+        @staticmethod
+        def create(**kwargs):
+            return SimpleNamespace(url="https://checkout.stripe.example.com/session_test")
+
+    fake = SimpleNamespace(checkout=SimpleNamespace(Session=_Session), Customer=SimpleNamespace(create=lambda **kw: SimpleNamespace(id="cus_fake_sub")))
+    monkeypatch.setattr(stripe_service, "stripe", fake)
+
+    response = client.post("/recruiters/subscribe", json={"plan": "monthly"}, headers=recruiter_headers)
+    assert response.status_code == 200
+    assert response.json()["checkout_url"] == "https://checkout.stripe.example.com/session_test"
+
+
+def test_subscribe_rejects_unconfigured_plan(client, db, recruiter_headers, onboarded_recruiter, settings, monkeypatch):
+    monkeypatch.setattr(settings, "recruiter_price_id_annual", None)
+    response = client.post("/recruiters/subscribe", json={"plan": "annual"}, headers=recruiter_headers)
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "plan_not_configured"
+
+
+def test_subscribe_role_enforcement_rejects_non_recruiter(client, auth_headers_factory):
+    response = client.post("/recruiters/subscribe", json={"plan": "monthly"}, headers=auth_headers_factory("rep"))
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "role_mismatch"
+
+
+def test_messages_lists_sent_contact(client, db, recruiter_headers, onboarded_recruiter):
+    rep_id = _seed_rep(db)
+    recruiter_id = _recruiter_id(db)
+    _grant_credits(db, recruiter_id, credits=2)
+    client.post(f"/recruiters/reps/{rep_id}/contact", json={"message_text": "Hi!"}, headers=recruiter_headers)
+
+    response = client.get("/recruiters/messages", headers=recruiter_headers)
+    assert response.status_code == 200
+    assert response.json()[0]["rep_id"] == rep_id
+
+
+def test_messages_role_enforcement_rejects_non_recruiter(client, auth_headers_factory):
+    response = client.get("/recruiters/messages", headers=auth_headers_factory("brand"))
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "role_mismatch"

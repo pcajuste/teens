@@ -247,7 +247,7 @@ export default function CampaignDetailPage() {
   );
 }
 
-function ParticipationSection({
+export function ParticipationSection({
   participation,
   ftcAccepted,
   setFtcAccepted,

@@ -481,3 +481,120 @@ def test_auto_decline_job_does_not_touch_unexpired_invitations(client, db, setti
         "SELECT status FROM public.campaign_reps WHERE rep_id = $1 AND campaign_id = $2", rep_id, campaign_id
     )
     assert status_after == "invited"
+
+
+# ---------------------------------------------------------------------
+# GET /reps/me, /reps/me/profile-preview, /reps/campaigns/active,
+# /reps/campaigns/history, /reps/earnings (Prompt 16 coverage gap fill --
+# these were only ever exercised indirectly via PUT /reps/me before)
+# ---------------------------------------------------------------------
+
+
+def test_get_me_returns_own_profile(client, db, rep_headers):
+    _seed_rep_user(db, age=20)
+    client.put("/reps/me", json=_BASE_PROFILE_BODY, headers=rep_headers)
+
+    response = client.get("/reps/me", headers=rep_headers)
+    assert response.status_code == 200
+    assert response.json()["display_name"] == "Test Rep"
+
+
+def test_get_me_role_enforcement_rejects_non_rep(client, db, auth_headers_factory):
+    response = client.get("/reps/me", headers=auth_headers_factory("brand"))
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "role_mismatch"
+
+
+def test_profile_preview_reflects_completeness(client, db, rep_headers):
+    _seed_rep_user(db, age=20)
+    client.put("/reps/me", json=_BASE_PROFILE_BODY, headers=rep_headers)
+
+    response = client.get("/reps/me/profile-preview", headers=rep_headers)
+    assert response.status_code == 200
+    assert response.json()["display_name"] == "Test Rep"
+
+
+def test_campaigns_active_lists_accepted_campaign(client, db, rep_headers):
+    _seed_rep_user(db, age=20)
+    client.put("/reps/me", json=_BASE_PROFILE_BODY, headers=rep_headers)
+    campaign_id = _seed_campaign(db)
+    client.post(f"/campaigns/{campaign_id}/apply", headers=rep_headers)
+    client.post(f"/campaigns/{campaign_id}/accept", json={"ftc_disclosure_accepted": True}, headers=rep_headers)
+
+    response = client.get("/reps/campaigns/active", headers=rep_headers)
+    assert response.status_code == 200
+    assert campaign_id in {c["campaign_id"] for c in response.json()}
+
+
+def test_campaigns_history_excludes_still_active_campaign(client, db, rep_headers):
+    _seed_rep_user(db, age=20)
+    client.put("/reps/me", json=_BASE_PROFILE_BODY, headers=rep_headers)
+    campaign_id = _seed_campaign(db)
+    client.post(f"/campaigns/{campaign_id}/apply", headers=rep_headers)
+    client.post(f"/campaigns/{campaign_id}/accept", json={"ftc_disclosure_accepted": True}, headers=rep_headers)
+
+    response = client.get("/reps/campaigns/history", headers=rep_headers)
+    assert response.status_code == 200
+    assert campaign_id not in {c["campaign_id"] for c in response.json()}
+
+
+def test_earnings_reflects_no_activity_as_zero(client, db, rep_headers):
+    _seed_rep_user(db, age=20)
+    client.put("/reps/me", json=_BASE_PROFILE_BODY, headers=rep_headers)
+
+    response = client.get("/reps/earnings", headers=rep_headers)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["pending_cents"] == 0
+    assert body["confirmed_cents"] == 0
+    assert body["paid_cents"] == 0
+
+
+# ---------------------------------------------------------------------
+# POST /campaigns/:id/submission-files (Build Prompt 5 deliverable 11)
+# ---------------------------------------------------------------------
+
+
+def test_submission_file_upload_happy_path(client, db, rep_headers):
+    _seed_rep_user(db, age=20)
+    client.put("/reps/me", json=_BASE_PROFILE_BODY, headers=rep_headers)
+    campaign_id = _seed_campaign(db)
+    client.post(f"/campaigns/{campaign_id}/apply", headers=rep_headers)
+
+    response = client.post(
+        f"/campaigns/{campaign_id}/submission-files",
+        files={"file": ("proof.jpg", b"fake-image-bytes", "image/jpeg")},
+        headers=rep_headers,
+    )
+    assert response.status_code == 201
+    assert response.json()["url"]
+
+
+def test_submission_file_upload_rejects_unsupported_content_type(client, db, rep_headers):
+    _seed_rep_user(db, age=20)
+    client.put("/reps/me", json=_BASE_PROFILE_BODY, headers=rep_headers)
+    campaign_id = _seed_campaign(db)
+    client.post(f"/campaigns/{campaign_id}/apply", headers=rep_headers)
+
+    response = client.post(
+        f"/campaigns/{campaign_id}/submission-files",
+        files={"file": ("proof.exe", b"fake-bytes", "application/octet-stream")},
+        headers=rep_headers,
+    )
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "unsupported_file_type"
+
+
+def test_submission_file_upload_requires_existing_invitation(client, db, rep_headers):
+    _seed_rep_user(db, age=20)
+    client.put("/reps/me", json=_BASE_PROFILE_BODY, headers=rep_headers)
+    campaign_id = _seed_campaign(db)
+    # Never applied -- no campaign_reps row exists for this rep/campaign.
+
+    response = client.post(
+        f"/campaigns/{campaign_id}/submission-files",
+        files={"file": ("proof.jpg", b"fake-image-bytes", "image/jpeg")},
+        headers=rep_headers,
+    )
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "campaign_invitation_not_found"

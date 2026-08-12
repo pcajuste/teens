@@ -477,7 +477,7 @@ Acceptance criteria:
 
 ---
 
-## 4A. Parent Portal
+## 4A. Parent Portal — **implemented**
 
 **Depends on:** Prompt 4. Canonically sits between Prompts 4 and 5 in
 the build sequence — the parent campaign-approval gate and values-filter
@@ -2029,7 +2029,7 @@ Acceptance criteria:
 
 ---
 
-## 15. Compliance Audit Pass
+## 15. Compliance Audit Pass — **implemented**
 
 **Depends on:** Prompts 4, 4A, 5, 8, 11, 13, 14.
 
@@ -2083,7 +2083,7 @@ Acceptance criteria:
 
 ---
 
-## 16. Testing Suite
+## 16. Testing Suite — **implemented**
 
 **Depends on:** all functional prompts (5–14). Build incrementally
 alongside them; this prompt is the consolidation pass.
@@ -2391,6 +2391,67 @@ dev), boots `apps/api` against it, and runs this suite — the existing
 `web-e2e` job is unchanged and still covers the demo portal with zero
 backend dependency, for fast, always-green baseline coverage even if
 the authenticated stack has trouble in CI.
+
+**Build-log note (post-15, Prompt 4A frontend gap)** — Prompt 15's
+compliance audit pass confirmed all Section 9 backend enforcement is in
+place and produced `docs/compliance-checklist.md` (217 backend tests
+passing at time of audit; two named open items: the Stripe Connect
+minors onboarding gap self-flagged in `docs/stripe-minors-policy.md`,
+and an undefined data-retention policy — plus a test-coverage gap on
+independently exercising the parent-approval RLS policy rather than
+only the API-layer check).
+
+While scoping Prompt 16's frontend test deliverable (item 4, "parent
+portal approve/block actions"), discovered that Prompt 4A deliverable 7
+— the parent portal frontend under `apps/web/app/(parent)/` — was never
+actually built. Only a placeholder stub existed
+(`app/(parent)/parent/page.tsx`); every other Prompt 4A deliverable
+(backend routes, RLS, values-filter enforcement, monthly digest,
+account controls) shipped and is tested, but the frontend item on that
+prompt's own list was missed. This had gone undetected because nothing
+in Prompt 15 or 16 up to that point exercised the parent-facing UI —
+only the API. Built now as a prerequisite for Prompt 16's frontend tests, out of
+sequence, the same way CI/Testing-Suite work was pulled forward after
+Prompt 6A (see the build-log note above): magic-link request/verify
+screens, dashboard, campaign approval queue (approve/block with a
+48-hour countdown), values-filter configuration with plain-language
+category descriptions, settings (approval-required toggle with the
+under-16-locked state surfaced, digest toggle + preview), account
+controls (suspend/unsuspend behind a shared `ConfirmDialog`
+generalized out of the recruiter portal's credit-confirm dialog), and
+a "what parents see" explainer panel. Parents have no Supabase session
+— the portal uses its own token-issuing flow, so it gets a parallel,
+non-Supabase API client and session gate (`lib/parent-api.ts`,
+`lib/parent-session.ts`, `app/(parent)/layout.tsx`) rather than reusing
+`lib/api.ts`/`lib/auth-gate.tsx`. `pnpm tsc --noEmit` and `pnpm build`
+both pass.
+
+**Build-log note (post-16, Testing Suite)** — Prompt 16 delivered:
+backend coverage audit (`docs/test-coverage-report.md`) closing 12
+zero-coverage routes with 20 new tests, all reusing existing fixtures;
+3 backend integration tests (`apps/api/tests/test_integration.py`) for
+the full campaign lifecycle, parental-consent signup-to-active, and
+parent-portal approval/block flows; a new Vitest + React Testing
+Library frontend suite (`apps/web/__tests__/`, 5 files, 13 tests)
+covering the FTC checkbox gate, credit-spend confirmation, the
+age-gate/pending-consent screen, the parent-approval-pending state,
+parent portal approve/block, and the available-campaigns
+blocked-category exclusion; and a combined `pnpm test:ci`
+(`scripts/test-ci.sh`) plus a new `web-unit-tests` CI job running
+backend pytest, frontend Vitest, and frontend typecheck together,
+verified to exit non-zero on a real failure. Full backend suite: 239
+passed. Two real findings surfaced along the way, both already
+recorded above: Prompt 4A's parent-portal frontend gap (now closed)
+and Prompt 8B's milestone-payments code never having shipped (spec-only
+— its own concurrency/idempotency/frontend acceptance criteria have no
+code to test against; the flat-campaign confirm path's idempotency
+test is used as the closest existing analog, and the milestone-UI
+frontend requirement is documented as not-yet-applicable in
+`apps/web/__tests__/README.md` rather than silently skipped). Also
+fixed, unrelated to test-writing itself: a long-running `next dev`
+process had a stale build manifest (every static chunk 404ing, so no
+page ever hydrated) after many files were added underneath it —
+restarted, verified clean with Playwright.
 
 **v1.3** — companion to Teenure_MVP_Gameplan.md v1.3.
 Added Prompt 4A (Parent Portal) as a new build phase between Prompts 4
