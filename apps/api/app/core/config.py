@@ -67,6 +67,13 @@ class Settings(BaseSettings):
     # at the application layer -- see app/core/crypto.py.
     ein_encryption_key: str
 
+    # ── Recruiter Portal (Build Prompt 11) ──────────────────────────
+    # Contact credits granted per billing cycle on subscription
+    # creation/renewal, and the price of a single top-up credit --
+    # server-side only, never trusted from the client (Section 9).
+    recruiter_plan_credits_allotment: int = 25
+    recruiter_credit_topup_price_cents: int = 500
+
     @property
     def allowed_origins(self) -> list[str]:
         return [origin.strip() for origin in self.allowed_origins_raw.split(",") if origin.strip()]

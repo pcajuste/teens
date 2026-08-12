@@ -273,11 +273,13 @@ def test_webhook_unregistered_event_type_returns_200(client, settings):
 
 
 def test_webhook_stub_events_return_200_without_error(client, settings):
-    # customer.subscription.* stays a true no-op stub through Prompt 11 --
-    # payment_intent.*/transfer.* are implemented (Build Prompt 10) and
-    # covered by test_payout.py instead, each with a distinct event id
-    # since dedup is now keyed on event id (see
-    # test_webhook_duplicate_event_id_is_not_reprocessed below).
+    # customer.subscription.* is implemented as of Build Prompt 11
+    # (app/routers/webhooks.py's _handle_subscription_*), but an event
+    # for a Stripe customer with no matching recruiter_profiles row --
+    # as {"data": {"object": {}}} necessarily is here -- is still a
+    # silent 200 no-op, same shape as _handle_account_updated's
+    # unknown-account case. Real subscription-lifecycle behavior is
+    # covered by tests/test_recruiters_portal.py instead.
     for event_type in ["customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted"]:
         payload, header = _signed_webhook(
             settings, {"id": f"evt_{event_type}", "object": "event", "type": event_type, "data": {"object": {}}}

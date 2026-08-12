@@ -265,6 +265,81 @@ class RepBrowseCard:
     total_campaigns_completed: int
 
 
+@dataclass(frozen=True, slots=True)
+class RecruiterSearchCard:
+    """GET /recruiters/reps/search (Build Prompt 11 deliverable 2,
+    acceptance criterion "search never returns identifying fields
+    before credit spent"). Same no-PII field set as RepBrowseCard --
+    reused as its own dataclass (not RepBrowseCard itself) since the
+    two searches filter on different, independently evolving param
+    sets (brand: categories/city off a campaign; recruiter: graduation
+    year/city/state/categories/min_campaigns/min_rating) and shouldn't
+    be forced to share a query function just because today's field
+    list happens to match."""
+
+    rep_id: str
+    city: str
+    state: str
+    graduation_year: int
+    school_type: str | None
+    categories: list[str]
+    profile_completeness_score: int
+    average_rating: float | None
+    total_campaigns_completed: int
+
+
+async def search_for_recruiter(
+    conn: asyncpg.Connection,
+    *,
+    graduation_year: int | None,
+    city: str | None,
+    state: str | None,
+    categories: list[str] | None,
+    min_campaigns: int | None,
+    min_rating: float | None,
+    limit: int,
+    offset: int,
+) -> list[RecruiterSearchCard]:
+    rows = await conn.fetch(
+        """
+        SELECT id, city, state, graduation_year, school_type, categories,
+               profile_completeness_score, average_rating, total_campaigns_completed
+        FROM public.rep_profiles
+        WHERE recruiter_visible = TRUE
+          AND ($1::int IS NULL OR graduation_year = $1)
+          AND ($2::text IS NULL OR city = $2)
+          AND ($3::text IS NULL OR state = $3)
+          AND ($4::text[] IS NULL OR categories && $4::text[])
+          AND ($5::int IS NULL OR total_campaigns_completed >= $5)
+          AND ($6::numeric IS NULL OR average_rating >= $6)
+        ORDER BY profile_completeness_score DESC
+        LIMIT $7 OFFSET $8
+        """,
+        graduation_year,
+        city,
+        state,
+        categories or None,
+        min_campaigns,
+        min_rating,
+        limit,
+        offset,
+    )
+    return [
+        RecruiterSearchCard(
+            rep_id=str(row["id"]),
+            city=row["city"],
+            state=row["state"],
+            graduation_year=row["graduation_year"],
+            school_type=row["school_type"],
+            categories=list(row["categories"] or []),
+            profile_completeness_score=row["profile_completeness_score"],
+            average_rating=float(row["average_rating"]) if row["average_rating"] is not None else None,
+            total_campaigns_completed=row["total_campaigns_completed"],
+        )
+        for row in rows
+    ]
+
+
 async def browse_for_brand(
     conn: asyncpg.Connection, *, categories: list[str], city: str | None
 ) -> list[RepBrowseCard]:

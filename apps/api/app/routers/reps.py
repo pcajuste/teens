@@ -30,9 +30,11 @@ from app.repositories import (
     campaign_reps_repository,
     campaigns_repository,
     parent_records_repository,
+    recruiter_contacts_repository,
     rep_profiles_repository,
     users_repository,
 )
+from app.schemas.recruiters import InboxMessageResponse
 from app.schemas.reps import (
     AcceptCampaignRequest,
     CampaignParticipationResponse,
@@ -374,6 +376,40 @@ async def stripe_onboarding(
         return_url=onboarding_url,
     )
     return StripeOnboardingResponse(url=url)
+
+
+@reps_router.get("/inbox", response_model=list[InboxMessageResponse])
+async def inbox(
+    user: AuthenticatedUser = Depends(require_role("rep")),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> list[InboxMessageResponse]:
+    """Build Prompt 11 deliverable 4: a rep's view of every recruiter
+    who has contacted them. Not in Section 8's literal Rep Routes list
+    (added here per Prompt 11's own deliverable text, which calls for
+    it explicitly) -- placed on reps_router alongside every other
+    rep-facing GET, not on recruiters_router, since recruiter_contacts
+    has no reply capability and this is read-only from the rep side."""
+    profile = await _get_own_profile(conn, user)
+    rows = await recruiter_contacts_repository.list_for_rep(conn, profile.id)
+    return [InboxMessageResponse(id=r.id, message_text=r.message_text, read_at=r.read_at, messaged_at=r.messaged_at) for r in rows]
+
+
+@reps_router.post("/inbox/{contact_id}/read", response_model=InboxMessageResponse)
+async def mark_inbox_read(
+    contact_id: str,
+    user: AuthenticatedUser = Depends(require_role("rep")),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> InboxMessageResponse:
+    profile = await _get_own_profile(conn, user)
+    existing = await recruiter_contacts_repository.get_by_id_and_rep(conn, contact_id, profile.id)
+    if existing is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "inbox_message_not_found", "message": "No message found for that id."},
+        )
+    updated = await recruiter_contacts_repository.mark_read(conn, contact_id, profile.id)
+    result = updated or existing  # idempotent -- already-read is not an error
+    return InboxMessageResponse(id=result.id, message_text=result.message_text, read_at=result.read_at, messaged_at=result.messaged_at)
 
 
 # ══════════════════════════════════════════════════════════════════

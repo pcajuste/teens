@@ -202,6 +202,23 @@ async def get_payment_intent_receipt_url(settings: Settings, *, payment_intent_i
     return charge["receipt_url"] if "receipt_url" in charge else None
 
 
+async def create_credit_topup_payment_intent(
+    settings: Settings, *, amount_cents: int, credits: int, recruiter_id: str, customer_id: str | None = None
+) -> tuple[str, str]:
+    """Build Prompt 11 deliverable 7 ("Credit top-up: Stripe one-time
+    charge, increments credits on webhook, idempotent"). Thin wrapper
+    over create_payment_intent that tags the intent's metadata with
+    type='recruiter_credit_topup' so app/routers/webhooks.py's
+    payment_intent.succeeded handler can distinguish a credit purchase
+    from a brand campaign charge without a second webhook endpoint."""
+    return await create_payment_intent(
+        settings,
+        amount_cents=amount_cents,
+        metadata={"type": "recruiter_credit_topup", "recruiter_id": recruiter_id, "credits": str(credits)},
+        customer_id=customer_id,
+    )
+
+
 def verify_webhook_signature(settings: Settings, *, payload: bytes, signature_header: str) -> stripe.Event:
     """Verify a Stripe webhook payload against STRIPE_WEBHOOK_SECRET and
     return the parsed event. Raises stripe.error.SignatureVerificationError

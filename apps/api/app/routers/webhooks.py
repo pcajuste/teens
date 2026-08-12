@@ -25,7 +25,7 @@ retried delivery of an event already recorded returns 200 without
 calling its handler again."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Awaitable, Callable
 
 import asyncpg
@@ -34,7 +34,14 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 
 from app.core.config import Settings, get_settings
 from app.db.pool import get_connection
-from app.repositories import brand_profiles_repository, campaigns_repository, rep_profiles_repository, stripe_events_repository, users_repository
+from app.repositories import (
+    brand_profiles_repository,
+    campaigns_repository,
+    recruiter_profiles_repository,
+    rep_profiles_repository,
+    stripe_events_repository,
+    users_repository,
+)
 from app.services import payout_service, stripe_service
 from app.services.email_service import send_campaign_payment_failed_email
 from app.services.resend_client import ResendClient, resend_client_dependency
@@ -72,8 +79,22 @@ async def _handle_payment_intent_succeeded(conn: asyncpg.Connection, event: "str
     """Build Prompt 10 deliverable 3: 'pending_payment' -> 'active'.
     Unknown PaymentIntent id (not ours, or the campaign row hasn't been
     written yet) or a campaign not currently 'pending_payment' (e.g. a
-    replayed event after cancellation) is a silent no-op."""
+    replayed event after cancellation) is a silent no-op.
+
+    Build Prompt 11 deliverable 7: a recruiter credit top-up is also a
+    PaymentIntent, tagged via metadata (stripe_service.create_credit_topup_payment_intent)
+    since campaigns and credit purchases share this one webhook
+    endpoint/event type -- checked first, since a top-up PaymentIntent
+    id never matches a campaign row."""
     intent = event["data"]["object"]
+
+    if "metadata" in intent and intent["metadata"].get("type") == "recruiter_credit_topup":
+        recruiter_id = intent["metadata"].get("recruiter_id")
+        credits = int(intent["metadata"].get("credits", "0"))
+        if recruiter_id and credits > 0:
+            await recruiter_profiles_repository.add_credits(conn, recruiter_id, credits=credits)
+        return
+
     campaign = await campaigns_repository.get_by_stripe_payment_intent_id(conn, intent["id"])
     if campaign is None:
         return
@@ -113,8 +134,87 @@ async def _handle_transfer_failed(conn: asyncpg.Connection, event: "stripe.Event
     await payout_service.handle_transfer_failed(conn, transfer["id"])
 
 
-async def _noop(conn: asyncpg.Connection, event: "stripe.Event", settings: Settings, resend_client: ResendClient) -> None:
-    return None
+def _subscription_period_end(subscription) -> date:
+    """Stripe subscriptions carry `current_period_end` as a unix
+    timestamp on the subscription (or, in newer API versions, on each
+    line item) -- `settings.recruiter_plan_credits_allotment`-many
+    credits are granted for that billing cycle and reset again at the
+    next one. Falls back to +30 days if the field is absent (fake test
+    doubles that don't model it), rather than raising -- an approximate
+    reset date is a smaller failure than rejecting the whole webhook."""
+    period_end = subscription["current_period_end"] if "current_period_end" in subscription else None
+    if period_end is not None:
+        return datetime.fromtimestamp(period_end, tz=timezone.utc).date()
+    return (datetime.now(timezone.utc) + timedelta(days=30)).date()
+
+
+async def _handle_subscription_created(conn: asyncpg.Connection, event: "stripe.Event", settings: Settings, resend_client: ResendClient) -> None:
+    """Build Prompt 11 deliverable 8: dual gate -- both admin approval
+    (recruiter_profiles.verified) AND subscription creation are
+    required before account_status flips to 'active'. No admin-approval
+    UI/route exists yet (Prompt 13, same pre-existing gap noted in
+    brands.py), so a recruiter who subscribes before being verified
+    stays 'pending' here -- there is nothing yet that re-checks this
+    once an admin verifies them later, flagged the same way
+    app/routers/brands.py flags its own admin-approval gaps."""
+    subscription = event["data"]["object"]
+    customer_id = subscription["customer"] if "customer" in subscription else None
+    if customer_id is None:
+        return
+    recruiter = await recruiter_profiles_repository.get_by_stripe_customer_id(conn, customer_id)
+    if recruiter is None:
+        return
+
+    updated = await recruiter_profiles_repository.activate_subscription(
+        conn,
+        recruiter.id,
+        stripe_subscription_id=subscription["id"],
+        credits_allotment=settings.recruiter_plan_credits_allotment,
+        credits_reset_date=_subscription_period_end(subscription),
+    )
+    if updated is not None and updated.verified:
+        await users_repository.set_account_status(conn, updated.user_id, "active")
+
+
+async def _handle_subscription_updated(conn: asyncpg.Connection, event: "stripe.Event", settings: Settings, resend_client: ResendClient) -> None:
+    """Build Prompt 11 deliverable 8 ('renewed' in Section 8's prose;
+    Stripe's actual event name for a renewed billing cycle is
+    customer.subscription.updated). Credits do NOT roll over -- reset to
+    the plan's full allotment, unused credits lost (explicit MVP
+    decision). Idempotent: a duplicated delivery of the same event id
+    never reaches here twice (stripe_events_repository.record_if_new
+    short-circuits it before dispatch), so this always resets exactly
+    once per real renewal."""
+    subscription = event["data"]["object"]
+    customer_id = subscription["customer"] if "customer" in subscription else None
+    if customer_id is None:
+        return
+    recruiter = await recruiter_profiles_repository.get_by_stripe_customer_id(conn, customer_id)
+    if recruiter is None:
+        return
+    await recruiter_profiles_repository.reset_credits(
+        conn,
+        recruiter.id,
+        credits_allotment=settings.recruiter_plan_credits_allotment,
+        credits_reset_date=_subscription_period_end(subscription),
+    )
+
+
+async def _handle_subscription_deleted(conn: asyncpg.Connection, event: "stripe.Event", settings: Settings, resend_client: ResendClient) -> None:
+    """Build Prompt 11 deliverable 8: account moves out of 'active';
+    saved profiles and message history are retained (no delete here),
+    and credit-spending endpoints reject via
+    recruiters.py's _require_subscription_active once
+    stripe_subscription_id is cleared."""
+    subscription = event["data"]["object"]
+    customer_id = subscription["customer"] if "customer" in subscription else None
+    if customer_id is None:
+        return
+    recruiter = await recruiter_profiles_repository.get_by_stripe_customer_id(conn, customer_id)
+    if recruiter is None:
+        return
+    await recruiter_profiles_repository.clear_subscription(conn, recruiter.id)
+    await users_repository.set_account_status(conn, recruiter.user_id, "pending")
 
 
 _HANDLERS: dict[str, Handler] = {
@@ -123,9 +223,9 @@ _HANDLERS: dict[str, Handler] = {
     "payment_intent.payment_failed": _handle_payment_intent_failed,
     "transfer.paid": _handle_transfer_paid,
     "transfer.failed": _handle_transfer_failed,
-    "customer.subscription.created": _noop,
-    "customer.subscription.updated": _noop,
-    "customer.subscription.deleted": _noop,
+    "customer.subscription.created": _handle_subscription_created,
+    "customer.subscription.updated": _handle_subscription_updated,
+    "customer.subscription.deleted": _handle_subscription_deleted,
 }
 
 
