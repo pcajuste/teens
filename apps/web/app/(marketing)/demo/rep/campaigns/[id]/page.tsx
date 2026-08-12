@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DemoBackLink, DemoBanner, StartBuildingYoursButton } from "@/components/demo/demo-chrome";
+import { DemoBackLink, DemoBanner, DemoPageViewTracker, StartBuildingYoursButton } from "@/components/demo/demo-chrome";
 import {
   DEMO_AVAILABLE_CAMPAIGN,
   DEMO_AVAILABLE_CAMPAIGN_ID,
@@ -31,6 +31,7 @@ export default function DemoCampaignDetailPage({ params }: { params: { id: strin
   if (id === DEMO_AVAILABLE_CAMPAIGN_ID) {
     return (
       <main className="mx-auto flex min-h-screen max-w-md flex-col gap-5 p-4 pb-16">
+        <DemoPageViewTracker demo="rep_campaign_detail" />
         <DemoBanner />
         <DemoBackLink href="/demo/rep" label="Back to dashboard" />
 
@@ -75,6 +76,7 @@ export default function DemoCampaignDetailPage({ params }: { params: { id: strin
     const currentIndex = STATUS_STEPS.indexOf(DEMO_CONFIRMED_PARTICIPATION.status);
     return (
       <main className="mx-auto flex min-h-screen max-w-md flex-col gap-5 p-4 pb-16">
+        <DemoPageViewTracker demo="rep_campaign_detail" />
         <DemoBanner />
         <DemoBackLink href="/demo/rep" label="Back to dashboard" />
 

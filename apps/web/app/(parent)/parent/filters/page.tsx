@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { parentApi, ParentApiError } from "@/lib/parent-api";
+import { trackEvent } from "@/lib/analytics";
 import { PARENT_FILTER_CATEGORIES } from "@/lib/parent-categories";
 import type { ParentSettings } from "@/lib/parent-types";
 
@@ -50,6 +51,7 @@ export default function ParentFiltersPage() {
       setSettings(res);
       setSelected(new Set(res.values_filters));
       setSaved(true);
+      trackEvent("parent_values_filter_updated", { filter_count: res.values_filters.length });
     } catch (err) {
       setError(err instanceof ParentApiError ? err.message : "Could not save your filters.");
     } finally {

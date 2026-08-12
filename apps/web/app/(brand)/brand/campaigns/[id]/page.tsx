@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { BrandShell } from "@/components/brand/brand-shell";
 import { CampaignBrief } from "@/components/campaigns/campaign-brief";
 import { api, ApiError } from "@/lib/api";
+import { trackEvent } from "@/lib/analytics";
 import type { Campaign, CampaignRep, CampaignStatus, InviteResult, RepBrowseCard } from "@/lib/types";
 
 const STATUS_VARIANT: Record<CampaignStatus, "default" | "secondary" | "warning" | "success" | "destructive" | "outline"> = {
@@ -90,6 +91,7 @@ export default function BrandCampaignDetailPage() {
       const result = await api.post<{ id: string; status: string; stripe_payment_intent_client_secret: string }>(
         `/brands/campaigns/${campaignId}/activate`
       );
+      trackEvent("campaign_activated", { campaign_id: campaignId });
       setNotice(
         `Payment initiated (status: ${result.status}). Card collection isn't wired up in this build yet -- ` +
           `see Prompt 9's deliverable 3 note; the PaymentIntent itself is real and server-created.`

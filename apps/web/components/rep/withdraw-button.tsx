@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { api, ApiError } from "@/lib/api";
+import { trackEvent } from "@/lib/analytics";
 
 // One-tap, no confirmation dialog by design (Section 9: frictionless
 // withdrawal). Do not add a confirm step here.
@@ -23,6 +24,7 @@ export function WithdrawButton({
     setError(null);
     try {
       await api.post(`/campaigns/${campaignId}/withdraw`);
+      trackEvent("campaign_withdrawn", { campaign_id: campaignId });
       onWithdrawn();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not withdraw. Try again.");

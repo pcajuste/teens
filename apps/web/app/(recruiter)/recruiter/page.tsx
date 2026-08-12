@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { api, ApiError } from "@/lib/api";
+import { trackEvent } from "@/lib/analytics";
 import { BASE_CATEGORIES, CATEGORY_LABELS, type Category } from "@/lib/categories";
 import type { RecruiterCredits, RecruiterRepDetail, RecruiterSearchCard } from "@/lib/types";
 
@@ -109,6 +110,9 @@ export default function RecruiterSearchPage() {
       // The response is the sole source of truth for the new credit
       // balance -- no local decrement anywhere in this flow.
       const rep = await api.get<RecruiterRepDetail>(`/recruiters/reps/${pendingRepId}`);
+      // Aggregate-safe properties only -- no rep identity (name, id,
+      // school) in the event payload, per Prompt 19 deliverable 3.
+      trackEvent("recruiter_profile_viewed", { categories: rep.categories ?? undefined });
       setDetail(rep);
       setPendingRepId(null);
       await loadCredits();
@@ -130,6 +134,8 @@ export default function RecruiterSearchPage() {
     }
     try {
       await api.post(`/recruiters/reps/${detail.rep_id}/contact`, { message_text: messageText });
+      // Opaque event only -- no rep id/identity in properties.
+      trackEvent("recruiter_profile_contacted", {});
       setContactOpen(false);
       setContactNotice("Message sent. The rep will see it in their inbox and get an alert email.");
       await loadCredits();

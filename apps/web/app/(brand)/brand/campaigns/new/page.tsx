@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { BrandShell } from "@/components/brand/brand-shell";
 import { CampaignBrief } from "@/components/campaigns/campaign-brief";
 import { api, ApiError } from "@/lib/api";
+import { trackEvent } from "@/lib/analytics";
 import { BASE_CATEGORIES, CATEGORY_LABELS, type Category } from "@/lib/categories";
 import type { Campaign, CampaignBriefRequest } from "@/lib/types";
 
@@ -80,6 +81,7 @@ export default function NewCampaignPage() {
         end_date: endDate,
       };
       const campaign = await api.post<Campaign>("/brands/campaigns", body);
+      trackEvent("campaign_created", { campaign_id: campaign.id, categories });
       router.push(`/brand/campaigns/${campaign.id}`);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not create this campaign.");

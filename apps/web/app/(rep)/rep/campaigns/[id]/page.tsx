@@ -11,6 +11,7 @@ import { Countdown } from "@/components/rep/countdown";
 import { ParticipationSection } from "@/components/rep/participation-section";
 import { RepShell } from "@/components/rep/rep-shell";
 import { api, ApiError } from "@/lib/api";
+import { trackEvent } from "@/lib/analytics";
 import type { CampaignParticipation, CampaignSummary } from "@/lib/types";
 
 const ALLOWED_FILE_TYPES = new Set([
@@ -61,6 +62,10 @@ export default function CampaignDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [campaignId]);
 
+  useEffect(() => {
+    trackEvent("campaign_viewed", { campaign_id: campaignId });
+  }, [campaignId]);
+
   async function handleApply() {
     setPending(true);
     setError(null);
@@ -82,6 +87,7 @@ export default function CampaignDetailPage() {
       // explicit checkbox click -- never pre-checked, never set
       // programmatically elsewhere (Section 9 non-negotiable).
       await api.post(`/campaigns/${campaignId}/accept`, { ftc_disclosure_accepted: ftcAccepted });
+      trackEvent("campaign_accepted", { campaign_id: campaignId, categories: campaign?.target_categories });
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not accept.");
@@ -95,6 +101,7 @@ export default function CampaignDetailPage() {
     setError(null);
     try {
       await api.post(`/campaigns/${campaignId}/decline`);
+      trackEvent("campaign_declined", { campaign_id: campaignId, categories: campaign?.target_categories });
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not decline.");
@@ -140,6 +147,7 @@ export default function CampaignDetailPage() {
         submission_text: submissionText,
         submission_file_urls: uploadedUrls,
       });
+      trackEvent("campaign_submitted", { campaign_id: campaignId, categories: campaign?.target_categories });
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not submit.");

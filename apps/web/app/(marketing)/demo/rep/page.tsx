@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CompletenessPanel } from "@/components/rep/completeness-panel";
 import { EarningsPanel } from "@/components/rep/earnings-panel";
 import { ProfileView } from "@/components/rep/profile-view";
-import { DemoBanner, StartBuildingYoursButton } from "@/components/demo/demo-chrome";
+import { DemoBanner, DemoPageViewTracker, StartBuildingYoursButton } from "@/components/demo/demo-chrome";
 import {
   DEMO_AVAILABLE_CAMPAIGN,
   DEMO_CONFIRMED_CAMPAIGN,
@@ -32,6 +32,7 @@ const STATUS_LABEL: Record<string, string> = {
 export default function DemoRepDashboardPage() {
   return (
     <main className="mx-auto flex min-h-screen max-w-md flex-col gap-6 p-4 pb-16">
+      <DemoPageViewTracker demo="rep_dashboard" />
       <DemoBanner />
 
       <header>

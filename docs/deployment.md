@@ -116,6 +116,8 @@ to expose:**
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Anon key — RLS enforces access, safe by design |
 | `NEXT_PUBLIC_APP_URL` | Public URL of this Vercel deployment |
 | `NEXT_PUBLIC_API_URL` | Public URL of the Railway-hosted `apps/api` (see below) |
+| `NEXT_PUBLIC_POSTHOG_KEY` | PostHog EU Cloud project key. Blank in an environment where analytics shouldn't run (e.g. local dev) -- `lib/analytics.ts` no-ops rather than erroring. See `docs/analytics.md`. |
+| `NEXT_PUBLIC_POSTHOG_HOST` | PostHog EU Cloud ingestion host (`https://eu.i.posthog.com`) |
 
 **Server-only — read by Next.js server components/route handlers,
 never sent to the browser. Must NOT be prefixed `NEXT_PUBLIC_` or they

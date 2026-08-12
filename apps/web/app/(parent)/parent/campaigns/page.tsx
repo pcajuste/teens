@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Countdown } from "@/components/rep/countdown";
 import { parentApi, ParentApiError } from "@/lib/parent-api";
+import { trackEvent } from "@/lib/analytics";
 import type { ParentPendingCampaign } from "@/lib/parent-types";
 
 function money(cents: number | null): string {
@@ -45,6 +46,9 @@ export default function ParentCampaignsPage() {
     if (!actionTarget) return;
     const { campaign, kind } = actionTarget;
     await parentApi.post(`/parent/campaigns/${campaign.campaign_id}/${kind}`);
+    trackEvent(kind === "approve" ? "parent_campaign_approved" : "parent_campaign_blocked", {
+      campaign_id: campaign.campaign_id,
+    });
     setActionTarget(null);
     await load();
   }

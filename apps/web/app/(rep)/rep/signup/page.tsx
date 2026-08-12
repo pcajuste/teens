@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api, ApiError } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
+import { initPublicAnalytics, trackEvent } from "@/lib/analytics";
 import type { SignupResponse } from "@/lib/types";
 
 export default function SignupPage() {
@@ -20,6 +21,11 @@ export default function SignupPage() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingConsent, setPendingConsent] = useState(false);
+
+  useEffect(() => {
+    initPublicAnalytics();
+    trackEvent("signup_started", { role: "rep" });
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -35,9 +41,16 @@ export default function SignupPage() {
       });
 
       if (result.account_status === "pending") {
+        // Account created but blocked on parental consent -- this is the
+        // frontend-observable proxy for "parental consent requested"
+        // (there is no separate consent-landing page in this repo for
+        // the parent's email-link click itself to fire an event from).
+        trackEvent("parental_consent_requested", { role: "rep" });
         setPendingConsent(true);
         return;
       }
+
+      trackEvent("signup_completed", { role: "rep", account_status: result.account_status });
 
       const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
       if (signInError) {

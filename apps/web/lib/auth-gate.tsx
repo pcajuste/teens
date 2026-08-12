@@ -3,6 +3,7 @@
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
+import { identifyPortalUser } from "@/lib/analytics";
 import type { MeResponse } from "@/lib/types";
 
 export interface AuthGateProps {
@@ -39,6 +40,17 @@ export function AuthGate({ children, role, publicPaths, pendingState, signInPath
       router.replace(signInPath);
     }
   }, [loading, session, isPublic, router, signInPath]);
+
+  // PostHog is only ever initialized/identified here: after a real
+  // session exists AND `me.role` has resolved to the role this portal
+  // gates on. Never fires for an unauthenticated visitor or a
+  // wrong-portal session (Prompt 19 deliverable 1 / acceptance
+  // criterion: "unauthenticated user generates no portal-level events").
+  useEffect(() => {
+    if (session && me && me.role === role) {
+      identifyPortalUser(me.id, me.role);
+    }
+  }, [session, me, role]);
 
   if (isPublic) {
     return <>{children}</>;
