@@ -1,4 +1,4 @@
-# TEENURE — AI Builder Prompt Suite v1.4
+# TEENURE — AI Builder Prompt Suite v1.6
 
 > Companion to `Teenure_MVP_Gameplan.md` (the spec of record). That document is the source of truth for schema, routes, business rules, and legal constraints — this document sequences the build into discrete, verbatim prompts an AI coding assistant can execute one at a time, in order.
 >
@@ -27,6 +27,7 @@
 8F. [Relationship Continuity Product (Year Two)](#8f-relationship-continuity-product-year-two)
 8G. [Skill Challenges](#8g-skill-challenges)
 8H. [Learning Modules and Verified Badges](#8h-learning-modules-and-verified-badges)
+8I. [Brand Content Templates & Delivery Framework](#8i-brand-content-templates--delivery-framework)
 9. [Brand Portal — Frontend](#9-brand-portal--frontend)
 10. [Campaign Lifecycle & Payout Engine](#10-campaign-lifecycle--payout-engine)
 11. [Recruiter Portal — Backend](#11-recruiter-portal--backend)
@@ -39,6 +40,13 @@
 17. [Deployment & CI/CD](#17-deployment--cicd)
 18. [Marketing Site](#18-marketing-site)
 19. [Analytics Integration (PostHog)](#19-analytics-integration-posthog)
+20. [Terminology Rename — Rep → Talent](#20-terminology-rename--rep--talent)
+
+> **Note:** As of Prompt 20, the role called "Rep" throughout Prompts
+> 1–19 (and in `Teenure_MVP_Gameplan.md`) is renamed to "Talent" in
+> code, schema, and routes. Prompts 1–19 are left unedited as a build
+> record — read `rep_` / "Rep" in them as `talent_` / "Talent" for any
+> work done after Prompt 20 lands.
 
 ---
 
@@ -1682,65 +1690,1512 @@ if every automated acceptance criterion above passes.
 
 ## 8C. Category Exclusivity
 
-**Depends on:** Prompt 8B (builds on stable campaign schema — not
-strictly on the milestone layer itself, but sequenced after it per the
-product roadmap this prompt suite follows).
+**Depends on:** Prompt 8 (Brand Portal backend — implemented), Prompt 10
+(Campaign Lifecycle & Payout Engine — implemented), Prompt 2 (Database
+Schema — implemented).
 
-**Status: not yet drafted.** A campaign-level attribute and new payment
-surface — a brand can pay a premium for exclusive access to reps in a
-target category/city for the campaign's duration, preventing a
-competing brand's campaign from reaching the same reps in that
-category. Full deliverables, schema, acceptance criteria, and
-brand/rep-facing framing need to be specified in the same level of
-detail as Prompt 8B before this is buildable. Do not build from this
-one-line summary alone — treat it as a placeholder marking where this
-prompt belongs in sequence, not as an instruction.
+**Also affects:** Prompt 9 (Brand Portal frontend — add exclusivity purchase
+flow and conflict indicators), Prompt 13 (Admin Portal — add exclusivity
+agreement management and revenue tracking). Execute those additions when
+this prompt is executed.
+
+**Trigger:** Do not build until 10+ competing brands are actively running
+campaigns in the same category-and-city combination. Before that threshold,
+exclusivity has no credible value to brands — there are no meaningful
+competitors to exclude.
+
+```
+Implement category exclusivity — a premium feature allowing a brand to
+purchase sole rights to a category within a geographic market for a
+defined time window. While the exclusivity agreement is active, no other
+brand can create or activate a campaign in that category-and-city
+combination. The purchasing brand runs without competitive interference
+in the rep pool.
+
+THE PRODUCT THESIS:
+
+  When multiple brands compete in the same category for the same rep
+  pool, premium brands will pay to eliminate that competition. A shoe
+  brand that pays $2,000 for 30-day exclusivity in "Athletic Wear" in
+  Boston is buying the certainty that no competing shoe brand can run
+  campaigns in that window. The value is not what they get — it is
+  what competitors cannot do.
+
+  This is a platform revenue product, not a brand-to-rep payment.
+  The fee flows to the platform account, not through Stripe Connect.
+  It is a B2B premium service, priced accordingly.
+
+CONFLICT DETECTION IS THE CRITICAL SYSTEM:
+
+  Every campaign creation and activation must check against active
+  exclusivity agreements. A brand that creates a campaign in a category
+  where another brand holds exclusivity must be blocked at creation with
+  a clear explanation. The exclusivity check must be atomic with the
+  campaign creation — there is no acceptable race condition where two
+  brands both create campaigns in the same window before either check
+  fires.
+
+PRICING MODEL (to be set by admin, not hardcoded):
+
+  Exclusivity is priced per category per city per day. Admin sets the
+  base rate in config. Example starting rates:
+    EXCLUSIVITY_BASE_RATE_CENTS_PER_DAY = 5000 (= $50/day)
+  A 30-day exclusivity in one category in one city: $1,500.
+  These are config values, not schema values — pricing changes should
+  not require a migration.
+
+---
+
+SCHEMA ADDITIONS (new migration, separately numbered):
+
+1. New table: category_exclusivity_agreements
+     id (UUID PK default gen_random_uuid())
+     brand_id (UUID not null references brand_profiles(id)
+       on delete restrict — the purchasing brand)
+     category (text not null — must be a value from the centrally-
+       defined category list; enforce at API layer)
+     city (text nullable — null means all cities; non-null means
+       only this city. Multi-city exclusivity requires multiple
+       agreements at MVP)
+     starts_at (timestamptz not null)
+     ends_at (timestamptz not null — must be > starts_at)
+     status (text not null default 'active'
+       check (status in ('active', 'expired', 'cancelled')))
+     fee_cents (integer not null — what the brand paid, stored for
+       audit and refund calculation)
+     stripe_payment_intent_id (text not null unique — the platform-
+       side payment, not Stripe Connect)
+     payment_status (text not null default 'pending'
+       check (payment_status in ('pending', 'paid', 'refunded',
+       'partially_refunded')))
+     cancelled_at (timestamptz nullable)
+     cancellation_reason (text nullable — admin note)
+     refund_cents (integer nullable — if partial or full refund issued)
+     created_at (timestamptz not null default now())
+
+   CHECK constraint: ends_at > starts_at
+   CHECK constraint: ends_at - starts_at <= interval '90 days'
+     (maximum 90-day exclusivity window at MVP — prevents brands from
+     locking a category indefinitely; revisit after launch data)
+
+2. Add to campaigns:
+     No schema change needed — conflict detection uses the
+     category_exclusivity_agreements table at campaign creation time.
+     The campaign itself does not store a reference to an exclusivity
+     agreement; the agreement stands independently.
+
+3. Indexes:
+     CREATE INDEX idx_exclusivity_active_category_city
+       ON category_exclusivity_agreements(category, city, starts_at,
+       ends_at)
+       WHERE status = 'active';
+     (This index is the critical path for conflict detection. Every
+     campaign creation query hits it. It must be fast.)
+
+     CREATE INDEX idx_exclusivity_brand
+       ON category_exclusivity_agreements(brand_id, status);
+
+     CREATE INDEX idx_exclusivity_expiry
+       ON category_exclusivity_agreements(ends_at, status)
+       WHERE status = 'active';
+     (Used by the auto-expire job.)
+
+4. RLS policies:
+     Brands can SELECT only their own agreements (brand_id matches).
+     Brands cannot INSERT, UPDATE, or DELETE — agreements are created
+     and managed through the API, which enforces business rules before
+     writing. Admin uses service role. Reps, recruiters, and parents
+     have no access.
+
+---
+
+BACKEND DELIVERABLES:
+
+1. Config additions (app/core/config.py):
+   EXCLUSIVITY_BASE_RATE_CENTS_PER_DAY: int = 5000
+   EXCLUSIVITY_MAX_DAYS: int = 90
+   Load both from environment variables. Document in .env.example.
+
+2. Conflict check function (app/services/exclusivity_service.py):
+
+   check_exclusivity_conflict(category: str, city: str | None,
+     starts_at: datetime, ends_at: datetime,
+     exclude_brand_id: UUID | None = None) -> UUID | None:
+     Queries category_exclusivity_agreements for any active agreement
+     where:
+       agreement.category = category
+       agreement.status = 'active'
+       agreement.payment_status = 'paid'
+       agreement.starts_at < ends_at (overlaps end)
+       agreement.ends_at > starts_at (overlaps start)
+       agreement.city = city OR agreement.city IS NULL (city-level
+         or platform-wide exclusivity)
+       agreement.brand_id != exclude_brand_id (if provided — allows
+         the owning brand to create campaigns in their own exclusive
+         window)
+     Returns the conflicting agreement's brand_id if found, None if
+     clear. Returns the brand_id rather than the agreement details
+     to avoid leaking competitive intelligence to the checking brand.
+
+   This function must be called within the same database transaction
+   as campaign creation. The query uses SELECT FOR UPDATE SKIP LOCKED
+   on the exclusivity_agreements table to prevent race conditions where
+   two brands both pass the conflict check before either commits.
+   Concurrency safety is mandatory — not an optimization.
+
+3. Exclusivity purchase flow (new router: app/routers/exclusivity.py):
+
+   GET /brands/exclusivity/check
+     Query params: category, city (optional), starts_at, ends_at.
+     Returns: {available: bool, conflict: {exists: bool} — never
+     expose which brand holds exclusivity; only confirm availability.}
+     Brands use this before purchasing to check availability.
+     No authentication required to check availability — a brand
+     should be able to check before committing.
+
+   GET /brands/exclusivity/pricing
+     Query params: category, city (optional), starts_at, ends_at.
+     Returns: {
+       days: integer,
+       rate_per_day_cents: integer,
+       total_cents: integer,
+       starts_at: iso8601,
+       ends_at: iso8601
+     }
+     Computed from EXCLUSIVITY_BASE_RATE_CENTS_PER_DAY * days.
+     No Stripe call — just pricing preview.
+
+   POST /brands/exclusivity/purchase
+     Body: {category, city (nullable), starts_at, ends_at}
+     Process:
+       a. Validate dates: starts_at in the future, ends_at > starts_at,
+          window <= EXCLUSIVITY_MAX_DAYS.
+       b. Validate category against centrally-defined list.
+       c. Run conflict check (check_exclusivity_conflict). If conflict
+          exists: return 409 {error: "This category is exclusively
+          held by another brand during part or all of your requested
+          window. Check availability for adjacent dates."} — never
+          name the conflicting brand.
+       d. Calculate fee_cents.
+       e. Create a Stripe PaymentIntent against the platform account
+          (NOT Stripe Connect — this is platform revenue):
+            amount: fee_cents
+            currency: 'usd'
+            metadata: {
+              type: 'category_exclusivity',
+              brand_id: brand_id,
+              category: category,
+              city: city or 'all',
+              starts_at: starts_at.isoformat(),
+              ends_at: ends_at.isoformat()
+            }
+       f. Create a category_exclusivity_agreements row with
+          payment_status = 'pending', status = 'active',
+          stripe_payment_intent_id from the PaymentIntent.
+       g. Return: {agreement_id, client_secret (from PaymentIntent),
+          fee_cents, starts_at, ends_at}
+     Steps e and f must execute atomically. If the agreement row
+     creation fails after the PaymentIntent is created, the PaymentIntent
+     must be cancelled.
+
+   GET /brands/exclusivity
+     List brand's own agreements (all statuses). Include: category,
+     city, starts_at, ends_at, status, payment_status, fee_cents,
+     refund_cents.
+
+4. Stripe webhook additions (extend Prompt 10's handler):
+
+   payment_intent.succeeded where metadata.type = 'category_exclusivity':
+     → Set category_exclusivity_agreements.payment_status = 'paid'
+     → Send brand confirmation email: "Your category exclusivity in
+       [category] in [city or 'all markets'] from [dates] is now active."
+     → Log to admin audit trail
+
+   payment_intent.payment_failed where metadata.type = 'category_exclusivity':
+     → Set payment_status = 'failed'
+     → Set status = 'cancelled' (failed payment = no exclusivity)
+     → Notify brand via email
+     → Alert admin queue
+
+5. Conflict injection into campaign creation (modify Prompt 8's
+   POST /brands/campaigns):
+   After validating campaign fields and before inserting the campaign,
+   run check_exclusivity_conflict(campaign.category, campaign.city,
+   campaign.starts_at, campaign.ends_at or now() + 30 days,
+   exclude_brand_id=current_brand_id).
+   If conflict exists: return 409 {
+     error: "code": "exclusivity_conflict",
+     "message": "Another brand holds exclusivity in this category
+       and market during your requested campaign period. Consider
+       a different category, city, or time window."
+   }
+   The conflict check must execute within the same database transaction
+   as the campaign INSERT. If the campaign INSERT is rolled back, the
+   conflict check result is irrelevant. If the conflict check passes
+   but the INSERT fails due to a concurrent exclusivity purchase: the
+   INSERT must be retried once before returning an error.
+
+   Also inject into POST /brands/campaigns/:id/activate — a brand
+   might create a campaign in draft and activate it after an exclusivity
+   agreement is purchased by a competitor. The check fires at both
+   creation and activation.
+
+6. Auto-expire scheduled job (extend Prompt 3 runner):
+   New job: exclusivity_auto_expire — runs every hour.
+   Finds agreements where ends_at < now() and status = 'active'.
+   Sets status = 'expired'. Idempotent. Logs every expiry.
+   Does NOT initiate refunds — expiry is natural end of agreement.
+
+7. Cancellation and refunds (new admin endpoint):
+   POST /admin/exclusivity/:id/cancel
+     Admin-only. Required: cancellation_reason.
+     Calculates proration: if agreement.starts_at has not passed,
+     full refund. If in the active window: refund the remaining days
+     proportionally (refund_cents = fee_cents * remaining_days / total_days,
+     rounded down).
+     Issues a Stripe refund against the original PaymentIntent.
+     Sets status = 'cancelled', cancelled_at = now(),
+     refund_cents = calculated amount.
+     Notifies brand via email.
+   Brands cannot self-cancel after payment — only admin can cancel a paid
+   exclusivity agreement. Document this: brands can request cancellation
+   via support; admin processes it. No self-serve cancellation at MVP.
+
+8. Admin exclusivity management (extend Prompt 13):
+   GET /admin/exclusivity — all agreements with all fields, paginated.
+   GET /admin/exclusivity/active — active agreements only, with
+     days remaining per agreement.
+   GET /admin/analytics/exclusivity — total revenue from exclusivity
+     (sum of fee_cents for paid agreements), active agreements count,
+     categories with highest exclusivity purchase frequency (demand
+     signal for pricing adjustments), average agreement length.
+
+---
+
+FRONTEND ADDITIONS:
+
+Brand portal (add to Prompt 9):
+  - Exclusivity section under a "Premium" or "Market Tools" tab.
+  - Availability checker: category selector, city selector, date range
+    picker. Real-time availability check against GET /brands/exclusivity/check.
+    If unavailable: "This window is held by another brand. Try adjacent
+    dates." If available: show pricing from GET /brands/exclusivity/pricing
+    with a clear breakdown (X days × $Y/day = $Z total).
+  - Purchase flow: confirm details, Stripe Elements payment form,
+    confirmation receipt. Standard web payment UX — no novelty needed.
+  - Active agreements list with status, dates, and a "contact support
+    to cancel" link (no self-serve cancel).
+  - Campaign creation form: if the brand creates a campaign in a category
+    where they hold exclusivity, show a badge: "You hold exclusivity in
+    this category through [date]." If they don't hold exclusivity and
+    a conflict exists: show the 409 message clearly in the form before
+    the brand submits, not after.
+
+Admin portal (add to Prompt 13):
+  - Exclusivity agreements list with all fields, sortable by status,
+    revenue, and expiry date.
+  - Cancel action with reason field and proration preview before
+    confirming.
+  - Analytics panel per the admin analytics endpoint above.
+
+---
+
+ACCEPTANCE CRITERIA:
+
+Conflict detection:
+  - Two brands simultaneously posting campaigns in the same exclusive
+    category-and-city window: exactly one succeeds, one receives 409.
+    Tested with concurrent requests to the campaign creation endpoint
+    and SELECT FOR UPDATE SKIP LOCKED verified in the test.
+  - A brand holding exclusivity can create a campaign in their own
+    exclusive window — no self-conflict.
+  - A campaign in draft during a period that later becomes exclusive
+    cannot be activated — conflict check at activation as well as creation.
+
+Payment safety:
+  - payment_intent.succeeded webhook sets payment_status = 'paid' and
+    sends brand email — tested against a seeded pending agreement.
+  - payment_intent.payment_failed sets status = 'cancelled' —
+    verified by seeding a failed webhook.
+  - Calling the purchase endpoint twice for the same window before
+    the first webhook fires: only one agreement can exist per
+    category-city-window for a given brand — UNIQUE constraint or
+    application-layer guard tested.
+
+Auto-expiry:
+  - An agreement with ends_at in the past transitions to 'expired' when
+    the job runs. Running the job twice against the same expired agreement
+    produces one log entry.
+  - After expiry: campaigns in the same category-city window from other
+    brands can be created — conflict check no longer fires.
+
+Cancellation:
+  - Admin cancel within an active window issues a Stripe refund for
+    remaining days (rounded down to cents) and sets status = 'cancelled'.
+  - Admin cancel before starts_at issues a full refund.
+  - Refund amount is logged with the agreement for audit.
+
+Config:
+  - EXCLUSIVITY_BASE_RATE_CENTS_PER_DAY change in config changes the
+    price preview endpoint without a deploy — verified by changing the
+    value in a test environment and checking the pricing endpoint response.
+```
 
 ---
 
 ## 8D. Advance Cohort Reservation
 
-**Depends on:** Prompt 8C (builds on stable campaign and milestone
-foundations).
+**Depends on:** Prompt 8 (Brand Portal backend — implemented), Prompt 5
+(Rep Portal backend — implemented), Prompt 8B (Performance Milestone
+Payments — implemented, as this prompt introduces a deposit payment pattern
+similar to the milestone payout pattern), Prompt 10 (Payout Engine —
+implemented).
 
-**Status: not yet drafted.** Introduces a pre-campaign reservation
-state — a brand can reserve a cohort of reps (by category/city/size)
-ahead of a campaign's actual brief being finalized, converting the
-reservation into a real campaign later. Full deliverables, schema,
-acceptance criteria, and the reservation-to-campaign conversion flow
-need to be specified in the same level of detail as Prompt 8B before
-this is buildable. Do not build from this one-line summary alone.
+**Also affects:** Prompt 9 (Brand Portal frontend — add reservation flow),
+Prompt 6 (Rep Portal frontend — add "a brand is interested" notification
+panel), Prompt 4A (Parent Portal — add reservation notifications to parent
+dashboard), Prompt 13 (Admin — add reservation management).
+
+**Trigger:** Do not build until there is evidence that proven reps (3+
+completed campaigns) are receiving overlapping invitations and turning
+down campaigns due to availability conflicts. If rep scarcity is not yet
+real, advance reservation has no value to brands and creates complexity
+without return.
+
+```
+Implement advance cohort reservation — a feature allowing brands to soft-
+hold a group of specific reps before the campaign brief is finalized.
+The brand pays a deposit to signal intent. Reserved reps are notified
+that a brand is interested. When the brand activates a campaign linked
+to the reservation, reserved reps receive a 48-hour exclusive invitation
+window before the campaign opens to the general rep pool.
+
+THE PRODUCT THESIS:
+
+  The best reps on the platform receive multiple campaign invitations.
+  Brands that wait until their brief is finalized risk losing the reps
+  they want to a competitor. Advance cohort reservation gives brands
+  a way to secure a cohort before the competition does — paying a small
+  deposit as a commitment signal.
+
+  For reps, a reservation is not an obligation. It is a signal of market
+  value. A rep who has been reserved by a brand before the brief even
+  exists is a rep that brands find credible enough to secure early.
+  This is a profile signal that the platform surfaces.
+
+  The deposit is retained by the platform regardless of whether the
+  campaign activates. It is a commitment fee, not an advance on campaign
+  payment. Brands understand they are paying for a priority hold, not
+  for guaranteed rep participation.
+
+WHAT A RESERVATION IS NOT:
+
+  A reservation is NOT a binding contract with the rep. The rep can
+  decline the eventual invitation with no consequence. A reservation
+  is a brand-to-platform commitment, not a brand-to-rep commitment.
+  This distinction must be communicated clearly in the rep notification
+  and parent portal — a rep who receives a reservation notification
+  is not obligated to accept the eventual campaign.
+
+DEPOSIT AND FORFEITURE:
+
+  Deposits are platform revenue. The deposit is calculated as a
+  percentage of the estimated campaign budget:
+    RESERVATION_DEPOSIT_RATE = 0.10 (10% of estimated_budget_cents)
+    RESERVATION_DEPOSIT_MIN_CENTS = 5000 ($50 minimum)
+    RESERVATION_DEPOSIT_MAX_CENTS = 50000 ($500 maximum)
+  All three are config values loaded from environment variables.
+
+  Forfeiture conditions:
+    - Brand cancels the reservation: deposit forfeited
+    - Brand fails to activate a campaign linked to this reservation
+      within RESERVATION_EXPIRY_DAYS of planned_activation_at: deposit
+      forfeited, reservation auto-expires
+    RESERVATION_EXPIRY_DAYS = 14 (config value)
+
+  There is no partial refund on deposits. The deposit is the price of
+  holding the cohort. If the campaign activates, the deposit counts
+  toward the platform fee on that campaign (documented in the campaign
+  billing flow — the brand's total platform fee for the campaign is
+  reduced by the deposit already paid).
+
+---
+
+SCHEMA ADDITIONS (new migration, separately numbered):
+
+1. New table: cohort_reservations
+     id (UUID PK default gen_random_uuid())
+     brand_id (UUID not null references brand_profiles(id)
+       on delete restrict)
+     title (text not null — the brand's working title for the upcoming
+       campaign: "Back to School Push" not shown to reps)
+     category (text not null — the intended campaign category)
+     city (text not null — reservations are city-specific)
+     estimated_budget_cents (integer not null — what the brand expects
+       to spend in total on the campaign; used to calculate deposit)
+     planned_activation_at (date not null — the date the brand expects
+       to activate the linked campaign; used to set expiry)
+     expires_at (timestamptz not null — auto-set at creation:
+       planned_activation_at + RESERVATION_EXPIRY_DAYS days)
+     priority_window_hours (integer not null default 48 — how long
+       reserved reps get exclusive access after campaign activates;
+       config value RESERVATION_PRIORITY_WINDOW_HOURS, settable per
+       reservation by admin only)
+     status (text not null default 'active'
+       check (status in ('active', 'converted', 'cancelled', 'expired')))
+     deposit_cents (integer not null — calculated at creation)
+     stripe_payment_intent_id (text not null unique)
+     payment_status (text not null default 'pending'
+       check (payment_status in ('pending', 'paid', 'failed')))
+     converted_campaign_id (UUID nullable references campaigns(id) —
+       set when the brand activates a campaign and links this reservation)
+     converted_at (timestamptz nullable)
+     cancelled_at (timestamptz nullable)
+     cancellation_reason (text nullable)
+     created_at (timestamptz not null default now())
+
+2. New table: cohort_reservation_reps
+     id (UUID PK default gen_random_uuid())
+     reservation_id (UUID not null references cohort_reservations(id)
+       on delete restrict)
+     rep_id (UUID not null references rep_profiles(id)
+       on delete restrict)
+     notified_at (timestamptz nullable — when the rep received the
+       "a brand is interested" notification)
+     rep_signal (text nullable default null
+       check (rep_signal in (null, 'interested', 'not_interested')) —
+       rep's informal signal of interest; this is NOT a commitment,
+       NOT a contract; reps can change their signal any time before
+       the campaign invitation arrives)
+     UNIQUE (reservation_id, rep_id)
+
+3. Add to rep_profiles:
+     times_reserved (integer not null default 0 — how many times this
+       rep has been reserved by a brand before a campaign; a profile
+       signal of early market demand; cached, updated on reservation
+       inclusion)
+
+4. Modify campaigns (new columns for reservation-linked campaigns):
+     linked_reservation_id (UUID nullable references cohort_reservations(id))
+     priority_window_ends_at (timestamptz nullable — set when campaign
+       activates if linked_reservation_id is set; calculated as:
+       activated_at + reservation.priority_window_hours)
+
+5. Indexes:
+     CREATE INDEX idx_reservations_brand
+       ON cohort_reservations(brand_id, status);
+     CREATE INDEX idx_reservations_expiry
+       ON cohort_reservations(expires_at, status)
+       WHERE status = 'active';
+     CREATE INDEX idx_reservation_reps_rep
+       ON cohort_reservation_reps(rep_id, reservation_id);
+
+6. RLS policies:
+     cohort_reservations: brands read only their own (brand_id matches).
+       No rep, recruiter, or parent direct access. Admin uses service role.
+     cohort_reservation_reps: brands read only rows for their own
+       reservations. Reps can read only their own rows (rep_id matches)
+       and can UPDATE only rep_signal on their own rows.
+       Admin uses service role.
+
+---
+
+BACKEND DELIVERABLES:
+
+1. Config additions (app/core/config.py):
+   RESERVATION_DEPOSIT_RATE: float = 0.10
+   RESERVATION_DEPOSIT_MIN_CENTS: int = 5000
+   RESERVATION_DEPOSIT_MAX_CENTS: int = 50000
+   RESERVATION_EXPIRY_DAYS: int = 14
+   RESERVATION_PRIORITY_WINDOW_HOURS: int = 48
+   Load all from environment variables. Document in .env.example.
+
+2. Deposit calculation function:
+   calculate_deposit(estimated_budget_cents: int) -> int:
+     raw = round(estimated_budget_cents * RESERVATION_DEPOSIT_RATE)
+     return max(RESERVATION_DEPOSIT_MIN_CENTS,
+                min(raw, RESERVATION_DEPOSIT_MAX_CENTS))
+
+3. Brand reservation management (new router: app/routers/reservations.py):
+
+   POST /brands/reservations/preview
+     Body: {estimated_budget_cents}
+     Returns: {deposit_cents, expiry_days: RESERVATION_EXPIRY_DAYS,
+       priority_window_hours: RESERVATION_PRIORITY_WINDOW_HOURS}
+     No side effects — just pricing preview. No auth required for preview.
+
+   POST /brands/reservations
+     Body: {title, category, city, estimated_budget_cents,
+       planned_activation_at, rep_ids: [UUID, ...]}
+     Validates:
+       - category in centrally-defined list
+       - planned_activation_at is in the future
+       - rep_ids: 2–15 reps (minimum cohort to justify reservation fee;
+         maximum to prevent brands from locking up the entire rep pool
+         in a category)
+       - all rep_ids are real, active reps with at least 1 completed
+         campaign (reservations are for proven reps; new reps without
+         a track record cannot be reserved at MVP)
+     Calculates deposit_cents.
+     Creates a Stripe PaymentIntent against platform account:
+       amount: deposit_cents
+       metadata: {type: 'cohort_reservation', brand_id, city, category,
+         rep_count: rep_ids.length}
+     Creates cohort_reservations row (payment_status = 'pending').
+     Creates cohort_reservation_reps rows for each rep_id.
+     Increments rep_profiles.times_reserved for each rep.
+     Returns: {reservation_id, deposit_cents, expires_at, client_secret}
+     The rep notification (deliverable 6) fires from the webhook after
+     payment confirms, not from this endpoint. Avoid notifying reps
+     before payment is confirmed.
+
+   GET /brands/reservations
+     List all reservations with status, rep count, deposit_cents,
+     planned_activation_at, expires_at, and linked_campaign_id if
+     converted.
+
+   GET /brands/reservations/:id
+     Full reservation detail including rep_ids and their rep_signal
+     values. The brand cannot see the rep's signal reasoning — only
+     the signal itself ('interested', 'not_interested', or null).
+
+   DELETE /brands/reservations/:id
+     Cancel reservation. Only active reservations can be cancelled —
+     409 if status is 'converted', 'expired', or already 'cancelled'.
+     Sets status = 'cancelled', cancelled_at = now().
+     Deposit is forfeited — no Stripe refund on cancellation (documented
+     in the purchase UI). Log the cancellation to admin audit trail.
+     Notify the reserved reps: "A brand's plans have changed and they
+     no longer need to reserve your participation. No action needed."
+
+4. Campaign activation modification (modify Prompt 8's
+   POST /brands/campaigns/:id/activate):
+   Add optional linked_reservation_id to the request body.
+   If provided:
+     a. Validate reservation exists, belongs to this brand, and is
+        in 'active' status with payment_status = 'paid'.
+     b. Validate reservation.category matches campaign.category.
+     c. Validate reservation.city matches campaign.city (or is a
+        subset of campaign's city targeting).
+     d. Set campaign.linked_reservation_id = reservation.id
+     e. Set campaign.priority_window_ends_at = now() +
+        reservation.priority_window_hours hours
+     f. Set reservation.status = 'converted', converted_campaign_id =
+        campaign.id, converted_at = now()
+     g. For each rep in cohort_reservation_reps for this reservation:
+        create a campaign_reps invitation (same structure as a normal
+        brand invitation from Prompt 8) with invite_expires_at set to
+        campaign.priority_window_ends_at — not the standard 48-hour window.
+        Reserved reps get exactly the priority_window_hours window.
+     h. Apply the deposit credit: deduct deposit_cents from the platform
+        fee on this campaign (document how this credit is tracked —
+        a campaign_platform_credits table is the cleanest approach;
+        see deliverable 5).
+     Steps d–h must execute atomically.
+   If linked_reservation_id is not provided, activation proceeds normally
+   (no change to existing behavior).
+
+   Also: modify POST /brands/campaigns/:id/activate to check priority_window_ends_at.
+   If the campaign has a priority window, do NOT allow general rep
+   invitations (from the brand portal or the normal matching flow) until
+   priority_window_ends_at has passed. After that, the campaign opens
+   normally. This is the core promise of advance reservation — reserved
+   reps get exclusive first access.
+
+5. Campaign platform credits (new table: campaign_platform_credits):
+     id (UUID PK)
+     campaign_id (UUID not null references campaigns(id))
+     credit_type (text not null check (credit_type in
+       ('reservation_deposit')))
+     credit_cents (integer not null)
+     source_id (UUID not null — the reservation_id for deposit credits)
+     applied_at (timestamptz not null default now())
+   This table tracks credits against campaign platform fees. The billing
+   calculation in Prompt 10 must check this table before charging the
+   brand's platform fee and subtract any credits. Add this integration
+   to Prompt 10's billing logic — document it here so the Prompt 10
+   maintainer knows to check.
+
+6. Rep notification for reservation (triggered from webhook in deliverable 7):
+   When a reservation's payment_status transitions to 'paid':
+   For each rep in cohort_reservation_reps:
+     - Send email: "A brand is interested in working with you. They're
+       planning a campaign in [category] in [city] around [month/year
+       of planned_activation_at — do not reveal the exact date]. No
+       action needed right now — you'll receive a formal campaign
+       invitation if their plans move forward. This is not a commitment
+       from you."
+     - Set cohort_reservation_reps.notified_at = now()
+   The notification is informational, not action-required. No link to
+   accept or decline — there is nothing to accept yet.
+   Parent notification: for each notified rep under 16, also notify
+   their parent portal with the same information.
+
+7. Stripe webhook additions (extend Prompt 10's handler):
+
+   payment_intent.succeeded where metadata.type = 'cohort_reservation':
+     → Set cohort_reservations.payment_status = 'paid'
+     → Fire rep notifications (deliverable 6)
+     → Send brand confirmation email: "Your cohort reservation is active.
+       [N] reps have been notified that you're interested. Your reservation
+       expires on [expires_at] if you don't activate a linked campaign."
+     → Log to admin audit trail
+
+   payment_intent.payment_failed where metadata.type = 'cohort_reservation':
+     → Set payment_status = 'failed', status = 'expired'
+     → Do NOT notify reps (payment never confirmed)
+     → Decrement rep_profiles.times_reserved for each rep in the
+       reservation (undo the increment from creation)
+     → Notify brand: "Payment failed. Your reservation was not activated."
+
+8. Rep signal endpoint (new rep endpoint):
+   POST /reps/reservations/:reservation_id/signal
+     Body: {signal: 'interested' | 'not_interested'}
+     Validates: the rep is in cohort_reservation_reps for this reservation.
+     Sets rep_signal. Does not change reservation status. Returns updated
+     cohort_reservation_reps row.
+   Reps can update their signal any number of times before the campaign
+   invitation arrives. The signal is advisory — it does not bind the
+   rep or the brand.
+   GET /reps/reservations
+     List all reservations the rep is part of (by cohort_reservation_reps
+     join). Returns: reservation title (do NOT return — it is internal
+     to the brand), category, city, brand display_name (yes — reps
+     know which brand reserved them; this is relevant to their signal
+     decision), notified_at, signal.
+
+9. Auto-expire scheduled job (extend Prompt 3 runner):
+   New job: reservation_auto_expire — runs every 6 hours.
+   Finds reservations where:
+     expires_at < now()
+     status = 'active'
+     payment_status = 'paid'
+   Sets status = 'expired'. Logs every expiry.
+   Notifies reserved reps: "The brand's campaign plans changed and your
+   advance hold has expired. No action needed."
+   Notifies brand: "Your reservation for [N] reps has expired without
+   a linked campaign. Your deposit of $X has been retained per the
+   reservation terms."
+
+10. Admin reservation management (extend Prompt 13):
+    GET /admin/reservations — all reservations with full detail.
+    POST /admin/reservations/:id/cancel — admin-initiated cancel.
+    GET /admin/analytics/reservations — total reservations created,
+    converted rate (converted / (converted + expired + cancelled)),
+    average time from reservation creation to campaign activation,
+    total deposit revenue retained.
+
+---
+
+FRONTEND ADDITIONS:
+
+Brand portal (add to Prompt 9):
+  - Reservation tab under "Campaigns" navigation.
+  - Create reservation flow: category and city selector, estimated budget
+    input (with live deposit preview), planned activation date picker,
+    rep selection. Rep selection is a search/filter UI identical to the
+    campaign rep browse but restricted to reps with 1+ completed campaigns.
+    Show rep's categories, campaigns_completed, times_reserved (signal of
+    how sought-after they are) in the selection card.
+  - Pricing confirmation: before payment, show full breakdown — deposit
+    amount, forfeiture policy ("If you cancel or don't activate within
+    [N] days, your deposit is retained"), priority window length.
+  - Stripe Elements payment form for deposit.
+  - Active reservations list: status, rep count, signal breakdown (how
+    many signaled 'interested' vs 'not_interested' vs no signal yet),
+    expires_at countdown.
+  - Campaign activation form: if the brand has active paid reservations
+    in the campaign's category and city, surface them as an option:
+    "Link this campaign to an advance reservation to give reserved reps
+    a 48-hour priority window and apply your $X deposit credit."
+
+Rep portal (add to Prompt 6):
+  - Reservation notifications panel on the dashboard: "A brand is
+    interested in working with you." Brand name, category, city. Signal
+    buttons: "I'm interested" / "Not a good fit" / "No response yet."
+    Clear note: "This is not a campaign invitation. You are not
+    committed to anything. If the brand activates a campaign, you will
+    receive a formal invitation and can decide then."
+  - Past reservations history: which brands reserved them, outcome
+    (converted to campaign or expired).
+
+Parent portal (add to Prompt 4A):
+  - Reservation notifications: parent sees the same information as the
+    rep — which brand, which category, that it is not a commitment.
+    Parent can also see the rep's signal. The parent cannot change the
+    signal. Informational only.
+
+Admin portal (add to Prompt 13):
+  - Reservation list with cancel action and analytics panel.
+
+---
+
+ACCEPTANCE CRITERIA:
+
+Deposit calculation:
+  - estimated_budget_cents = $500 → deposit = $50 (minimum, 10% = $50)
+  - estimated_budget_cents = $1,000 → deposit = $100
+  - estimated_budget_cents = $10,000 → deposit = $500 (maximum, capped)
+  - Unit test all three cases against calculate_deposit().
+
+Payment:
+  - payment_intent.succeeded triggers rep notifications and brand email.
+  - payment_intent.payment_failed sets status = 'expired' and
+    decrements times_reserved for all reps.
+
+Priority window enforcement:
+  - A campaign with priority_window_ends_at set in the future cannot
+    send invitations to non-reserved reps — API returns 409 with
+    "Priority window is active. General invitations open at [datetime]."
+  - After priority_window_ends_at passes, general invitations proceed
+    normally.
+  - Reserved reps receive invitations with invite_expires_at =
+    priority_window_ends_at, not the standard 48-hour window.
+
+Deposit credit:
+  - A campaign linked to a reservation has deposit_cents deducted from
+    its platform fee. Verify: a campaign with a $100 deposit and a
+    $400 platform fee results in a $300 net platform charge.
+  - The credit appears in campaign_platform_credits with
+    credit_type = 'reservation_deposit'.
+
+Rep signal:
+  - A rep can update their signal multiple times — no constraint on
+    number of updates.
+  - Rep signal does not change reservation status.
+  - Rep signal is visible to the brand in GET /brands/reservations/:id.
+  - Rep signal is NOT visible in the rep's public profile or to
+    recruiters — it is a private advisory signal.
+
+Auto-expire:
+  - A reservation with expires_at in the past transitions to 'expired'.
+  - Rep notifications fire. Brand notification fires. Log entry created.
+  - Running the job twice against the same expired reservation: one
+    log entry, no duplicate notifications.
+```
 
 ---
 
 ## 8E. Rep Syndicates
 
-**Depends on:** Prompt 8D (builds on stable campaign lifecycle).
+**Depends on:** Prompt 8 (Brand Portal backend — implemented), Prompt 5
+(Rep Portal backend — implemented), Prompt 10 (Payout Engine — implemented,
+specifically Stripe Connect which this prompt extends for multi-rep payout
+distribution), Prompt 4A (Parent Portal — implemented, as syndicate
+campaigns require parental consent for under-16 members).
 
-**Status: not yet drafted.** Introduces a new entity — a syndicate of
-reps with its own profile and payout distribution — allowing a group of
-reps to be booked and paid as a unit rather than individually. This is
-the most structurally involved of the 8B–8F additions (new entity type,
-new profile surface, new payout-splitting logic on top of the milestone
-and flat payout engines) and needs its own full schema/deliverables/
-acceptance-criteria pass, plus an explicit decision on how syndicate
-payout splits interact with individual rep Stripe Connect accounts,
-before this is buildable. Do not build from this one-line summary alone.
+**Also affects:** Prompt 9 (Brand Portal frontend — add syndicate discovery
+and campaign invitation flow), Prompt 6 (Rep Portal frontend — add syndicate
+creation, management, and campaign activity), Prompt 11 (Recruiter Portal —
+add syndicate search and profile view), Prompt 4A (Parent Portal — add
+syndicate membership and campaign notifications), Prompt 13 (Admin — add
+syndicate verification queue).
+
+**Trigger:** Do not build until reps are coordinating informally across
+campaigns — friend groups tagging each other, peer referrals visible in
+PostHog, brands requesting coordinated placements — AND brands have
+expressed demand for group placements. If the rep network is not dense
+enough to form natural cohesive groups, syndicates will be synthetic
+and unconvincing to brands.
+
+```
+Implement rep syndicates — named groups of reps that brands can hire as
+a coordinated unit. A syndicate has a collective profile, a lead rep who
+manages the brand relationship, and member reps who execute campaigns.
+Brands invite the syndicate, not individual members. Payout is distributed
+across the group per a configured split.
+
+THE PRODUCT THESIS:
+
+  A friend group that all goes to the same school, shops at the same
+  stores, and shares followers with each other is more valuable to a
+  brand than five unconnected individual reps. The coordinated reach is
+  both wider and more authentic — peers recommending to peers within a
+  real social network. Syndicates formalize this natural structure into
+  a professional unit that brands can hire, trust, and build a
+  relationship with over time.
+
+  Syndicates also give reps collective negotiating power. A five-person
+  syndicate with a combined audience and track record can command
+  higher per-person rates than any individual member could alone.
+  The lead rep learns client relationship management. Members learn
+  professional collaboration. Both are transferable skills.
+
+WHAT A SYNDICATE IS NOT:
+
+  A syndicate is not a union or an agency. The platform does not take
+  a percentage of syndicate payouts beyond the normal campaign platform
+  fee. The syndicate lead does not take a management cut via the platform
+  — how the lead and members divide their earnings outside the platform
+  is their business. The platform distributes individual payouts to each
+  member's Stripe Connect account per the configured split and stops there.
+
+  A syndicate is not a rep-created shortcut to skip the individual
+  brand relationship. Each member must still be individually verified
+  and their parent consent (if applicable) obtained before a syndicate
+  campaign can proceed.
+
+SAFETY ARCHITECTURE:
+
+  Syndicates introduce a new surface where an adult brand contact
+  could interact with a group of minors through a single channel.
+  The same safety rules that apply to individual campaigns apply to
+  syndicate campaigns — the lead rep's parent must be notified if the
+  lead is under 16, AND every member's parent must be notified and
+  approve the campaign if that member is under 16. A syndicate campaign
+  cannot proceed until every under-16 member has parent approval.
+
+  The lead rep's age matters for additional reasons: a 14-year-old
+  should not be managing a brand relationship involving five of their
+  peers. Recommend (but do not enforce at MVP) that lead reps be 17+
+  for syndicates with more than 4 members. Document this as a suggested
+  policy for admin to implement at their discretion.
+
+---
+
+SCHEMA ADDITIONS (new migration, separately numbered):
+
+1. New table: syndicates
+     id (UUID PK default gen_random_uuid())
+     name (text not null unique — the public name: "The Westfield Squad")
+     bio (text not null — one paragraph describing the group)
+     categories (text[] not null — categories the syndicate works in;
+       at least one required; from the centrally-defined list)
+     city (text not null — syndicates are city-based)
+     lead_rep_id (UUID not null references rep_profiles(id)
+       on delete restrict)
+     status (text not null default 'pending_verification'
+       check (status in ('pending_verification', 'active', 'suspended',
+       'disbanded')))
+     verified (boolean not null default false — set to true by admin
+       after verifying the group is real and cohesive; syndicates cannot
+       appear in brand discovery until verified = true)
+     verified_at (timestamptz nullable)
+     verified_by_admin_id (text nullable)
+     member_count (integer not null default 1 — cached, includes lead)
+     campaigns_completed (integer not null default 0 — cached)
+     average_rating (numeric(3,2) nullable — cached across all
+       syndicate campaigns)
+     total_earnings_cents (integer not null default 0 — cached sum of
+       all member payouts from syndicate campaigns)
+     disbandment_reason (text nullable)
+     disbanded_at (timestamptz nullable)
+     created_at (timestamptz not null default now())
+     updated_at (timestamptz not null default now())
+
+2. New table: syndicate_members
+     id (UUID PK default gen_random_uuid())
+     syndicate_id (UUID not null references syndicates(id)
+       on delete restrict)
+     rep_id (UUID not null references rep_profiles(id)
+       on delete restrict)
+     role (text not null check (role in ('lead', 'member')))
+     payout_share_percentage (integer not null default 0 —
+       this member's percentage of the syndicate's total payout;
+       all members' shares must sum to 100; enforced at API layer,
+       not by DB constraint — the total is validated on save)
+     status (text not null default 'active'
+       check (status in ('active', 'departed', 'removed')))
+     joined_at (timestamptz not null default now())
+     departed_at (timestamptz nullable)
+     UNIQUE (syndicate_id, rep_id)
+
+3. Add to rep_profiles:
+     syndicate_id (UUID nullable references syndicates(id) — the
+       syndicate this rep belongs to, if any; null if not in a syndicate)
+     syndicate_role (text nullable check (syndicate_role in
+       (null, 'lead', 'member')))
+   A rep can belong to at most one active syndicate at a time. Enforce
+   this at the API layer with a clear error: "Reps can only belong to
+   one syndicate at a time. Leave your current syndicate before joining
+   or creating another."
+
+4. Modify campaigns to support syndicate campaigns:
+   Add:
+     campaign_type (text not null default 'individual'
+       check (campaign_type in ('individual', 'syndicate')))
+     syndicate_id (UUID nullable references syndicates(id) —
+       set when campaign_type = 'syndicate')
+   A syndicate campaign's max_reps is determined by syndicate.member_count.
+   Individual campaigns are unaffected.
+
+5. New table: syndicate_campaign_payouts
+     id (UUID PK default gen_random_uuid())
+     campaign_id (UUID not null references campaigns(id))
+     syndicate_id (UUID not null references syndicates(id))
+     rep_id (UUID not null references rep_profiles(id))
+     payout_cents (integer not null — this rep's share)
+     payout_status (text not null default 'pending'
+       check (payout_status in ('pending', 'processing', 'paid', 'failed')))
+     stripe_transfer_id (text nullable unique)
+     paid_at (timestamptz nullable)
+     UNIQUE (campaign_id, rep_id)
+
+6. Indexes:
+     CREATE INDEX idx_syndicates_verified_city
+       ON syndicates(city, status, verified)
+       WHERE status = 'active' AND verified = true;
+     CREATE INDEX idx_syndicate_members_rep
+       ON syndicate_members(rep_id, status)
+       WHERE status = 'active';
+     CREATE INDEX idx_syndicate_campaign_payouts_campaign
+       ON syndicate_campaign_payouts(campaign_id, payout_status);
+
+7. RLS policies:
+     syndicates: any authenticated user can read active, verified
+       syndicates. Lead rep can read and update their own syndicate.
+       Members can read their syndicate. Admin uses service role.
+     syndicate_members: members can read all rows for their syndicate.
+       Lead rep can read and update all rows for their syndicate.
+       Admin uses service role.
+     syndicate_campaign_payouts: reps can read only their own rows.
+       Brand can read rows for campaigns they own. Admin uses service role.
+
+---
+
+BACKEND DELIVERABLES:
+
+1. Syndicate creation (new router: app/routers/syndicates.py):
+
+   POST /reps/syndicates
+     Body: {name, bio, categories, city,
+       members: [{rep_id, payout_share_percentage}]}
+     The creating rep is automatically the lead with
+       role = 'lead'; their payout_share_percentage is also in the
+       members array. All members' payout_share_percentage values must
+       sum to 100.
+     Validates:
+       - name is unique (case-insensitive)
+       - 2–8 members total (including lead)
+       - creating rep has no existing active syndicate_id
+       - all proposed members have no existing active syndicate_id
+       - all proposed members are real, active reps
+       - payout shares sum to exactly 100
+     Creates syndicates row (status = 'pending_verification',
+       verified = false).
+     Creates syndicate_members rows for all members.
+     Sets rep_profiles.syndicate_id and syndicate_role for all members.
+     Sends invitations to proposed members (not the lead):
+       "You've been invited to join [name] syndicate by [lead's
+       display_name]. They've set your share at X%. Review and accept
+       or decline below." — see deliverable 2 for member acceptance.
+     Notifies admin queue: new syndicate pending verification.
+     Returns: {syndicate_id, status: 'pending_verification'}
+
+2. Member invitation acceptance:
+   POST /reps/syndicates/:id/accept
+     Validates: rep is in syndicate_members with status = 'active'
+     (they were added at creation, status starts active — this endpoint
+     is about confirming they saw the terms, not a formal approval step).
+     Actually, rethink: at creation, proposed members should start with
+     status = 'invited', not 'active'. Acceptance transitions to 'active'.
+     Update schema accordingly: add 'invited' to the status check constraint
+     on syndicate_members. Members start 'invited'. Lead starts 'active'.
+     A syndicate cannot proceed to verification until all members have
+     accepted. If a member declines, the lead is notified and can replace them.
+
+   POST /reps/syndicates/:id/decline
+     Rep removes themselves. Notifies lead. If lead declines their own
+     role, the syndicate creation fails (lead cannot be removed without
+     disbanding).
+
+3. Admin verification (extend Prompt 13):
+   POST /admin/syndicates/:id/verify
+     Sets verified = true, verified_at = now(), verified_by_admin_id.
+     Changes status from 'pending_verification' → 'active'.
+     Notifies all members: "Your syndicate [name] has been verified and
+       is now discoverable by brands."
+   POST /admin/syndicates/:id/suspend
+     Sets status = 'suspended'. Campaigns in progress continue.
+     New campaign invitations cannot be sent to a suspended syndicate.
+   GET /admin/syndicates/pending — list syndicates awaiting verification.
+
+4. Syndicate discovery (brand-facing):
+   GET /brands/syndicates/browse
+     Query params: category, city.
+     Returns verified, active syndicates where:
+       syndicate.categories intersects query.category (if provided)
+       syndicate.city = query.city (if provided)
+     Per syndicate: name, bio, categories, city, member_count,
+       campaigns_completed, average_rating, payout_share structure
+       (array of {role, payout_share_percentage} — not rep_ids; brands
+       see the share structure without identifying individual members
+       until they invite the syndicate).
+     Full member details available at:
+   GET /brands/syndicates/:id
+     Full syndicate profile including all member cards (display_name,
+       city, categories, campaigns_completed, average_rating per member).
+     No PII. Same no-PII card as individual rep discovery.
+
+5. Syndicate campaign creation and invitation:
+   POST /brands/campaigns (extend Prompt 8):
+     When campaign_type = 'syndicate', require syndicate_id.
+     Validate syndicate is active and verified.
+     Set max_reps = syndicate.member_count (campaigns invite all
+       members, not a subset).
+     payout_per_rep_cents is the total campaign payout divided among
+       all members per their payout_share_percentage — document this
+       in the campaign creation schema: for syndicate campaigns,
+       payout_per_rep_cents stores the total syndicate payout, and
+       individual member payouts are calculated at payout time.
+
+   POST /brands/campaigns/:id/invite_syndicate
+     Sends a single invitation to the syndicate (to the lead rep,
+       who accepts on behalf of the group).
+     Creates campaign_reps rows for all syndicate members simultaneously.
+     Notifies lead rep: "A brand has invited your syndicate to a campaign."
+     Parent notification: for each member under 16, notifies parent
+       (same as individual campaign parent notification from Prompt 4A).
+     Sets all campaign_reps.status = 'invited'.
+
+6. Syndicate campaign acceptance:
+   POST /campaigns/:id/accept (extend Prompt 5):
+     For syndicate campaigns, only the lead rep can accept.
+     Acceptance transitions all members' campaign_reps.status = 'accepted'.
+     For each member under 16: parent approval is still required before
+       their status transitions to 'accepted'. The lead accepts the
+       invitation; individual members' statuses depend on their parent
+       approval status. A syndicate campaign cannot begin until all
+       under-16 members have parent approval.
+
+7. Syndicate payout distribution (extend payout_service.py):
+   release_syndicate_payouts(campaign_id: UUID):
+     Called when a syndicate campaign is confirmed (all members have
+       submitted deliverables and the brand has confirmed).
+     Fetches syndicate_members for the campaign's syndicate.
+     For each member with status 'active':
+       individual_payout = round(campaign.payout_per_rep_cents *
+         member.payout_share_percentage / 100)
+     Handles rounding remainder: add any cents lost to rounding to the
+       lead rep's payout (same pattern as milestone payment rounding
+       from Prompt 8B).
+     Creates syndicate_campaign_payouts rows.
+     Creates one Stripe Transfer per member to their Connected Account:
+       metadata: {payment_type: 'syndicate_campaign', campaign_id,
+         syndicate_id, rep_id, payout_share_percentage}
+     Idempotent: if stripe_transfer_id already set on a row, skip.
+   Webhook handling:
+     transfer.paid where metadata.payment_type = 'syndicate_campaign':
+       → syndicate_campaign_payouts.payout_status = 'paid'
+       → update rep_profiles.total_earnings_cents for the rep
+       → update syndicates.total_earnings_cents (add to cached total)
+       → after all members paid: update syndicates.campaigns_completed,
+         syndicates.average_rating
+
+8. Payout share modification:
+   PUT /reps/syndicates/:id/shares
+     Lead-only endpoint. Body: [{rep_id, payout_share_percentage}] for
+       all members. All shares must sum to 100.
+     Can only be called when no active campaigns are in progress for
+       this syndicate (campaign_reps with status in
+       ('invited', 'accepted') exists → 409 "Cannot change payout
+       shares while a campaign is in progress").
+     Updates syndicate_members.payout_share_percentage for all members.
+     Notifies all members of the share change.
+
+9. Profile integration:
+   Add to the rep profile serializer:
+     syndicate: {id, name, role} or null if not in a syndicate.
+   Syndicate profile for brand/recruiter browse:
+     campaigns_completed, average_rating, member_count, verified badge.
+   A recruiter viewing a rep's profile sees their syndicate affiliation
+     and can view the syndicate profile — no extra credit cost, syndicate
+     membership is part of the rep's professional profile.
+
+10. Disbanding:
+    POST /reps/syndicates/:id/disband
+      Lead-only. Cannot disband if active campaigns in progress (same
+        guard as share modification).
+      Sets syndicates.status = 'disbanded', disbanded_at = now().
+      Clears rep_profiles.syndicate_id and syndicate_role for all members.
+      Sets syndicate_members.status = 'departed' for all.
+      Notifies all members.
+
+---
+
+FRONTEND ADDITIONS:
+
+Rep portal (add to Prompt 6):
+  - Syndicates tab: create syndicate form (name, bio, categories, city,
+    member search and invite, payout share allocation with live 100%
+    validation). Pending/active syndicate status. Member list with
+    acceptance status. Payout share editor (when no active campaigns).
+  - For invited (non-lead) reps: syndicate invitation card — name, bio,
+    lead display_name, their proposed payout share. Accept/decline.
+  - Syndicate campaigns appear in the rep's campaign dashboard labeled
+    "Syndicate Campaign" with the syndicate name.
+
+Brand portal (add to Prompt 9):
+  - Syndicate discovery: browse and search syndicates by category
+    and city. Syndicate detail view. Invite syndicate button (creates
+    a syndicate campaign with the syndicate attached).
+  - Campaign creation: campaign_type toggle (Individual / Syndicate).
+    If Syndicate: syndicate selector replaces rep targeting.
+    Payout field: total syndicate payout (platform shows the breakdown
+    across members in the UI but the brand just sets the total).
+
+Recruiter portal (add to Prompt 12):
+  - Syndicate affiliation visible on rep profiles.
+  - Link to syndicate profile from rep card.
+  - Syndicate search: filter candidates by syndicate membership (a
+    recruiter recruiting a lead rep may want to note the leadership
+    experience).
+
+Parent portal (add to Prompt 4A):
+  - Syndicate membership visible on parent dashboard.
+  - Syndicate campaign invitations appear in the parent approval queue
+    like individual campaign invitations — parent must approve before
+    the under-16 member's campaign_reps status transitions to 'accepted'.
+  - Parent dashboard shows which syndicate campaigns are in progress.
+
+Admin portal (add to Prompt 13):
+  - Syndicate verification queue: pending syndicates with all member
+    details. Verify and suspend actions.
+  - Active syndicates list with campaign activity and earnings.
+
+---
+
+ACCEPTANCE CRITERIA:
+
+Membership constraint:
+  - A rep cannot create or join a second syndicate while already in one —
+    409 "already in a syndicate" at both endpoints.
+  - Unit test: create two syndicates with the same rep; second creation
+    fails.
+
+Payout shares:
+  - A syndicate cannot be created with payout_share_percentage values
+    that do not sum to exactly 100 — 400 validation error.
+  - Rounding: for a $100 syndicate payout with 3 equal-share members
+    (33.33% each), the lead receives $34 and each other member receives
+    $33 — rounding remainder goes to lead. Verified by unit test.
+  - Calling release_syndicate_payouts twice produces exactly one
+    Stripe Transfer per member — idempotency verified with concurrency test.
+
+Parent approval:
+  - A syndicate campaign with an under-16 member cannot proceed to
+    'accepted' status for that member until parent approval is received.
+  - Verified by seeding a syndicate campaign with a mixed-age member
+    group and asserting that the under-16 member's campaign_reps.status
+    remains 'invited' until the parent approval webhook fires.
+
+Verification gate:
+  - An unverified syndicate does not appear in GET /brands/syndicates/browse.
+  - A brand cannot invite an unverified syndicate — 409 "syndicate is
+    pending verification."
+
+Disbanding:
+  - Attempting to disband with an active campaign returns 409.
+  - After disbanding, all members' rep_profiles.syndicate_id is null.
+  - Verified by seeding an active campaign, attempting disband (fail),
+    completing the campaign, then disbanding (succeed).
+```
 
 ---
 
 ## 8F. Relationship Continuity Product (Year Two)
 
-**Depends on:** Prompt 8E, and real longitudinal data from completed
-multi-campaign rep histories.
+**Depends on:** All prior prompts. Specifically requires real longitudinal
+data: at least 200 brand-rep pairs with 3+ completed campaigns together.
+This data must exist in production before this prompt is executed.
 
-**Status: deferred, placeholder only.** Do not build until sufficient
-data exists to make the product credible rather than theoretical — per
-the product rationale for this prompt, building it early against
-synthetic or thin data would produce a feature nobody has evidence
-justifies. Revisit this placeholder once Prompts 8B–8E have shipped and
-enough real campaign history has accumulated to design it against actual
-usage patterns rather than speculation.
+**Trigger:** Do not build until:
+  1. At least 200 brand-rep pairs have completed 3+ campaigns together.
+  2. At least 2 years of longitudinal campaign data exists in the
+     production database.
+  3. A meaningful subset of reps are approaching high school graduation
+     or college application season with multi-year Teenure history.
+Without these conditions, the "Verified Partnership" credential is
+theoretical rather than demonstrated, and the brand-side re-engagement
+features lack the historical data to surface meaningful match quality.
+
+**This prompt is a planning document, not a build order.**
+When the trigger conditions are met, this document provides the
+architectural foundation. Before executing, review it against the
+then-current schema and business logic for conflicts introduced by
+prompts built in the interim. Assign a fresh version number and treat
+it as a new prompt through the normal review cycle.
+
+```
+Implement the Relationship Continuity Product — a formal recognition
+and support system for long-term brand-rep relationships that have
+demonstrated sustained, verified collaboration across multiple campaigns
+over time.
+
+THE PRODUCT THESIS:
+
+  A rep who has completed five campaigns with the same brand over two
+  years is not the same thing as a rep who did one campaign last month.
+  The multi-year relationship demonstrates reliability, consistency, and
+  professional longevity that a single campaign can never signal. This
+  matters to colleges, employers, and future brand partners.
+
+  For brands, a rep with a proven two-year track record is more valuable
+  and requires less onboarding than an unknown quantity. The relationship
+  continuity product gives brands a way to formalize and maintain their
+  best rep relationships, and gives those reps priority access to future
+  campaigns.
+
+  The product also addresses the platform's retention risk: without
+  a mechanism for multi-year relationships, every campaign is a discrete
+  transaction and there is no structural force keeping high-value reps
+  and brands on the platform. The continuity product creates switching
+  costs in both directions.
+
+WHAT COUNTS AS A PARTNERSHIP:
+
+  A "Verified Brand Partnership" is earned automatically when:
+    - A brand and rep complete at least 3 campaigns together
+    - The campaigns span at least 6 calendar months
+    - The rep's average rating from the brand across those campaigns
+      is at least 4.0 out of 5.0
+    - Both parties are still active on the platform
+  Eligibility is checked quarterly by a background job. When eligibility
+  is met, both parties receive an invitation to formalize the partnership.
+  Both must opt in — partnerships are consensual, not automatic.
+
+PARTNERSHIP BENEFITS:
+
+  For reps:
+    - "Verified Brand Partner: [Brand Name]" badge on profile, visible
+      to all brands and recruiters. Searchable by recruiters.
+    - Priority invitation window: when the partner brand creates a new
+      campaign in the rep's categories, the rep receives a 72-hour
+      exclusive invitation window before the campaign opens.
+    - Partnership longevity metric on profile: "3-year partner of
+      [Brand Name]" once the relationship reaches 3 years.
+
+  For brands:
+    - Dashboard showing all active partnerships with rep engagement
+      history, total campaigns together, total spent together.
+    - Partnership priority invitations (described above) without
+      paying for advance cohort reservation — partnership is its
+      own priority mechanism.
+    - Partnership anniversary recognition: platform notifies the brand
+      on annual partnership anniversaries so they can acknowledge
+      long-term reps.
+
+PARTNERSHIP DISSOLUTION:
+
+  Either party can dissolve a partnership at any time with no penalty.
+  The rep retains the badge history (earned_at and campaigns_completed
+  together remain visible on their profile) but the active partnership
+  status changes to 'completed'. A completed partnership still shows
+  on the profile as a credential — it does not disappear on dissolution.
+  "Former brand partner of [Brand Name]: 2022–2024, 7 campaigns" is
+  still a career credential.
+
+---
+
+SCHEMA ADDITIONS (new migration, separately numbered):
+
+1. New table: brand_rep_partnerships
+     id (UUID PK default gen_random_uuid())
+     brand_id (UUID not null references brand_profiles(id)
+       on delete restrict)
+     rep_id (UUID not null references rep_profiles(id)
+       on delete restrict)
+     status (text not null default 'eligible'
+       check (status in ('eligible', 'active', 'completed', 'declined')))
+     campaigns_completed_together (integer not null — cached,
+       the number of campaigns the two have completed together;
+       updated by the eligibility job)
+     total_earnings_together_cents (integer not null default 0 — cached)
+     average_rating_from_brand (numeric(3,2) nullable — rep's average
+       rating from this brand specifically, across all campaigns together)
+     partnership_started_at (timestamptz nullable — set when both opt in)
+     most_recent_campaign_at (timestamptz nullable — cached)
+     dissolved_at (timestamptz nullable)
+     dissolution_reason (text nullable)
+     brand_opted_in_at (timestamptz nullable)
+     rep_opted_in_at (timestamptz nullable)
+     UNIQUE (brand_id, rep_id)
+
+2. Partnership badge in rep_profiles.badges (extend existing badges jsonb):
+   When a partnership activates, append a badge entry:
+     {type: 'brand_partnership', brand_id, brand_display_name,
+      badge_title: 'Brand Partner: [name]',
+      badge_description: 'Verified multi-campaign partner.',
+      earned_at: partnership_started_at,
+      active: true}
+   When a partnership dissolves, mark the badge entry active: false
+   and append ended_at. The badge remains in the badges jsonb array —
+   dissolution does not delete the credential, it archives it.
+   Add 'brand_partnership' as a valid badge type to the badge
+   serialization logic.
+
+3. Indexes:
+     CREATE INDEX idx_partnerships_rep
+       ON brand_rep_partnerships(rep_id, status);
+     CREATE INDEX idx_partnerships_brand
+       ON brand_rep_partnerships(brand_id, status);
+     CREATE INDEX idx_partnerships_eligible
+       ON brand_rep_partnerships(status, campaigns_completed_together,
+       average_rating_from_brand)
+       WHERE status = 'eligible';
+
+4. RLS policies:
+     brand_rep_partnerships: brands read only their own rows
+       (brand_id matches). Reps read only their own rows
+       (rep_id matches). Neither can directly write — all writes
+       are through the API. Admin uses service role.
+
+---
+
+BACKEND DELIVERABLES:
+
+1. Eligibility computation job (new scheduled job, extend Prompt 3):
+   New job: partnership_eligibility_scan — runs weekly (not daily;
+   eligibility is not time-critical).
+   For every brand-rep pair that has completed 2 or more campaigns
+   together (query campaigns and campaign_reps for confirmed campaigns
+   with the same brand_id):
+     a. Count campaigns_completed_together
+     b. Calculate time span (most_recent_campaign_at - first campaign_at)
+     c. Calculate average_rating_from_brand (brand's ratings on the
+        rep's submissions across all campaigns together)
+     d. If: campaigns_completed_together >= 3 AND time span >= 180 days
+        AND average_rating_from_brand >= 4.0:
+          Upsert brand_rep_partnerships row with status = 'eligible',
+          updated counts and ratings. If row already exists with
+          status in ('active', 'completed', 'declined'): skip — do
+          not re-trigger partnerships that have already been handled.
+     e. For newly eligible pairs (row just created or status just became
+        'eligible'): notify both parties (see deliverable 2).
+
+2. Eligibility notifications:
+   To brand: "You've built a strong relationship with [rep display_name].
+     They've completed [N] campaigns with you over [time]. Would you
+     like to formalize this as a Verified Brand Partnership? [Accept] [Decline]"
+   To rep: "A brand you've worked with [N] times is interested in
+     formalizing your relationship as a Verified Partnership. This adds
+     a credential badge to your profile. [Accept] [Decline]"
+   To parent (if rep under 16): inform the parent that a partnership
+     invitation has been received; parent does not approve partnerships
+     (they are credential agreements, not campaign invitations) but
+     should be informed.
+
+3. Partnership opt-in (new router: app/routers/partnerships.py):
+   POST /brands/partnerships/:id/accept
+     Sets brand_opted_in_at = now(). If rep_opted_in_at is also set:
+     transition to 'active', set partnership_started_at = now(),
+     append badge to rep_profiles.badges, send celebration notifications
+     to both.
+   POST /brands/partnerships/:id/decline
+     Sets status = 'declined'. Notifies rep politely. No badge.
+   POST /reps/partnerships/:id/accept
+     Sets rep_opted_in_at. Same logic as brand accept above.
+   POST /reps/partnerships/:id/decline
+     Sets status = 'declined'. Notifies brand. No badge.
+
+   Partnerships expire if neither party opts in within 30 days of the
+   initial eligibility notification. A scheduled job marks these
+   'declined' with reason 'no_response'. Both parties can re-trigger
+   by meeting eligibility criteria again in the future.
+
+4. Priority invitation integration (modify Prompt 8's campaign
+   invitation flow):
+   When a brand creates a campaign, check for active partnerships
+   between this brand and any available reps (reps whose categories
+   overlap the campaign category). Partners receive invitations with
+   a 72-hour invite_expires_at rather than the standard 48 hours.
+   This is automatic — no brand action required, no configuration.
+   Document this as a partnership benefit in the brand portal.
+
+5. Partnership management endpoints:
+   GET /brands/partnerships — all partnerships (all statuses) with
+     rep cards, campaign history together, earnings together.
+   GET /reps/partnerships — all partnerships with brand name and
+     badge details.
+   POST /brands/partnerships/:id/dissolve
+   POST /reps/partnerships/:id/dissolve
+     Either party can dissolve. Required: dissolution_reason (for
+     audit — not shown to the other party). Sets status = 'completed',
+     dissolved_at = now(). Updates rep's badge entry: active = false,
+     ended_at = now(). Notifies the other party: "Your partnership
+     with [name] has ended. The partnership credential remains on
+     your profile as a record of your collaboration." No blame,
+     no reason given to the other party.
+
+6. Recruiter search integration (extend Prompt 11):
+   Add brand_partnership_count (count of active partnerships) and
+   brand_partnership_names (array of brand display_names) to recruiter
+   search results. No credit required — partnership credentials are
+   part of the no-PII card.
+   Also add a recruiter search filter: "Has verified brand partnerships."
+
+7. Analytics (extend Prompt 13):
+   GET /admin/analytics/partnerships — eligible pairs (pairs who meet
+     criteria but haven't opted in), active partnerships count, average
+     partnership duration, partnerships per city and category, dissolved
+     partnerships and time-to-dissolution.
+
+---
+
+FRONTEND ADDITIONS:
+
+Rep portal (add to Prompt 6):
+  - Partnership invitation card: brand name, campaign history summary,
+    what the partnership credential means ("This badge appears on your
+    profile and is visible to colleges and employers. It represents a
+    verified long-term professional relationship."), accept/decline.
+  - Active partnerships panel on profile: partner brands, campaigns
+    together, partnership start date, dissolution option.
+  - Badge display: "Brand Partner" badges appear alongside module badges
+    on profile and profile preview.
+
+Brand portal (add to Prompt 9):
+  - Partnerships dashboard: active partnerships with rep engagement
+    metrics, campaign history, and "invite to campaign" shortcut
+    for quick re-engagement.
+  - Partnership invitation card with accept/decline (mirror of rep portal).
+  - Anniversary notifications: alert on the dashboard when a
+    partnership anniversary approaches.
+
+Recruiter portal (add to Prompt 12):
+  - Partnership filter in search.
+  - Partnership credentials visible on rep profile detail view.
+
+---
+
+ACCEPTANCE CRITERIA:
+
+Eligibility logic:
+  - A brand-rep pair with 2 campaigns does not become eligible —
+    minimum is 3. Verified by seeding 2 campaigns and running the job.
+  - A pair with 3 campaigns spanning only 90 days does not become
+    eligible — minimum span is 180 days.
+  - A pair with average_rating_from_brand of 3.8 does not become eligible.
+  - A pair with 3 campaigns spanning 200 days and average rating 4.2
+    becomes eligible. All four cases must have named tests.
+
+Opt-in flow:
+  - Brand accepts before rep: status remains 'eligible', partnership
+    not activated.
+  - Both accept: status transitions to 'active', badge appended to
+    rep_profiles.badges.
+  - Either declines: status transitions to 'declined', other party
+    notified, no badge.
+
+Dissolution:
+  - Dissolving an active partnership sets active: false on the badge
+    entry but does not remove the badge from rep_profiles.badges —
+    the historical credential persists.
+  - Dissolution reason is stored server-side but not sent to the
+    other party in any notification.
+
+Priority window:
+  - A campaign created by a brand with an active partnership to a
+    matching-category rep sends that rep an invitation with 72-hour
+    expiry, not 48-hour.
+
+No-trigger safety:
+  - If the trigger conditions (200 eligible pairs, 2 years of data)
+    have not been met when this prompt is executed, the eligibility
+    job will produce zero results and no partnership features will be
+    visible in the UI. The system degrades gracefully to a no-op
+    rather than surfacing empty partnership UI to users.
+```
 
 ---
 
@@ -2959,6 +4414,172 @@ Prompt 19 PostHog update:
 
 ---
 
+## 8I. Brand Content Templates & Delivery Framework
+
+**Depends on:** Prompt 8 (Brand Portal backend — implemented), Prompt 9
+(Brand Portal frontend — implemented, core flow), Prompt 8G (Skill
+Challenges — the Skills Challenge template below is the content layer
+on top of that prompt's submission mechanics, not a replacement for it).
+
+**Status: partially drafted.** This prompt captures the product framework
+in full (from `docs/Teenure_Brand_Content_Templates.md`) but has not yet
+been broken down to column-level schema and endpoint-level acceptance
+criteria the way 8B/8G/8H were. Treat the framework below as authoritative
+for scope and sequencing; write the migration/router/schema detail as a
+follow-up pass before building, the same way 8G/8H were expanded from
+one-line placeholders into full build prompts.
+
+```
+A self-service content system for brand partners: structured enough to
+stay safe and coherent, flexible enough that partners can actually build
+something good. Brands don't get a blank canvas — they fill in templates
+(fixed structure, their own content). This lowers the bar for small
+partners with no design team, keeps everything on the platform visually
+and tonally consistent, and makes moderation fast because every
+submission has the same predictable shape. Think Squarespace, not
+Photoshop: the layout is Teenure's, the substance is theirs.
+```
+
+**The five core templates:**
+
+1. **Scholarship Template** — brand name/logo, scholarship title, award
+   amount, number of awards, eligibility criteria (structured checklist
+   + free text), application requirements, deadline, a required
+   150-word-max "why we're offering this" statement (keeps it from
+   reading like a pure ad), optional pre-approved image/short video
+   (no autoplay).
+2. **Skills Challenge Template** — content layer over the Prompt 8G
+   `challenges` submission mechanics: brand name/logo, challenge title,
+   prize/reward, structured description (goal, rules, judging
+   criteria), skill/interest category, submission format, start/end
+   date, optional built-in quiz/assessment (highest scrutiny — see
+   content rules below).
+3. **Internship / Apprenticeship Template** — role title, description,
+   time commitment, compensation (paid/stipend/unpaid + why), age
+   minimum and other requirements, application process (must stay
+   on-platform — no redirect to unmoderated pages), deadline. Carries
+   more legal weight than the other templates (minors + labor/earnings
+   questions) — sequence it after the lower-risk templates.
+4. **Insight & Feedback Campaign Template** — the closed-loop enterprise
+   sandbox model. Brands submit real, pre-release material (product
+   concepts, ad copy, packaging, app features, positioning) to a
+   private, verified panel of teens for structured feedback. Not an
+   influencer/UGC arrangement: nothing goes public, no posting, no
+   brand PR exposure, no teen exposure to public scrutiny. Fields:
+   brand name/logo, campaign title, material submitted (file/embedded
+   media), business question (structured prompt), feedback format
+   (rating scale / structured Q&A / open response), panel size and
+   criteria (brand cannot hand-select individual teens), compensation,
+   confidentiality terms (teen and parent see this before joining),
+   timeline.
+
+   **The pseudonym system is the load-bearing safeguard for this
+   template — do not build the campaign flow without it:**
+   - Every teen has one persistent pseudonymous handle (e.g.
+     "Contributor_4B7") that the *brand* sees across every campaign. It
+     never resets per-campaign, so a brand can recognize a repeat
+     contributor and the contributor can build reputation.
+   - The brand only ever sees the handle, aggregated ratings, and
+     feedback content — never a name, photo, school, or other
+     identifying detail.
+   - The pseudonym layer sits only between teen and brand. It does not
+     touch the teen's own Teenure profile — their real, named record
+     still logs "Insight Session Completed" against their actual
+     identity, because that feeds the college-record pitch. The teen
+     always knows it's them; the brand never does.
+   - No path from pseudonym to real identity, ever — not on request,
+     not through an escalation, not even through Teenure staff acting
+     as a go-between. There is no de-anonymization exception for this
+     template; that door does not exist.
+   - No live handoff to a brand's corporate team, even for
+     higher-level work like pitch decks or strategic briefs. Everything
+     routes through the same structured submission-and-review queue as
+     every other template.
+   - Feedback is aggregated and structured (ratings, tagged responses)
+     wherever possible — both protects identity by default and gives
+     the brand stronger signal than raw open-ended comments.
+
+   **Variant: Startup Validation** — same template, aimed at
+   pre-launch/early-stage founders rather than established brands.
+   Opens a second, cheaper-to-close customer lane, but requires a
+   higher vetting bar since a pre-launch company has no track record.
+
+   **Vetting requirements before any company can run an Insight &
+   Feedback campaign** — baseline, every company: verified legal
+   entity (checked against a state registry), verified named point of
+   contact, working business presence (real site/product/pitch deck +
+   professional email domain, not a free-email address), funding
+   confirmed before launch (payment clears before go-live, no brand
+   paying a winner directly off-platform), signed content agreement
+   (no data harvesting beyond campaign needs, no individual-teen
+   identification, confidentiality/IP compliance). Extra bar for
+   early-stage startups: some external validation (incorporated 3+
+   months, or backed by a named accelerator/incubator/investor — a
+   strong positive signal, not a hard requirement), a real
+   product/prototype to validate, and manual (not automated) review
+   for this category specifically while the platform builds a track
+   record.
+
+5. **Company Profile Template** — the brand's home base, required
+   before any campaign goes live: logo/brand colors, 150-word "who we
+   are," 100-word "why we're on Teenure" (keeps tone aligned with
+   platform mission), industry/category, auto-populated active
+   campaigns pulled from templates 1–4.
+
+**Content rules across every template:**
+- No open external links to unmoderated pages — route everything
+  through Teenure-hosted or reviewed pages.
+- No comment sections, no reactions, no follower counts anywhere in
+  brand content — consistent with the platform-wide no-audience-metrics
+  rule.
+- Video, if used: under 60 seconds, captioned, no autoplay, pre-approved
+  before it can be attached to any live template.
+- Every template has a required short "why" field so campaigns read as
+  an opportunity, not an ad — also the easiest moderation signal for an
+  all-pitch-no-substance submission.
+- All submissions route through an approval queue before going live.
+  Self-service to build, human review to publish.
+
+**Interactive content (quizzes/assessments) — highest scrutiny:**
+Quiz questions and scoring logic must be submitted for review, not just
+the wrapper. No data collection beyond what the challenge itself needs
+(no stealth lead-gen). Results feed into the student's Teenure record,
+not just the brand's internal system — reuse the `correct_index`
+never-exposed-to-client pattern from Prompt 8H's `ModulePublicSerializer`.
+
+**Record integration:** every template submission (scholarship applied
+to, challenge completed, internship undertaken, insight session
+completed) becomes a structured, timestamped entry in the student's
+Teenure record. The Insight & Feedback template still logs to the
+teen's own record under their real name — the pseudonym only ever faces
+the brand.
+
+**Tiering:** Standard tier (default) gets all five templates. Premium
+tier (paid upgrade, build later, not on day one) adds layout
+flexibility, custom branding within the template shell, priority
+placement, and custom video length limits — a natural revenue tier
+once partners exist who want more than the template offers.
+
+**Build sequencing within this prompt:**
+1. Company Profile + Scholarship template — simplest, lowest-risk,
+   matches founding-partner asks.
+2. Skills Challenge template (without interactive quiz) — second.
+3. Insight & Feedback Campaign template (aggregated ratings only, no
+   open-response yet) — third. The pseudonym system, once built, is
+   reusable infrastructure the rest of the platform benefits from.
+4. Internship/Apprenticeship template — fourth (heaviest legal weight).
+5. Interactive quiz builder / open-response feedback — last, needs the
+   most moderation infrastructure.
+6. Premium tier — only once partners are asking for more than standard.
+
+**Also affects:** Prompt 9 (Brand Portal frontend — template builder
+UI), Prompt 13 (Admin Portal — approval queue for template submissions),
+Prompt 15 (Compliance Audit Pass — add pseudonym-leak check: recursive
+search for any brand-facing endpoint or serializer that could expose a
+real name/photo/school for an Insight & Feedback panelist).
+
+---
+
 ## 9. Brand Portal — Frontend — **implemented (core flow)**
 
 **Depends on:** Prompt 8, [Section 0A](#0a-design-system--ux-standards)
@@ -3705,7 +5326,240 @@ Acceptance criteria:
 
 ---
 
+## 20. Terminology Rename — Rep → Talent
+
+**Depends on:** All prior prompts that are already **implemented** (2
+through 16 as marked). This is a rename pass across existing code, not
+new product surface — do not run it against unbuilt/unmarked prompts;
+update this file's own prose for those instead (see step 8 below).
+
+**Trigger:** Run once, deliberately, as its own PR — not folded into an
+unrelated feature change. Freeze other work on `rep_`-prefixed files
+for the duration to avoid merge conflicts against renamed
+tables/routes/identifiers.
+
+```
+Rename the external-facing role currently called "Rep" (a teenage user
+building a verified achievement record) to "Talent" everywhere in the
+codebase, database, API surface, and documentation. This is a full
+rename — schema, routes, internal identifiers, and copy — not a
+copy-only pass. "Brand" and "Recruiter" are unaffected.
+
+BRAND RATIONALE (use this to judge ambiguous cases — does a given
+string/identifier serve this meaning?):
+  Teenure's positioning is the tension between "tenure" (time served,
+  seniority, a proven track record) and "talent" (raw capability,
+  unproven by tenure standards). Teenure lets talent build a verified
+  record without waiting for tenure. "Talent" is also the term brands
+  and recruiters already use for candidates on staffing platforms
+  ("verified talent pool"), so it needs no glossary entry for the
+  paying side of the three-sided market. Prefer this term over
+  "Rep" in every place a human reads it; prefer keeping the shorter
+  `talent` (not `talent_profile` or `the_talent`) as the identifier
+  root wherever singular/plural ambiguity allows, matching how `rep`
+  was used today.
+
+SCOPE — WHAT TO RENAME:
+
+1. Database (new migration, forward-only, do not edit past migrations):
+   - Table renames: rep_profiles -> talent_profiles, plus every other
+     table with a rep_ prefix or a rep_id / rep_profile_id foreign key
+     column (rep_module_completions, rep_syndicates, etc. — enumerate
+     the actual set from \d against the live schema, do not guess from
+     memory of this spec).
+   - Column renames: rep_id -> talent_id, rep_profile_id ->
+     talent_profile_id, and any rep_* column across every table.
+   - Enum/check-constraint values that literally spell "rep" (e.g. a
+     role column with check (role in ('rep', 'brand', 'recruiter',
+     'admin'))) -> 'talent'. Any existing rows must be migrated with an
+     UPDATE in the same migration, not left stale.
+   - RLS policy names and policy bodies referencing rep_profiles or a
+     'rep' role check — rename and re-verify each policy still
+     evaluates correctly against the renamed columns.
+   - Foreign key constraint names, index names, and trigger names that
+     embed "rep" — rename for consistency, but do not let cosmetic
+     constraint-name churn block the PR if some are impractical to
+     rename atomically (Postgres constraint renames are cheap; note
+     any you skip and why).
+   - Supabase Auth: if role is stored in auth.users metadata or a
+     custom claim as "rep", migrate stored values, not just the
+     column.
+
+2. FastAPI backend (apps/api):
+   - Router file/module renames: reps.py -> talent.py (or the
+     project's actual current filename — verify before renaming).
+     Mirror in the router prefix: /reps -> /talent (and every nested
+     path, e.g. /reps/{id}/... -> /talent/{id}/...).
+   - Repository, schema, and service files: rep_profiles_repository.py
+     -> talent_profiles_repository.py, and equivalent for schemas
+     (RepProfile -> TalentProfile, RepCreate -> TalentCreate, etc. —
+     rename every Pydantic model, ORM class, and function whose name
+     contains "rep" as the role noun). Be precise about false
+     positives: "rep" as a substring inside unrelated words (e.g.
+     "represent", "report", "repository" itself) must NOT be touched —
+     rename only tokens that mean "the teenage user," not any
+     substring match.
+   - Route path parameters, query param names, and OpenAPI
+     summary/description strings.
+   - JWT claims / session role strings if "rep" is encoded as a role
+     value anywhere in auth middleware.
+   - Error messages and log messages that name the role.
+
+3. Next.js frontend (apps/web), once it exists in this repo:
+   - Route group (rep) -> (talent) under app/.
+   - Component, hook, and file names containing "Rep" as the role
+     noun (RepDashboard -> TalentDashboard, useRepProfile ->
+     useTalentProfile, etc.) — same false-positive rule as above.
+   - All user-visible copy: page titles, nav labels, empty states,
+     form labels, toasts, emails (Resend templates), marketing site
+     copy that says "Rep" in the role sense.
+   - Do not rename "Reputation," "Report," "Represent," or any
+     unrelated word that happens to contain "rep."
+
+4. packages/shared-types: mirror every backend/frontend type rename so
+   cross-boundary types stay in sync; this package exists specifically
+   to prevent drift, so it must be updated in the same PR.
+
+5. Tests (apps/api/tests, and future frontend tests): rename fixtures,
+   factory functions, and test file names (test_reps.py ->
+   test_talent.py) alongside the code they test. A rename PR with
+   passing-but-unrenamed tests is not complete — tests are the
+   regression net for this exact class of change.
+
+6. Config, env vars, and infra: any REP_-prefixed environment variable,
+   Stripe metadata field (e.g. metadata={"rep_id": ...} sent to
+   Stripe on Connect account creation or PaymentIntents), PostHog
+   event property (rep_id in event payloads), and CI/deploy config
+   referencing renamed paths (e.g. Railway service names, Vercel
+   route rewrites) if any exist.
+
+7. Docs: Teenure_MVP_Gameplan.md is the spec of record — do not
+   silently reinterpret it. Instead, add a short terminology note near
+   the top (Section 1 area) stating "Rep" in this document refers to
+   the role implemented in code as "Talent" as of <date>, and that all
+   schema/route names in this document using rep_ should be read as
+   talent_ post-rename. Do not do a blind find/replace across the
+   spec — it is the historical source of truth for what was built and
+   why; a silent rewrite would make future spec-vs-code diffs
+   meaningless. Update CLAUDE.md's references to "Rep" the same way if
+   any exist there.
+
+8. This file (Teenure_Build_Prompts.md): do NOT rewrite the historical
+   prompts 1 through 19 — they document what was actually built, under
+   the name used at the time, and rewriting history here creates the
+   same audit problem as in the spec. Instead, add a note at the top
+   of the Table of Contents cross-referencing this prompt, so a reader
+   knows "Rep" in Prompts 1–19 equals "Talent" in code from this point
+   forward.
+
+WHAT NOT TO RENAME:
+  - The product name "Teenure" itself (unrelated — do not touch).
+  - "Recruiter" and "Brand" roles — out of scope.
+  - Unrelated substrings: reputation, report, represent, repository,
+    repeat, replace, reply — verify every proposed rename against
+    actual word-boundary/role-context, not a naive string match.
+  - Any third-party library or dependency name that happens to
+    contain "rep" (e.g. python packages) — do not touch external
+    dependencies.
+
+MIGRATION SAFETY:
+  - This is a rename, not a data model change — no data should be
+    lost or reshaped, only relabeled. Write the migration as ALTER
+    TABLE ... RENAME TO / ALTER TABLE ... RENAME COLUMN wherever
+    possible (preserves data, indexes, and constraints without a
+    rebuild) rather than create-new-table-and-copy.
+  - If this app has any live users/data at the time this runs,
+    sequence the deploy so the migration and the API code rollout
+    land together (a window where old code queries renamed tables, or
+    renamed code queries old tables, breaks in production) — call out
+    the deploy-ordering plan explicitly rather than assuming
+    simultaneity.
+  - Grep the entire repo (not just apps/api and apps/web) for the
+    literal token "rep" case-insensitively after the rename pass and
+    manually triage every remaining hit — confirm each is a false
+    positive (reputation, report, etc.) or a legitimate remainder to
+    fix, not code you missed. Paste the final triaged list in the PR
+    description.
+
+Acceptance criteria:
+  - Every table, column, route, identifier, and user-visible string
+    that means "the teenage user role" reads "Talent" / "talent",
+    with zero remaining "Rep" occurrences outside the excluded
+    false-positive words and the deliberately-preserved historical
+    prose in Teenure_MVP_Gameplan.md and Prompts 1–19 of this file.
+  - Full test suite passes against the renamed schema and routes.
+  - RLS policies re-verified (not just renamed) to still enforce the
+    same access rules post-rename — run the existing RLS test
+    coverage from Prompt 2/16 against the renamed tables.
+  - Stripe Connect and PaymentIntent metadata sent to Stripe reflects
+    the new field names going forward; historical Stripe objects with
+    old metadata keys are left as-is (Stripe objects are immutable
+    once created) — do not attempt to rewrite Stripe-side history.
+  - A single PR (or clearly sequenced stack) contains the migration
+    and all renamed code together — no intermediate broken state
+    merged to main.
+```
+
+---
+
 ## Changelog
+
+**v1.7** — added Prompt 20 (Terminology Rename — Rep → Talent): a
+full, deliberate rename of the external teenage-user role from "Rep"
+to "Talent" across the database (tables, columns, enum values, RLS
+policies), FastAPI backend (routers, repositories, schemas, routes),
+future Next.js frontend, shared-types package, tests, config/env vars,
+and Stripe/PostHog metadata keys — run once as its own PR, not folded
+into feature work. Explicitly preserves Prompts 1–19 and
+`Teenure_MVP_Gameplan.md` unedited as the historical build record
+(with a terminology cross-reference note) rather than rewriting spec
+history. Brand rationale: "Talent" plays on the tenure/talent tension
+in the product name (Teenure lets raw talent build a verified record
+without waiting for tenure) and is already the term brands/recruiters
+use for candidates, so it needs no explanation on the paying side of
+the marketplace.
+
+**v1.6** — filled in Prompts 8C (Category Exclusivity), 8D (Advance
+Cohort Reservation), 8E (Rep Syndicates), and 8F (Relationship
+Continuity Product — Year Two), replacing their one-line "not yet
+drafted" placeholders with full schema, RLS, backend/frontend
+deliverables, and acceptance criteria, from
+`docs/Teenure_Prompts_8C_8D_8E_8F.md`. Each carries an explicit
+network-density trigger condition and must not be built before it is
+met:
+  - 8C: 10+ competing brands actively running campaigns in the same
+    category-and-city combination.
+  - 8D: proven reps (3+ completed campaigns) receiving overlapping
+    invitations and turning down campaigns over availability conflicts.
+  - 8E: reps already coordinating informally across campaigns (peer
+    referrals, friend-group tagging) with brands requesting coordinated
+    placements.
+  - 8F: at least 200 brand-rep pairs with 3+ completed campaigns
+    together and 2+ years of longitudinal data — explicitly marked as a
+    planning document, not a build order, to be re-versioned and
+    reviewed against the then-current schema when its trigger is met.
+8C and 8D both introduce platform-revenue payment flows (Stripe
+PaymentIntent against the platform account, not Connect) with atomic
+conflict-detection/deposit logic; 8E extends Stripe Connect for
+multi-member syndicate payout splits with the same rounding-remainder-
+to-lead pattern as Prompt 8B; 8F is additive only (a weekly eligibility
+job and opt-in badges) and degrades to a no-op if its trigger isn't met.
+
+**v1.5** — added Prompt 8I (Brand Content Templates & Delivery
+Framework), captured from `docs/Teenure_Brand_Content_Templates.md`: the
+five core brand templates (Scholarship, Skills Challenge, Internship/
+Apprenticeship, Insight & Feedback Campaign, Company Profile), the
+persistent-pseudonym safeguard for the Insight & Feedback template
+(brand never sees a real name/photo/school; no de-anonymization path,
+ever), the vetting bar for companies running Insight & Feedback
+campaigns (higher bar for early-stage startups), cross-template content
+rules (no open external links, no comment/reaction/follower metrics,
+video constraints, mandatory "why" field, approval-queue gating), and
+the in-prompt build sequence (Company Profile + Scholarship first,
+Interactive quiz builder / open-response feedback last). Marked
+**partially drafted** — schema and endpoint-level acceptance criteria
+still need the same expansion pass 8C–8F got in v1.6 before this is
+buildable.
 
 **v1.4** — added Prompt 8G (Skill Challenges): open, unpaid brand-
 discovery submissions with a server-enforced pre-submission disclosure
