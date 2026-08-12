@@ -17,6 +17,9 @@ export interface RepProfile {
   total_earnings_cents: number;
   average_rating: number | null;
   profile_completeness_score: number;
+  challenges_submitted_count?: number;
+  challenges_converted_count?: number;
+  challenge_conversion_rate?: number | null;
 }
 
 export type RepProfilePreview = Omit<
@@ -642,3 +645,96 @@ export interface AdminExclusivityAnalyticsResponse {
   categories_by_purchase_frequency: ExclusivityCategoryFrequency[];
   average_agreement_length_days: number;
 }
+
+// ── Skill Challenges (Build Prompt 8G) ──────────────────────────────
+
+export type ChallengeSubmissionFormat = "text" | "file" | "both";
+export type ChallengeStatus = "draft" | "active" | "closed";
+
+export interface Challenge {
+  id: string;
+  brand_id: string;
+  title: string;
+  brief: string;
+  category: string;
+  target_cities: string[];
+  submission_format: ChallengeSubmissionFormat;
+  submission_prompt: string;
+  status: ChallengeStatus;
+  max_submissions: number | null;
+  submissions_count: number;
+  conversion_count: number;
+  conversion_rate: number | null;
+  opens_at: string | null;
+  closes_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ChallengeCreateRequest {
+  title: string;
+  brief: string;
+  category: string;
+  submission_format: ChallengeSubmissionFormat;
+  submission_prompt: string;
+  target_cities: string[];
+  max_submissions: number | null;
+  closes_at: string | null;
+}
+
+export interface ChallengeSubmissionRepCard {
+  rep_id: string;
+  display_name: string;
+  city: string;
+  categories: string[];
+  profile_completeness_score: number;
+  campaigns_completed: number;
+  average_rating: number | null;
+  challenges_converted_count: number;
+  challenge_conversion_rate: number | null;
+}
+
+export interface BrandChallengeSubmission {
+  id: string;
+  challenge_id: string;
+  rep: ChallengeSubmissionRepCard;
+  submission_text: string | null;
+  submission_file_urls: string[];
+  status: "submitted" | "reviewed" | "converted";
+  brand_note: string | null;
+  submitted_at: string;
+  converted_to_campaign_id: string | null;
+  payout_cents: number | null;
+  payout_status: string | null;
+}
+
+export interface RepAvailableChallenge {
+  id: string;
+  title: string;
+  brief: string;
+  category: string;
+  submission_format: ChallengeSubmissionFormat;
+  submission_prompt: string;
+  target_cities: string[];
+  closes_at: string | null;
+}
+
+export interface RepSubmittedChallenge {
+  challenge_id: string;
+  challenge_title: string;
+  category: string;
+  submitted_at: string;
+  status: "submitted" | "converted";
+  campaign_id: string | null;
+  campaign_title: string | null;
+  payout_per_rep_cents: number | null;
+  bonus_cents: number | null;
+}
+
+export interface SubmitChallengeRequest {
+  submission_text: string | null;
+  submission_file_urls: string[];
+  disclosure_acknowledged: boolean;
+}
+
+export const CHALLENGE_CONVERSION_BONUS_DOLLARS = "$7.50";

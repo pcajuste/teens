@@ -78,6 +78,8 @@ describe("available-campaigns panel", () => {
       if (path === "/reps/campaigns/available") return Promise.resolve([ALLOWED_CAMPAIGN]);
       if (path === "/reps/campaigns/active") return Promise.resolve([]);
       if (path === "/reps/earnings") return Promise.resolve({ pending_cents: 0, confirmed_cents: 0, paid_cents: 0, lifetime_paid_cents: 0 });
+      if (path === "/reps/challenges/available") return Promise.resolve([]);
+      if (path === "/reps/challenges/submitted") return Promise.resolve([]);
       return Promise.reject(new Error(`unexpected path ${path}`));
     });
 

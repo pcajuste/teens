@@ -1,3 +1,17 @@
+export interface ParentChallengeActivitySubmission {
+  challenge_title: string;
+  submitted_at: string;
+  status: "submitted" | "converted";
+  bonus_earned_cents: number | null;
+}
+
+export interface ParentChallengeActivity {
+  total_submitted: number;
+  total_converted: number;
+  total_bonus_earned_cents: number;
+  recent_submissions: ParentChallengeActivitySubmission[];
+}
+
 export interface ParentDashboard {
   display_name: string;
   school_name: string;
@@ -6,6 +20,7 @@ export interface ParentDashboard {
   profile_completeness_score: number;
   total_earnings_cents: number;
   total_campaigns_completed: number;
+  challenge_activity: ParentChallengeActivity;
 }
 
 export interface ParentPendingCampaign {

@@ -79,6 +79,45 @@ export default function ParentDashboardPage() {
             </Link>
           </Card>
 
+          <Card className="p-5">
+            <p className="text-sm font-semibold">Challenge activity</p>
+            <p className="mb-4 text-sm text-muted-foreground">
+              Challenges are unpaid brand-discovery submissions -- no financial transaction happens
+              unless a brand invites your teen to a paid campaign afterward.
+            </p>
+            <div className="grid grid-cols-3 gap-3 text-center">
+              <div>
+                <p className="text-xl font-semibold">{dashboard.challenge_activity.total_submitted}</p>
+                <p className="text-xs text-muted-foreground">Submitted</p>
+              </div>
+              <div>
+                <p className="text-xl font-semibold">{dashboard.challenge_activity.total_converted}</p>
+                <p className="text-xs text-muted-foreground">Converted</p>
+              </div>
+              <div>
+                <p className="text-xl font-semibold">{money(dashboard.challenge_activity.total_bonus_earned_cents)}</p>
+                <p className="text-xs text-muted-foreground">Bonus earned</p>
+              </div>
+            </div>
+
+            {dashboard.challenge_activity.recent_submissions.length > 0 ? (
+              <ul className="mt-4 flex flex-col gap-2 border-t border-border pt-4">
+                {dashboard.challenge_activity.recent_submissions.map((s, i) => (
+                  <li key={i} className="flex items-center justify-between text-sm">
+                    <span>{s.challenge_title}</span>
+                    {s.status === "converted" ? (
+                      <Badge variant="success">
+                        Converted{s.bonus_earned_cents != null ? ` · +${money(s.bonus_earned_cents)}` : ""}
+                      </Badge>
+                    ) : (
+                      <Badge variant="secondary">Submitted</Badge>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </Card>
+
           <ExplainerPanel />
         </div>
       ) : null}
