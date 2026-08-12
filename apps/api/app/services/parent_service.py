@@ -16,7 +16,7 @@ campaign_rep_id -- that's what the actual routes
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import asyncpg
 
@@ -26,6 +26,30 @@ from app.services.email_service import (
     send_digest_email as _send_digest_email_via_client,
 )
 from app.services.resend_client import ResendClient
+
+# 48h window a parent has to approve/block a pending campaign
+# invitation, shared by both entry points that create a campaign_reps
+# row (rep self-apply in app/routers/reps.py, brand-initiated invite in
+# app/routers/brands.py) -- previously duplicated as a module constant
+# in reps.py alone; centralized here since determine_parent_approval
+# below is now the single place that computes it.
+PARENT_APPROVAL_WINDOW_HOURS = 48
+
+
+async def determine_parent_approval(conn: asyncpg.Connection, rep_id: str) -> tuple[str, datetime | None]:
+    """Whether a new campaign_reps row for this rep needs parent
+    approval, and its deadline if so. Single source of truth for both
+    the rep self-apply path and the brand-invite path -- both create a
+    campaign_reps row identically from this point on (Build Prompt 8's
+    invite endpoint reuses this rather than re-deriving the same
+    decision a second way, which is exactly how Prompt 5's
+    auto_decline_expired_parent_approvals ended up with two
+    silently-diverging copies -- see that function's docstring)."""
+    parent = await parent_records_repository.get_parent_by_rep_id(conn, rep_id)
+    if parent is not None and parent.campaign_approval_required:
+        deadline = datetime.now(timezone.utc) + timedelta(hours=PARENT_APPROVAL_WINDOW_HOURS)
+        return "pending", deadline
+    return "not_required", None
 
 
 async def send_campaign_approval_request(

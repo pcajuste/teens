@@ -336,6 +336,33 @@ def test_accept_blocked_awaiting_parent_approval(client, db, rep_headers):
     assert accept_resp.json()["error"]["code"] == "awaiting_parent_approval"
 
 
+def test_apply_requiring_parent_approval_notifies_the_parent(client, db, rep_headers, fake_resend_client):
+    _seed_rep_user(db, age=15, parent_email="parent@example.com", parent_verified=True)
+    client.put("/reps/me", json=_BASE_PROFILE_BODY, headers=rep_headers)
+    campaign_id = _seed_campaign(db)
+
+    response = client.post(f"/campaigns/{campaign_id}/apply", headers=rep_headers)
+    assert response.status_code == 201
+    assert response.json()["parent_approval_status"] == "pending"
+
+    # Regression coverage: send_campaign_approval_request existed and
+    # was documented as being called on apply, but nothing actually
+    # called it until this was noticed while building Prompt 8.
+    assert len(fake_resend_client.sent) == 1
+    assert fake_resend_client.sent[0].to == "parent@example.com"
+
+
+def test_apply_not_requiring_parent_approval_sends_no_email(client, db, rep_headers, fake_resend_client):
+    _seed_rep_user(db, age=20)
+    client.put("/reps/me", json=_BASE_PROFILE_BODY, headers=rep_headers)
+    campaign_id = _seed_campaign(db)
+
+    response = client.post(f"/campaigns/{campaign_id}/apply", headers=rep_headers)
+    assert response.status_code == 201
+    assert response.json()["parent_approval_status"] == "not_required"
+    assert fake_resend_client.sent == []
+
+
 def test_accept_allowed_once_parent_approves(client, db, rep_headers):
     _seed_rep_user(db, age=15, parent_email="parent@example.com", parent_verified=True)
     client.put("/reps/me", json=_BASE_PROFILE_BODY, headers=rep_headers)
@@ -424,10 +451,17 @@ def test_auto_decline_job_expires_lapsed_invitations(client, db, settings, rep_h
     )
     assert response.status_code == 200
 
-    status_after = db.fetchval(
-        "SELECT status FROM public.campaign_reps WHERE rep_id = $1 AND campaign_id = $2", rep_id, campaign_id
-    )
-    assert status_after == "declined"
+    row = db.fetch(
+        "SELECT status, parent_approval_status FROM public.campaign_reps WHERE rep_id = $1 AND campaign_id = $2",
+        rep_id,
+        campaign_id,
+    )[0]
+    assert row["status"] == "declined"
+    # parent_approval_status must move off 'pending' too, or the row
+    # keeps surfacing forever in the parent's pending-approval queue
+    # (list_pending_for_rep filters on parent_approval_status='pending'
+    # alone, not campaign_reps.status) even though it's already terminal.
+    assert row["parent_approval_status"] == "blocked"
 
 
 def test_auto_decline_job_does_not_touch_unexpired_invitations(client, db, settings, rep_headers):

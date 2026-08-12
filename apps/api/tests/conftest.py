@@ -33,6 +33,7 @@ _TEST_ENV = {
     "ALLOWED_ORIGINS": "http://localhost:3300",
     "JOBS_RUNNER_SECRET": "test-jobs-runner-secret",
     "PARENT_SESSION_SECRET": "test-parent-session-secret",
+    "EIN_ENCRYPTION_KEY": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
 }
 for _key, _value in _TEST_ENV.items():
     os.environ.setdefault(_key, _value)

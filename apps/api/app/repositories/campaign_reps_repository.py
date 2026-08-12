@@ -124,290 +124,6 @@ async def block_campaign(conn: asyncpg.Connection, rep_id: str, campaign_id: str
     )
 
 
-_CR_COLUMNS = """
-    id, campaign_id, rep_id, status, ftc_disclosure_accepted, ftc_accepted_at,
-    parent_approval_status, parent_approval_deadline, parent_decided_at,
-    submission_text, submission_file_urls, revision_note, brand_rating,
-    brand_rating_note, payout_cents, payout_status, stripe_transfer_id,
-    invited_at, accepted_at, submitted_at, confirmed_at, paid_at
-"""
-
-
-@dataclass(frozen=True, slots=True)
-class CampaignRep:
-    id: str
-    campaign_id: str
-    rep_id: str
-    status: str
-    ftc_disclosure_accepted: bool
-    ftc_accepted_at: datetime | None
-    parent_approval_status: str
-    parent_approval_deadline: datetime | None
-    parent_decided_at: datetime | None
-    submission_text: str | None
-    submission_file_urls: list[str]
-    revision_note: str | None
-    brand_rating: int | None
-    brand_rating_note: str | None
-    payout_cents: int | None
-    payout_status: str | None
-    stripe_transfer_id: str | None
-    invited_at: datetime
-    accepted_at: datetime | None
-    submitted_at: datetime | None
-    confirmed_at: datetime | None
-    paid_at: datetime | None
-
-    @classmethod
-    def from_row(cls, row: asyncpg.Record) -> "CampaignRep":
-        return cls(
-            id=str(row["id"]),
-            campaign_id=str(row["campaign_id"]),
-            rep_id=str(row["rep_id"]),
-            status=row["status"],
-            ftc_disclosure_accepted=row["ftc_disclosure_accepted"],
-            ftc_accepted_at=row["ftc_accepted_at"],
-            parent_approval_status=row["parent_approval_status"],
-            parent_approval_deadline=row["parent_approval_deadline"],
-            parent_decided_at=row["parent_decided_at"],
-            submission_text=row["submission_text"],
-            submission_file_urls=list(row["submission_file_urls"] or []),
-            revision_note=row["revision_note"],
-            brand_rating=row["brand_rating"],
-            brand_rating_note=row["brand_rating_note"],
-            payout_cents=row["payout_cents"],
-            payout_status=row["payout_status"],
-            stripe_transfer_id=row["stripe_transfer_id"],
-            invited_at=row["invited_at"],
-            accepted_at=row["accepted_at"],
-            submitted_at=row["submitted_at"],
-            confirmed_at=row["confirmed_at"],
-            paid_at=row["paid_at"],
-        )
-
-
-async def get_by_rep_and_campaign(conn: asyncpg.Connection, rep_id: str, campaign_id: str) -> CampaignRep | None:
-    row = await conn.fetchrow(
-        f"SELECT {_CR_COLUMNS} FROM public.campaign_reps WHERE rep_id = $1 AND campaign_id = $2",
-        rep_id,
-        campaign_id,
-    )
-    return CampaignRep.from_row(row) if row else None
-
-
-async def create_application(
-    conn: asyncpg.Connection,
-    *,
-    campaign_id: str,
-    rep_id: str,
-    parent_approval_status: str,
-    parent_approval_deadline: datetime | None,
-) -> CampaignRep:
-    """Creates the campaign_reps row a rep's own POST .../apply
-    produces. Starts in the 'invited' rep_campaign_status regardless of
-    who initiated it (self-apply here vs. a future brand-initiated
-    invite in Prompt 8) so /accept and /decline work identically either
-    way."""
-    row = await conn.fetchrow(
-        f"""
-        INSERT INTO public.campaign_reps
-            (campaign_id, rep_id, parent_approval_status, parent_approval_deadline)
-        VALUES ($1, $2, $3, $4)
-        RETURNING {_CR_COLUMNS}
-        """,
-        campaign_id,
-        rep_id,
-        parent_approval_status,
-        parent_approval_deadline,
-    )
-    return CampaignRep.from_row(row)
-
-
-async def set_accepted(
-    conn: asyncpg.Connection, campaign_rep_id: str, *, at: datetime, ftc_accepted_at: datetime
-) -> CampaignRep:
-    row = await conn.fetchrow(
-        f"""
-        UPDATE public.campaign_reps
-        SET status = 'accepted', accepted_at = $2,
-            ftc_disclosure_accepted = TRUE, ftc_accepted_at = $3
-        WHERE id = $1
-        RETURNING {_CR_COLUMNS}
-        """,
-        campaign_rep_id,
-        at,
-        ftc_accepted_at,
-    )
-    return CampaignRep.from_row(row)
-
-
-async def set_declined(conn: asyncpg.Connection, campaign_rep_id: str) -> CampaignRep:
-    row = await conn.fetchrow(
-        f"""
-        UPDATE public.campaign_reps SET status = 'declined'
-        WHERE id = $1
-        RETURNING {_CR_COLUMNS}
-        """,
-        campaign_rep_id,
-    )
-    return CampaignRep.from_row(row)
-
-
-async def set_submitted(
-    conn: asyncpg.Connection,
-    campaign_rep_id: str,
-    *,
-    submission_text: str,
-    submission_file_urls: list[str],
-    at: datetime,
-) -> CampaignRep:
-    row = await conn.fetchrow(
-        f"""
-        UPDATE public.campaign_reps
-        SET status = 'submitted', submission_text = $2, submission_file_urls = $3,
-            submitted_at = $4
-        WHERE id = $1
-        RETURNING {_CR_COLUMNS}
-        """,
-        campaign_rep_id,
-        submission_text,
-        submission_file_urls,
-        at,
-    )
-    return CampaignRep.from_row(row)
-
-
-async def set_withdrawn(conn: asyncpg.Connection, campaign_rep_id: str) -> CampaignRep:
-    """Withdrawal has no dedicated rep_campaign_status value in the
-    schema enum -- it reuses 'declined', the same terminal status a
-    rep's own decline or a parent block produces. No penalty is applied
-    (no payout_cents change); payout protection for already-
-    submitted/confirmed work is enforced upstream by rep_service, which
-    refuses the withdraw call entirely once status is 'confirmed' or
-    'paid' rather than trying to claw back an already-earned payout."""
-    row = await conn.fetchrow(
-        f"""
-        UPDATE public.campaign_reps SET status = 'declined'
-        WHERE id = $1
-        RETURNING {_CR_COLUMNS}
-        """,
-        campaign_rep_id,
-    )
-    return CampaignRep.from_row(row)
-
-
-_ACTIVE_STATUSES = ("accepted", "submitted", "revision_requested")
-_HISTORY_STATUSES = ("declined", "confirmed", "paid")
-
-
-async def list_active_for_rep(conn: asyncpg.Connection, rep_id: str) -> list[dict]:
-    rows = await conn.fetch(
-        """
-        SELECT cr.id AS campaign_rep_id, cr.campaign_id, cr.status, cr.ftc_disclosure_accepted,
-               cr.parent_approval_status, cr.submitted_at, cr.accepted_at,
-               c.title, c.product_name, bp.company_name AS brand_name,
-               c.payout_per_rep_cents, c.start_date, c.end_date
-        FROM public.campaign_reps cr
-        JOIN public.campaigns c ON c.id = cr.campaign_id
-        JOIN public.brand_profiles bp ON bp.id = c.brand_id
-        WHERE cr.rep_id = $1 AND cr.status = ANY($2::rep_campaign_status[])
-        ORDER BY cr.invited_at DESC
-        """,
-        rep_id,
-        list(_ACTIVE_STATUSES),
-    )
-    return [dict(row) for row in rows]
-
-
-async def list_history_for_rep(conn: asyncpg.Connection, rep_id: str) -> list[dict]:
-    rows = await conn.fetch(
-        """
-        SELECT cr.id AS campaign_rep_id, cr.campaign_id, cr.status, cr.payout_cents,
-               cr.payout_status, cr.confirmed_at, cr.paid_at, cr.brand_rating,
-               c.title, c.product_name, bp.company_name AS brand_name,
-               c.payout_per_rep_cents, c.start_date, c.end_date
-        FROM public.campaign_reps cr
-        JOIN public.campaigns c ON c.id = cr.campaign_id
-        JOIN public.brand_profiles bp ON bp.id = c.brand_id
-        WHERE cr.rep_id = $1 AND cr.status = ANY($2::rep_campaign_status[])
-        ORDER BY cr.invited_at DESC
-        """,
-        rep_id,
-        list(_HISTORY_STATUSES),
-    )
-    return [dict(row) for row in rows]
-
-
-async def earnings_breakdown(conn: asyncpg.Connection, rep_id: str) -> dict:
-    """Pending/confirmed/paid breakdown (Prompt 5 deliverable 5) rather
-    than only the cached rep_profiles.total_earnings_cents.
-
-    Design decision (payout amounts aren't finalized until a brand
-    confirms a submission -- Prompt 10's payout engine owns
-    campaign_reps.payout_cents from that point on):
-      - pending_cents: rows in ('accepted', 'submitted',
-        'revision_requested') -- work in progress, valued at the
-        campaign's payout_per_rep_cents as an estimate since no
-        rep-specific payout_cents is assigned this early.
-      - confirmed_cents: rows with status='confirmed', using the
-        finalized payout_cents (falling back to payout_per_rep_cents if
-        a payout amount hasn't been written yet).
-      - paid_cents: rows with status='paid', summed from payout_cents
-        (server-computed by Prompt 10, never client-submitted).
-    """
-    row = await conn.fetchrow(
-        """
-        SELECT
-            COALESCE(SUM(c.payout_per_rep_cents) FILTER (
-                WHERE cr.status IN ('accepted', 'submitted', 'revision_requested')
-            ), 0) AS pending_cents,
-            COALESCE(SUM(COALESCE(cr.payout_cents, c.payout_per_rep_cents)) FILTER (
-                WHERE cr.status = 'confirmed'
-            ), 0) AS confirmed_cents,
-            COALESCE(SUM(cr.payout_cents) FILTER (WHERE cr.status = 'paid'), 0) AS paid_cents
-        FROM public.campaign_reps cr
-        JOIN public.campaigns c ON c.id = cr.campaign_id
-        WHERE cr.rep_id = $1
-        """,
-        rep_id,
-    )
-    return {
-        "pending_cents": row["pending_cents"],
-        "confirmed_cents": row["confirmed_cents"],
-        "paid_cents": row["paid_cents"],
-    }
-
-
-async def auto_decline_expired_parent_approvals(conn: asyncpg.Connection, *, now: datetime) -> list[str]:
-    """Prompt 5 deliverable 7 / job: auto-decline invitations where the
-    48-hour parent-approval window has lapsed. Scoped specifically to
-    parent_approval_status='pending' rows per the deliverable text
-    ("auto-decline invitations where parent approval window has
-    lapsed") -- general invite expiry independent of the parent gate is
-    not part of this job.
-
-    Terminal status: rep_campaign_status has no 'expired' value, so
-    status is set to 'declined' -- the same value a rep's own decline or
-    a parent's explicit block produces (see block_campaign above, which
-    already establishes this reuse). parent_approval_status is set to
-    'blocked' rather than left at 'pending', for the same reason
-    block_campaign sets it there: leaving it 'pending' would keep the
-    row surfacing in the parent's pending-approval queue
-    (list_pending_for_rep filters on parent_approval_status='pending')
-    even though the rep-facing status has already gone terminal.
-    """
-    rows = await conn.fetch(
-        """
-        UPDATE public.campaign_reps
-        SET status = 'declined', parent_approval_status = 'blocked', parent_decided_at = $1
-        WHERE status = 'invited' AND parent_approval_status = 'pending' AND parent_approval_deadline < $1
-        RETURNING id
-        """,
-        now,
-    )
-    return [str(row["id"]) for row in rows]
-
-
 async def monthly_digest_stats(conn: asyncpg.Connection, rep_id: str, *, since: datetime) -> dict:
     row = await conn.fetchrow(
         """
@@ -702,19 +418,178 @@ async def list_expired_pending_parent_approvals(conn: asyncpg.Connection, *, now
 
 async def auto_decline_expired_parent_approvals(conn: asyncpg.Connection, *, now: datetime) -> int:
     """The 48h parent-approval auto-decline job (Build Prompt 5
-    deliverable 7). parent_approval_status is deliberately left as
-    'pending' rather than invented as some 'expired' value not present
-    in the parent_approval_status enum (Section 7 is verbatim/
-    authoritative) -- status='declined' plus parent_decided_at being
-    NULL is what distinguishes an auto-decline from an explicit
-    accept/decline for any caller that needs to tell them apart."""
+    deliverable 7). parent_approval_status is set to 'blocked' here, the
+    same terminal value block_campaign() above uses for an explicit
+    parent block -- NOT left at 'pending'. Leaving it 'pending' would
+    keep the row surfacing forever in the parent's pending-approval
+    queue (list_pending_for_rep filters on parent_approval_status =
+    'pending'), showing an invitation the rep can no longer act on, and
+    would let a parent later call approve_campaign() (which only checks
+    parent_approval_status = 'pending', not campaign_reps.status) on an
+    already-terminal row -- producing status='declined' AND
+    parent_approval_status='approved' simultaneously. parent_decided_at
+    is left NULL (distinct from an explicit block, which sets it) so a
+    caller can still tell an auto-decline apart from a parent's own
+    action if that distinction ever matters."""
     result = await conn.execute(
         """
         UPDATE public.campaign_reps
-        SET status = 'declined'
+        SET status = 'declined', parent_approval_status = 'blocked'
         WHERE status = 'invited' AND parent_approval_status = 'pending' AND parent_approval_deadline < $1
         """,
         now,
     )
     # asyncpg execute() returns a string like "UPDATE 3"
     return int(result.split()[-1])
+
+
+# ══════════════════════════════════════════════════════════════════
+# Brand-facing rep management within a campaign (Build Prompt 8)
+# ══════════════════════════════════════════════════════════════════
+
+# Rows still "in flight" for capacity purposes -- excludes 'declined'
+# (rep said no / withdrew / was auto-declined / parent blocked) since
+# that frees up a slot. Used to enforce max_reps at invite time without
+# trusting the campaigns.reps_accepted_count cache column, which
+# nothing in this codebase currently increments (a separate, flagged
+# gap -- see app/routers/brands.py's invite endpoint).
+_NON_DECLINED_STATUSES = ("invited", "accepted", "submitted", "revision_requested", "confirmed", "paid")
+
+
+async def count_non_declined_for_campaign(conn: asyncpg.Connection, campaign_id: str) -> int:
+    return await conn.fetchval(
+        "SELECT COUNT(*) FROM public.campaign_reps WHERE campaign_id = $1 AND status = ANY($2::rep_campaign_status[])",
+        campaign_id,
+        list(_NON_DECLINED_STATUSES),
+    )
+
+
+async def create_invite(
+    conn: asyncpg.Connection,
+    *,
+    campaign_id: str,
+    rep_id: str,
+    parent_approval_status: str,
+    parent_approval_deadline: datetime | None,
+) -> CampaignRep:
+    """Brand-initiated equivalent of create_application -- same
+    resulting row shape (status='invited'), so /accept, /decline,
+    /submit, /withdraw all work identically regardless of who started
+    the invitation. Kept as a distinctly-named function (not reusing
+    create_application) because the brand-invite route path has already
+    verified campaign ownership and capacity, which is a different set
+    of preconditions than the rep-apply path -- collapsing them into one
+    function would require the caller to smuggle in a flag for which
+    checks already happened."""
+    row = await conn.fetchrow(
+        f"""
+        INSERT INTO public.campaign_reps (campaign_id, rep_id, parent_approval_status, parent_approval_deadline)
+        VALUES ($1, $2, $3, $4)
+        RETURNING {_CR_COLUMNS}
+        """,
+        campaign_id,
+        rep_id,
+        parent_approval_status,
+        parent_approval_deadline,
+    )
+    return CampaignRep.from_row(row)
+
+
+async def list_for_campaign(conn: asyncpg.Connection, campaign_id: str) -> list[CampaignRep]:
+    """GET /brands/campaigns/:id/reps -- every rep on this campaign,
+    any status."""
+    rows = await conn.fetch(
+        f"SELECT {_CR_COLUMNS} FROM public.campaign_reps WHERE campaign_id = $1 ORDER BY invited_at DESC",
+        campaign_id,
+    )
+    return [CampaignRep.from_row(row) for row in rows]
+
+
+async def get_by_id_and_campaign(conn: asyncpg.Connection, campaign_rep_id: str, campaign_id: str) -> CampaignRep | None:
+    row = await conn.fetchrow(
+        f"SELECT {_CR_COLUMNS} FROM public.campaign_reps WHERE id = $1 AND campaign_id = $2",
+        campaign_rep_id,
+        campaign_id,
+    )
+    return CampaignRep.from_row(row) if row else None
+
+
+async def get_by_rep_and_campaign_id(conn: asyncpg.Connection, rep_id: str, campaign_id: str) -> CampaignRep | None:
+    """Same lookup as get_for_rep_and_campaign but named for the
+    brand-side caller (app/routers/brands.py addresses reps by
+    rep_id in the URL, e.g. .../reps/:rep_id/confirm), kept as a
+    thin alias rather than having brands.py import a
+    rep-perspective-named function -- purely a readability choice at
+    the call site, not a behavioral difference."""
+    return await get_for_rep_and_campaign(conn, rep_id, campaign_id)
+
+
+async def confirm(
+    conn: asyncpg.Connection, campaign_rep_id: str, campaign_id: str, *, payout_cents: int, at: datetime
+) -> CampaignRep | None:
+    """POST .../reps/:rep_id/confirm. Legal only from 'submitted' --
+    payout_cents is recorded here (server-computed by the caller from
+    the campaign's payout_per_rep_cents, never client-submitted) but the
+    actual Stripe transfer is Prompt 10's job (stripe_transfer_id /
+    payout_status stay at their defaults; this only sets status and
+    payout_cents)."""
+    row = await conn.fetchrow(
+        f"""
+        UPDATE public.campaign_reps
+        SET status = 'confirmed', payout_cents = $3, confirmed_at = $4
+        WHERE id = $1 AND campaign_id = $2 AND status = 'submitted'
+        RETURNING {_CR_COLUMNS}
+        """,
+        campaign_rep_id,
+        campaign_id,
+        payout_cents,
+        at,
+    )
+    return CampaignRep.from_row(row) if row else None
+
+
+async def request_revision(conn: asyncpg.Connection, campaign_rep_id: str, campaign_id: str, *, note: str) -> CampaignRep | None:
+    """POST .../reps/:rep_id/revision. Legal only from 'submitted' --
+    sends the rep back to 'accepted' (not a dedicated 'revision_requested'
+    intermediate re-submit state distinct from the original accept) so
+    POST /campaigns/:id/submit's existing WHERE clause
+    (status IN ('accepted', 'revision_requested')) already covers a
+    resubmission after revision without any change there -- but the
+    schema DOES have a 'revision_requested' enum value distinct from
+    'accepted', so this sets that value specifically (not 'accepted')
+    to preserve the rep-visible distinction between "never submitted
+    yet" and "submitted, brand asked for changes"."""
+    row = await conn.fetchrow(
+        f"""
+        UPDATE public.campaign_reps
+        SET status = 'revision_requested', revision_note = $3
+        WHERE id = $1 AND campaign_id = $2 AND status = 'submitted'
+        RETURNING {_CR_COLUMNS}
+        """,
+        campaign_rep_id,
+        campaign_id,
+        note,
+    )
+    return CampaignRep.from_row(row) if row else None
+
+
+async def rate(conn: asyncpg.Connection, campaign_rep_id: str, campaign_id: str, *, brand_rating: int, brand_rating_note: str | None) -> CampaignRep | None:
+    """POST .../reps/:rep_id/rate. Write-once, legal only after
+    confirmation (Build Prompt 8 deliverable 9: "1-5 stars, write-once,
+    legal only after confirmation. No PUT/PATCH route for ratings.") --
+    enforced here by requiring status IN ('confirmed', 'paid') AND
+    brand_rating IS NULL, so a second call (even after the rep has been
+    paid) returns None -> 409, not a silent overwrite."""
+    row = await conn.fetchrow(
+        f"""
+        UPDATE public.campaign_reps
+        SET brand_rating = $3, brand_rating_note = $4
+        WHERE id = $1 AND campaign_id = $2 AND status IN ('confirmed', 'paid') AND brand_rating IS NULL
+        RETURNING {_CR_COLUMNS}
+        """,
+        campaign_rep_id,
+        campaign_id,
+        brand_rating,
+        brand_rating_note,
+    )
+    return CampaignRep.from_row(row) if row else None

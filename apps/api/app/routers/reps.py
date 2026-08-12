@@ -17,7 +17,7 @@ criterion).
 """
 from __future__ import annotations
 
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timezone
 
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
@@ -45,7 +45,8 @@ from app.schemas.reps import (
     SubmitCampaignRequest,
 )
 from app.services import stripe_service
-from app.services.parent_service import apply_values_filter
+from app.services.parent_service import apply_values_filter, determine_parent_approval, send_campaign_approval_request
+from app.services.resend_client import ResendClient, resend_client_dependency
 from app.services.storage_service import SubmissionUploadError, get_storage_client
 
 reps_router = APIRouter(prefix="/reps", tags=["reps"])
@@ -56,8 +57,9 @@ campaigns_router = APIRouter(prefix="/campaigns", tags=["campaigns"])
 # product decision on count-only vs. identity-revealing display and
 # whether a recruiter contact-credit is charged just to appear
 # interested. Nothing in this router computes or exposes that signal.
-
-INVITE_APPROVAL_WINDOW_HOURS = 48
+# The 48h parent-approval window moved to
+# app.services.parent_service.PARENT_APPROVAL_WINDOW_HOURS (Build
+# Prompt 8) since it's now shared with the brand-invite path.
 
 
 def _require_rep_profile_row(row) -> rep_profiles_repository.RepProfile:
@@ -394,6 +396,7 @@ async def apply_to_campaign(
     campaign_id: str,
     user: AuthenticatedUser = Depends(require_role("rep")),
     conn: asyncpg.Connection = Depends(get_connection),
+    resend_client: ResendClient = Depends(resend_client_dependency),
 ) -> CampaignParticipationResponse:
     profile = await _get_own_profile(conn, user)
     await _require_campaign(conn, campaign_id)
@@ -405,14 +408,7 @@ async def apply_to_campaign(
             detail={"code": "already_applied", "message": "A campaign_reps row already exists for this rep/campaign pair."},
         )
 
-    parent = await parent_records_repository.get_parent_by_rep_id(conn, profile.id)
-    now = datetime.now(timezone.utc)
-    if parent is not None and parent.campaign_approval_required:
-        parent_approval_status = "pending"
-        parent_approval_deadline = now + timedelta(hours=INVITE_APPROVAL_WINDOW_HOURS)
-    else:
-        parent_approval_status = "not_required"
-        parent_approval_deadline = None
+    parent_approval_status, parent_approval_deadline = await determine_parent_approval(conn, profile.id)
 
     created = await campaign_reps_repository.create_application(
         conn,
@@ -421,6 +417,18 @@ async def apply_to_campaign(
         parent_approval_status=parent_approval_status,
         parent_approval_deadline=parent_approval_deadline,
     )
+
+    if parent_approval_status == "pending":
+        # Pre-existing gap found while building Build Prompt 8's
+        # brand-invite flow: parent_service.send_campaign_approval_request
+        # already existed and was documented as "called by Prompt 5 when
+        # a rep is invited/matched to a campaign," but nothing actually
+        # called it -- a parent's approval queue would fill up with no
+        # notification ever sent. Fixed here, and the same call is used
+        # by the brand-invite endpoint (app/routers/brands.py) since
+        # both paths create a 'pending' campaign_reps row identically.
+        await send_campaign_approval_request(conn, resend_client, rep_id=profile.id, campaign_id=campaign_id)
+
     return _to_participation_response(created)
 
 

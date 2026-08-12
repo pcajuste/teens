@@ -196,3 +196,70 @@ async def set_stripe_onboarding_complete(conn: asyncpg.Connection, rep_id: str, 
         rep_id,
         complete,
     )
+
+
+@dataclass(frozen=True, slots=True)
+class RepBrowseCard:
+    """GET /brands/campaigns/:id/reps/browse (Build Prompt 8 deliverable
+    7, acceptance criterion "Browse endpoints never return PII"). Section
+    8 doesn't give an exact field list for this endpoint the way it does
+    for POST /brands/campaigns, so the field set below is a deliberate,
+    conservative interpretation, not a literal spec quote -- flagged the
+    same way docs/parent_records_creation_timing.md flags an interpreted
+    gap.
+
+    Excluded on purpose: display_name, school_name (a specific school
+    name is quasi-identifying combined with city/state), bio (free text
+    could contain anything), instagram_handle/tiktok_handle. A brand
+    only sees enough to judge fit (location, categories, school type,
+    completeness, track record) -- identity is revealed only once the
+    brand actually invites a specific rep_id, the same "browse costs
+    nothing, revealing identity is a deliberate act" shape Section 8
+    uses for GET /recruiters/reps/search vs GET /recruiters/reps/:id."""
+
+    rep_id: str
+    city: str
+    state: str
+    graduation_year: int
+    school_type: str | None
+    categories: list[str]
+    profile_completeness_score: int
+    average_rating: float | None
+    total_campaigns_completed: int
+
+
+async def browse_for_brand(
+    conn: asyncpg.Connection, *, categories: list[str], city: str | None
+) -> list[RepBrowseCard]:
+    """Matches on target_categories overlap the same way
+    list_available_for_rep matches campaigns to reps (the inverse
+    direction) -- only recruiter_visible reps are eligible, since that
+    flag is the rep's own opt-in to being discoverable at all (Section
+    7), not something a brand's search can bypass."""
+    rows = await conn.fetch(
+        """
+        SELECT id, city, state, graduation_year, school_type, categories,
+               profile_completeness_score, average_rating, total_campaigns_completed
+        FROM public.rep_profiles
+        WHERE recruiter_visible = TRUE
+          AND ($1::text[] IS NULL OR categories && $1::text[])
+          AND ($2::text IS NULL OR city = $2)
+        ORDER BY profile_completeness_score DESC
+        """,
+        categories or None,
+        city,
+    )
+    return [
+        RepBrowseCard(
+            rep_id=str(row["id"]),
+            city=row["city"],
+            state=row["state"],
+            graduation_year=row["graduation_year"],
+            school_type=row["school_type"],
+            categories=list(row["categories"] or []),
+            profile_completeness_score=row["profile_completeness_score"],
+            average_rating=float(row["average_rating"]) if row["average_rating"] is not None else None,
+            total_campaigns_completed=row["total_campaigns_completed"],
+        )
+        for row in rows
+    ]

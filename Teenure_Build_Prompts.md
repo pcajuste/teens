@@ -702,9 +702,69 @@ Acceptance criteria:
 
 ---
 
-## 8. Brand Portal — Backend
+## 8. Brand Portal — Backend — **implemented**
 
 **Depends on:** Prompt 5, Prompt 7.
+
+**Build-log note:** All 10 deliverables implemented (`app/routers/brands.py`,
+`app/repositories/brand_profiles_repository.py`, `app/services/campaign_service.py`
+for the fee-split math, `app/core/crypto.py` for Fernet-based EIN
+encryption at rest). No schema migration needed -- every column Prompt
+8 touches already existed in Section 7's verbatim schema.
+
+Two real, pre-existing bugs were found and fixed while building this,
+unrelated to Prompt 8's own deliverables but directly in the code path
+this prompt extends:
+
+1. `campaign_reps_repository.py` had every rep-participation function
+   (`CampaignRep`, `create_application`, accept/decline/submit/withdraw,
+   `list_active_for_rep`, `list_history_for_rep`, `earnings_breakdown`,
+   `auto_decline_expired_parent_approvals`) defined **twice** -- the
+   entire first block (parent-facing helpers aside) was dead code,
+   silently shadowed by a second block with the same names. One
+   function's behavior genuinely differed between the two versions:
+   the live `auto_decline_expired_parent_approvals` left
+   `parent_approval_status` at `'pending'` after auto-declining an
+   expired invitation, which kept it surfacing forever in the parent's
+   pending-approval queue and would let a parent later "approve" an
+   already-terminal, auto-declined invitation. Fixed by deleting the
+   dead block and setting `parent_approval_status = 'blocked'` in the
+   one that remains, matching `block_campaign`'s existing semantics.
+   New regression test added.
+2. `parent_service.send_campaign_approval_request` existed, was fully
+   implemented, and was documented as "called by Prompt 5 when a rep is
+   invited/matched to a campaign" -- but nothing ever called it. A
+   parent whose approval was required got no notification that
+   anything was waiting on them. Fixed in both `POST /campaigns/:id/apply`
+   (rep self-apply) and the new brand-invite endpoint, which now share
+   a single `determine_parent_approval` helper rather than each
+   re-deriving the same decision independently (the exact shape of
+   mistake that caused bug #1). New regression tests added for both
+   paths (email sent when required, not sent when not required).
+
+Interpretive decisions made and documented rather than guessed past:
+- `GET /brands/campaigns/:id/reps/browse`'s exact no-PII field set
+  isn't specified in Section 8 -- documented in
+  `rep_profiles_repository.RepBrowseCard`'s docstring (excludes
+  display_name, school_name, bio, handles; includes city/state/
+  categories/school_type/completeness/rating).
+- Campaign cancellation refund policy is explicitly unresolved --
+  `docs/campaign-cancellation-refund-policy.md` states the open
+  question per the deliverable's own instruction not to assume; the
+  endpoint transitions status and reports `refund_pending` without
+  calling the still-`NotImplementedError` Stripe refund stub.
+- Invite-time capacity enforcement uses a live COUNT of non-declined
+  `campaign_reps` rows, not the `reps_accepted_count` cache column,
+  which nothing in this codebase currently increments (flagged in
+  `brands.py`'s invite endpoint, not silently fixed -- out of this
+  prompt's stated deliverables).
+
+44 new tests (`test_brands_portal.py`, `test_campaign_service.py`, plus
+2 new regression tests in `test_reps_portal.py` for the bugs above).
+All 139 backend tests pass. Verified end-to-end against the real local
+Supabase stack: brand signup → profile creation with real EIN
+encryption confirmed at the DB layer → campaign creation with correct
+server-side fee split.
 
 ```
 Implement Brand backend routes from Section 8 and Phase 2 of Section 5.

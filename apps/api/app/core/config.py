@@ -62,6 +62,11 @@ class Settings(BaseSettings):
     # ── Parent Portal ────────────────────────────────────────────
     parent_session_secret: str
 
+    # ── Brand Portal (Build Prompt 8) ───────────────────────────────
+    # Fernet key (Fernet.generate_key()) for encrypting brand_profiles.ein
+    # at the application layer -- see app/core/crypto.py.
+    ein_encryption_key: str
+
     @property
     def allowed_origins(self) -> list[str]:
         return [origin.strip() for origin in self.allowed_origins_raw.split(",") if origin.strip()]
