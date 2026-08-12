@@ -13,8 +13,9 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 import httpx
+from fastapi import Depends
 
-from app.core.config import Settings
+from app.core.config import Settings, get_settings
 
 
 class ResendClient(Protocol):
@@ -55,3 +56,10 @@ def get_resend_client(settings: Settings) -> ResendClient:
     if settings.environment in ("development", "test"):
         return FakeResendClient()
     return HttpResendClient(settings)
+
+
+def resend_client_dependency(settings: Settings = Depends(get_settings)) -> ResendClient:
+    """Single shared FastAPI dependency so every router that sends email
+    can be overridden in tests via one dependency-overrides key, instead
+    of each router needing its own identical wrapper function."""
+    return get_resend_client(settings)

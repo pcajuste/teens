@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import time
+import uuid
+from dataclasses import dataclass
+from datetime import date, datetime, timedelta, timezone
 
 import asyncpg
 import jwt
@@ -36,8 +40,8 @@ for _key, _value in _TEST_ENV.items():
 from app.core.config import get_settings  # noqa: E402
 from app.core.security import PARENT_SESSION_ISSUER  # noqa: E402
 from app.main import create_app  # noqa: E402
-from app.routers import auth as auth_router  # noqa: E402
 from app.services.resend_client import FakeResendClient  # noqa: E402
+from app.services.resend_client import resend_client_dependency  # noqa: E402
 
 
 @pytest.fixture(scope="session")
@@ -54,7 +58,7 @@ def fake_resend_client():
 @pytest.fixture()
 def app(settings, fake_resend_client):
     application = create_app()
-    application.dependency_overrides[auth_router._resend_client_dependency] = lambda: fake_resend_client
+    application.dependency_overrides[resend_client_dependency] = lambda: fake_resend_client
     return application
 
 
@@ -99,6 +103,16 @@ class SyncDB:
 
         return self._run(_inner())
 
+    def fetch(self, query: str, *args):
+        async def _inner():
+            conn = await asyncpg.connect(dsn=self._dsn)
+            try:
+                return [dict(row) for row in await conn.fetch(query, *args)]
+            finally:
+                await conn.close()
+
+        return self._run(_inner())
+
 
 @pytest.fixture()
 def db(settings):
@@ -108,7 +122,10 @@ def db(settings):
 @pytest.fixture(autouse=True)
 def _clean_database(db):
     yield
-    db.execute("TRUNCATE public.parent_records, public.users, auth.users CASCADE")
+    db.execute(
+        "TRUNCATE public.parent_auth_tokens, public.parent_records, public.campaign_reps, "
+        "public.campaigns, public.rep_profiles, public.brand_profiles, public.users, auth.users CASCADE"
+    )
 
 
 def _supabase_jwt(settings, *, role: str, account_status: str = "active") -> str:
@@ -153,3 +170,166 @@ def parent_session_headers(settings):
     }
     token = jwt.encode(payload, settings.parent_session_secret, algorithm="HS256")
     return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture()
+def parent_headers_factory(settings):
+    def _factory(*, parent_id: str, rep_id: str) -> dict[str, str]:
+        payload = {
+            "parent_id": parent_id,
+            "rep_id": rep_id,
+            "iss": PARENT_SESSION_ISSUER,
+            "exp": int(time.time()) + 3600,
+        }
+        token = jwt.encode(payload, settings.parent_session_secret, algorithm="HS256")
+        return {"Authorization": f"Bearer {token}"}
+
+    return _factory
+
+
+@dataclass
+class SeededRep:
+    rep_user_id: str
+    rep_email: str
+    rep_id: str
+    parent_id: str
+    parent_email: str
+
+
+@pytest.fixture()
+def seed_rep_with_parent(db):
+    """Direct-SQL seed for a rep + linked parent_records row. Prompt 4A
+    ships before Prompt 5 (rep onboarding) and Prompt 8 (brand
+    campaigns) exist, so there's no app flow that produces this state
+    yet -- tests build it directly, the same way Prompt 4's tests
+    backdate a consent token."""
+
+    def _seed(
+        *,
+        age: int = 15,
+        campaign_approval_required: bool = True,
+        portal_expires_in_days: int = 3650,
+        parent_email: str | None = None,
+        values_filters: list[str] | None = None,
+        digest_enabled: bool = True,
+        categories: list[str] | None = None,
+        profile_completeness_score: int = 50,
+        total_earnings_cents: int = 12345,
+        total_campaigns_completed: int = 2,
+        suspended_by_parent_at: datetime | None = None,
+        rep_account_status: str = "active",
+    ) -> SeededRep:
+        rep_user_id = str(uuid.uuid4())
+        rep_id = str(uuid.uuid4())
+        parent_id = str(uuid.uuid4())
+        rep_email = f"rep-{rep_user_id}@example.com"
+        resolved_parent_email = parent_email or f"parent-{parent_id}@example.com"
+        dob = date(date.today().year - age, 6, 1)
+
+        db.execute("INSERT INTO auth.users (id, email) VALUES ($1, $2)", rep_user_id, rep_email)
+        db.execute(
+            "INSERT INTO public.users (id, email, role, account_status, date_of_birth) "
+            "VALUES ($1, $2, 'rep', $3, $4)",
+            rep_user_id,
+            rep_email,
+            rep_account_status,
+            dob,
+        )
+        db.execute(
+            """
+            INSERT INTO public.rep_profiles
+                (id, user_id, display_name, school_name, city, state, graduation_year,
+                 categories, profile_completeness_score, total_earnings_cents, total_campaigns_completed)
+            VALUES ($1, $2, 'Test Rep', 'Test High', 'Austin', 'TX', 2027, $3, $4, $5, $6)
+            """,
+            rep_id,
+            rep_user_id,
+            categories or ["gaming"],
+            profile_completeness_score,
+            total_earnings_cents,
+            total_campaigns_completed,
+        )
+        portal_expires_at = datetime.now(timezone.utc) + timedelta(days=portal_expires_in_days)
+        db.execute(
+            """
+            INSERT INTO public.parent_records
+                (parent_id, rep_id, parent_email, campaign_approval_required, values_filters,
+                 digest_enabled, portal_expires_at, suspended_by_parent_at)
+            VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8)
+            """,
+            parent_id,
+            rep_id,
+            resolved_parent_email,
+            campaign_approval_required,
+            json.dumps(values_filters or []),
+            digest_enabled,
+            portal_expires_at,
+            suspended_by_parent_at,
+        )
+        return SeededRep(
+            rep_user_id=rep_user_id,
+            rep_email=rep_email,
+            rep_id=rep_id,
+            parent_id=parent_id,
+            parent_email=resolved_parent_email,
+        )
+
+    return _seed
+
+
+@pytest.fixture()
+def seed_pending_campaign(db):
+    """Seeds a brand + campaign + a campaign_reps invitation awaiting
+    parent approval for the given rep."""
+
+    def _seed(
+        *,
+        rep_id: str,
+        target_categories: list[str] | None = None,
+        parent_approval_status: str = "pending",
+        payout_per_rep_cents: int = 5000,
+    ) -> str:
+        brand_user_id = str(uuid.uuid4())
+        brand_id = str(uuid.uuid4())
+        campaign_id = str(uuid.uuid4())
+        brand_email = f"brand-{brand_user_id}@example.com"
+
+        db.execute("INSERT INTO auth.users (id, email) VALUES ($1, $2)", brand_user_id, brand_email)
+        db.execute(
+            "INSERT INTO public.users (id, email, role, account_status, date_of_birth) "
+            "VALUES ($1, $2, 'brand', 'active', '1990-01-01')",
+            brand_user_id,
+            brand_email,
+        )
+        db.execute(
+            "INSERT INTO public.brand_profiles (id, user_id, company_name) VALUES ($1, $2, 'Acme Co')",
+            brand_id,
+            brand_user_id,
+        )
+        db.execute(
+            """
+            INSERT INTO public.campaigns
+                (id, brand_id, title, status, product_name, campaign_goal, key_messaging,
+                 deliverables_description, target_categories, budget_cents, platform_fee_cents,
+                 rep_pool_cents, payout_per_rep_cents, start_date, end_date)
+            VALUES ($1, $2, 'Test Campaign', 'active', 'Widget', 'Awareness', 'Widgets are great',
+                    'One TikTok post', $3, 100000, 35000, 65000, $4, CURRENT_DATE, CURRENT_DATE + 30)
+            """,
+            campaign_id,
+            brand_id,
+            target_categories or ["gaming"],
+            payout_per_rep_cents,
+        )
+        db.execute(
+            """
+            INSERT INTO public.campaign_reps
+                (campaign_id, rep_id, parent_approval_status, parent_approval_deadline)
+            VALUES ($1, $2, $3, now() + interval '48 hours')
+            """,
+            campaign_id,
+            rep_id,
+            parent_approval_status,
+        )
+        return campaign_id
+
+    return _seed

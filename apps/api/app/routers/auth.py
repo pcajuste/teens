@@ -37,7 +37,8 @@ from app.schemas.auth import (
     SignupResponse,
 )
 from app.services.email_service import send_parental_consent_email
-from app.services.resend_client import ResendClient, get_resend_client
+from app.services.resend_client import ResendClient
+from app.services.resend_client import resend_client_dependency as _resend_client_dependency
 from app.services.supabase_auth_client import EmailAlreadyRegisteredError, get_supabase_auth_client
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -51,10 +52,6 @@ CONSENT_TOKEN_TTL = timedelta(hours=72)
 # impractical. Tracked in Postgres (consent_email_last_sent_at), not
 # in-process memory, so it's correct if apps/api ever runs >1 instance.
 RESEND_COOLDOWN = timedelta(minutes=5)
-
-
-def _resend_client_dependency(settings: Settings = Depends(get_settings)) -> ResendClient:
-    return get_resend_client(settings)
 
 
 @router.post("/signup", response_model=SignupResponse, status_code=status.HTTP_201_CREATED)

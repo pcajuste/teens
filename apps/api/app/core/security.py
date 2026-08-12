@@ -24,14 +24,17 @@ Two distinct token types flow through this module:
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Literal
 
+import asyncpg
 import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
 from app.core.config import Settings, get_settings
+from app.db.pool import get_connection
 
 Role = Literal["rep", "brand", "recruiter", "admin"]
 AccountStatus = Literal["pending", "active", "suspended", "rejected"]
@@ -148,3 +151,23 @@ async def get_parent_session(
         raise _unauthorized("malformed_parent_session", "Token is missing required parent-session claims.")
 
     return ParentSession(parent_id=parent_id, rep_id=rep_id)
+
+
+async def get_active_parent_session(
+    session: ParentSession = Depends(get_parent_session),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> ParentSession:
+    """Re-checks portal_expires_at on every /parent/* request, not just
+    at magic-link verification (Prompt 4A deliverable 8) -- a session
+    token issued the day before a rep's 18th birthday is still a valid
+    JWT the day after, so expiry has to be enforced against current
+    parent_records state on every call, not baked into the token."""
+    from app.repositories.parent_records_repository import get_parent_by_id
+
+    parent = await get_parent_by_id(conn, session.parent_id)
+    if parent is None or datetime.now(timezone.utc) >= parent.portal_expires_at:
+        raise _forbidden(
+            "portal_closed",
+            "The parent portal has closed because your child is now 18.",
+        )
+    return session

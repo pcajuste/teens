@@ -1,13 +1,18 @@
 """Transactional email shell, sent via Resend.
 
-Prompt 4 implements send_parental_consent_email against
+Prompt 4 implements send_parental_consent_email; Prompt 4A adds the
+parent-portal sends below. All go through
 app/services/resend_client.py's injectable client (real HTTP in
-production, an in-memory fake in dev/test -- see that module). The
-rest remain unimplemented shells for later prompts.
+production, an in-memory fake in dev/test -- see that module).
 """
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from app.services.resend_client import ResendClient
+
+if TYPE_CHECKING:
+    from app.repositories.campaign_reps_repository import PendingApproval
 
 
 async def send_signup_verification_email(to: str, verification_link: str) -> None:
@@ -40,3 +45,83 @@ async def send_parental_consent_email(parent_email: str, consent_link: str, clie
         subject="Action needed: parental consent for Teenure",
         html=html,
     )
+
+
+async def send_magic_link_email(parent_email: str, magic_link: str, client: ResendClient) -> None:
+    """Parent-portal login link. Expires in 15 minutes -- shorter than
+    the consent link, since this is a login mechanism a parent is
+    expected to use right away, not a one-time signup step."""
+    html = f"""
+    <p>Here's your link to sign in to your Teenure parent portal.</p>
+    <p><a href="{magic_link}">Sign in</a></p>
+    <p>This link expires in 15 minutes and can only be used once. If
+    you didn't request this, you can safely ignore it.</p>
+    """
+    await client.send_email(to=parent_email, subject="Your Teenure parent portal sign-in link", html=html)
+
+
+async def send_campaign_approval_request_email(
+    parent_email: str, brief: "PendingApproval", client: ResendClient
+) -> None:
+    html = f"""
+    <p>Your teen has been invited to a Teenure campaign with
+    {brief.brand_name} and it's waiting on your approval.</p>
+    <p><strong>{brief.title}</strong> ({brief.product_name})</p>
+    <p>{brief.campaign_goal}</p>
+    <p>Review the full details and approve or block it in your parent
+    portal.</p>
+    """
+    await client.send_email(to=parent_email, subject=f"Approval needed: {brief.title} on Teenure", html=html)
+
+
+async def send_campaign_blocked_notice_to_rep(rep_email: str, client: ResendClient) -> None:
+    html = """
+    <p>A campaign invitation was declined on your behalf by your
+    parent/guardian. You can see your other available campaigns in
+    your Teenure dashboard.</p>
+    """
+    await client.send_email(to=rep_email, subject="A campaign invitation was declined", html=html)
+
+
+async def send_account_suspended_email(rep_email: str, client: ResendClient) -> None:
+    html = """
+    <p>Your Teenure account has been suspended by your parent/guardian.
+    You won't be able to accept new campaigns until it's reinstated.</p>
+    """
+    await client.send_email(to=rep_email, subject="Your Teenure account has been suspended", html=html)
+
+
+async def send_digest_email(
+    parent_email: str,
+    client: ResendClient,
+    *,
+    rep_display_name: str,
+    campaigns_completed_this_month: int,
+    earnings_this_month_cents: int,
+    lifetime_earnings_cents: int,
+    profile_completeness_score: int,
+    profile_completeness_change: int | None,
+    active_categories: list[str],
+) -> None:
+    """Content is deliberately allow-listed: campaigns completed,
+    earnings, profile-completeness change, active categories. Never
+    recruiter message content, submission text/files, or brand contact
+    details (Section 9A) -- there is no code path in this function that
+    could include them, since it never receives them as input."""
+    change_line = (
+        f"Profile completeness changed by {profile_completeness_change:+d} points."
+        if profile_completeness_change is not None
+        else "This is your first digest, so there's no prior score to compare to."
+    )
+    categories_line = ", ".join(active_categories) if active_categories else "none this month"
+    html = f"""
+    <p>Here's {rep_display_name}'s Teenure activity summary.</p>
+    <ul>
+      <li>Campaigns completed this month: {campaigns_completed_this_month}</li>
+      <li>Earnings this month: ${earnings_this_month_cents / 100:.2f}</li>
+      <li>Lifetime earnings: ${lifetime_earnings_cents / 100:.2f}</li>
+      <li>Profile completeness: {profile_completeness_score}/100 -- {change_line}</li>
+      <li>Categories active in this month: {categories_line}</li>
+    </ul>
+    """
+    await client.send_email(to=parent_email, subject="Your Teenure monthly digest", html=html)

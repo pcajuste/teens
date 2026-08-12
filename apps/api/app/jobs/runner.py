@@ -12,8 +12,9 @@ the API directly from a Railway cron trigger is one less moving part.
 
 Jobs register themselves in JOB_REGISTRY by name. Prompt 3 registers
 one no-op job end-to-end to prove the schedule fires; Prompt 4A adds
-the monthly parent-digest job and the invite-expiry job onto this same
-registry.
+the monthly parent-digest job. The invite-expiry / parent-approval
+48-hour timeout job is Prompt 5's responsibility (it needs
+rep_profiles/campaign matching that doesn't exist yet).
 """
 from __future__ import annotations
 
@@ -23,6 +24,10 @@ from typing import Final
 from fastapi import APIRouter, Header, HTTPException, status
 
 from app.core.config import get_settings
+from app.db.pool import get_pool
+from app.repositories.parent_records_repository import list_digest_enabled
+from app.services.parent_service import send_digest_email
+from app.services.resend_client import get_resend_client
 
 JobFn = Callable[[], Awaitable[None]]
 
@@ -42,6 +47,21 @@ async def noop_heartbeat() -> None:
     """Proves the scheduler → API → job-registry path works end-to-end.
     Does nothing else."""
     return None
+
+
+@register_job("send_monthly_parent_digests")
+async def send_monthly_parent_digests() -> None:
+    """Runs monthly. One digest per parent_records row with
+    digest_enabled=TRUE -- parent_service.send_digest_email builds the
+    allow-listed content (Section 9A) and skips parents whose rep
+    context can't be found."""
+    settings = get_settings()
+    resend_client = get_resend_client(settings)
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        parents = await list_digest_enabled(conn)
+        for parent in parents:
+            await send_digest_email(conn, resend_client, parent_id=parent.parent_id)
 
 
 router = APIRouter(prefix="/internal/jobs", tags=["jobs"])

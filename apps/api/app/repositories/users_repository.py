@@ -126,6 +126,20 @@ async def mark_consent_email_sent(conn: asyncpg.Connection, user_id: str, *, sen
     )
 
 
+async def set_account_status(conn: asyncpg.Connection, user_id: str, status: str) -> UserRecord:
+    row = await conn.fetchrow(
+        f"""
+        UPDATE public.users
+        SET account_status = $2, updated_at = now()
+        WHERE id = $1
+        RETURNING {_COLUMNS}
+        """,
+        user_id,
+        status,
+    )
+    return UserRecord.from_row(row)
+
+
 async def mark_parent_verified_and_activate(conn: asyncpg.Connection, user_id: str, *, verified_at: datetime) -> UserRecord:
     row = await conn.fetchrow(
         f"""
