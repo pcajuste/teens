@@ -5,6 +5,7 @@
   "scripts": {
     "dev:web": "pnpm --filter web dev",
     "build:web": "pnpm --filter web build",
+    "test:e2e:web": "pnpm --filter web test:e2e",
     "dev:api": "cd apps/api && uvicorn app.main:app --reload --port 8000"
   }
 }
