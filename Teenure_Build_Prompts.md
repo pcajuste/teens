@@ -20,6 +20,11 @@
 6A. [Demo Mode — Rep Demo](#6a-demo-mode--rep-demo)
 7. [Stripe Foundation: Connect Onboarding & Platform Billing](#7-stripe-foundation-connect-onboarding--platform-billing)
 8. [Brand Portal — Backend](#8-brand-portal--backend)
+8B. [Performance Milestone Payments](#8b-performance-milestone-payments)
+8C. [Category Exclusivity](#8c-category-exclusivity)
+8D. [Advance Cohort Reservation](#8d-advance-cohort-reservation)
+8E. [Rep Syndicates](#8e-rep-syndicates)
+8F. [Relationship Continuity Product (Year Two)](#8f-relationship-continuity-product-year-two)
 9. [Brand Portal — Frontend](#9-brand-portal--frontend)
 10. [Campaign Lifecycle & Payout Engine](#10-campaign-lifecycle--payout-engine)
 11. [Recruiter Portal — Backend](#11-recruiter-portal--backend)
@@ -1012,6 +1017,547 @@ Acceptance criteria:
 
 ---
 
+## 8B. Performance Milestone Payments
+
+**Depends on:** Prompt 8, Prompt 10 (the existing flat payout engine
+must be fully operational before the milestone layer is added on top of
+it — this prompt extends the payout engine, it does not replace it).
+Positioned here, immediately after Prompt 8, purely for narrative
+grouping with the rest of the campaign-payment-model prompts (8B–8F) —
+its actual dependency on Prompt 10 means it cannot be built until Prompt
+10 is complete, regardless of numbering. Do not build 8B before 10.
+
+**Replaces:** A previously drafted Prompt 8B (Featured Campaign
+Placement). That draft was fully reverted before any of its code was
+committed — no schema, endpoints, or feature flag exist for it in this
+codebase. If a future session finds featured-placement code already
+shipped from some other source, disable it via feature flag rather than
+deleting it, but as of this revision there is nothing to disable.
+
+**What this prompt is not:** A replacement for flat campaigns. Milestone
+payments are an optional campaign type that coexists with the existing
+flat payment model. Every decision in this prompt is made to preserve
+full backward compatibility with flat campaigns. A builder who reads
+only Prompts 1–10 and ignores this prompt should still have a fully
+functional platform — this prompt adds capability, it does not change
+what already works.
+
+```
+Implement performance milestone payments — a campaign payment type where
+brands structure compensation as a series of milestone-triggered releases
+rather than a single flat payout at confirmation. This aligns brand spend
+with documented outcomes, not just content delivery, and is the most
+structurally differentiated feature Teenure can offer relative to any
+existing influencer or campus ambassador platform.
+
+The thesis behind this feature: paying for posts is a commodity. Paying
+for documented outcomes — a peer referral used, a product purchased by
+someone the rep introduced, a survey completed by documented peers — is
+something no current platform does for this demographic at verified scale.
+Milestone payments are the technical expression of that thesis.
+
+---
+
+SCHEMA ADDITIONS (new migration, separately numbered from Prompt 2):
+
+1. Add to campaigns table:
+     payment_type (enum: 'flat' | 'milestone', default 'flat' — existing
+       campaigns are unaffected, new campaigns choose at creation)
+
+   Note: payment_type is immutable after campaign activation. A brand
+   cannot switch a live campaign from flat to milestone or vice versa.
+   Enforce this at the API layer with a clear error: "Payment type cannot
+   be changed after campaign activation."
+
+2. New table: campaign_milestones
+     id (UUID PK)
+     campaign_id (FK to campaigns, not nullable)
+     milestone_number (integer — ordering within the campaign, 1-based)
+     title (text not null — shown to rep: "Post delivered", "Referral
+       code used 10 times", "Survey completed by 5 peers")
+     description (text — plain language explanation of what constitutes
+       completion of this milestone)
+     verification_method (enum: 'brand_confirmation' | 'rep_submission' —
+       how completion is verified; see verification mechanics below.
+       'code_redemption' is deliberately excluded from this prompt — see
+       the note at the end of the verification mechanics section)
+     payout_percentage (integer — percentage of rep_pool_cents this
+       milestone releases, 1–100; all milestones for a campaign must
+       sum to exactly 100, enforced at campaign creation)
+     sequence_required (boolean default true — if true, this milestone
+       cannot be confirmed until all prior milestones are confirmed)
+     created_at (timestamptz default now())
+
+   RLS: brands can read/write milestones only for their own campaigns.
+   Reps can read milestones for campaigns they are invited to. No direct
+   write access for reps.
+
+3. Add to campaign_reps table:
+     milestones_completed_count (integer default 0 — cached count,
+       recomputed on each milestone confirmation)
+     total_milestone_payout_cents (integer default 0 — cumulative payout
+       released across all confirmed milestones for this rep on this
+       campaign; must never exceed payout_per_rep_cents)
+
+4. New table: campaign_rep_milestones
+     id (UUID PK)
+     campaign_rep_id (FK to campaign_reps)
+     campaign_milestone_id (FK to campaign_milestones)
+     status (enum: 'pending' | 'submitted' | 'confirmed' | 'paid',
+       default 'pending')
+     rep_submission_text (text, nullable — rep's submission evidence for
+       this milestone)
+     rep_submission_file_urls (text[], default '{}')
+     brand_confirmation_note (text, nullable)
+     payout_cents (integer, nullable — calculated at confirmation:
+       campaign_milestone.payout_percentage / 100 *
+       campaign_reps.payout_per_rep_cents, rounded down, with any
+       rounding remainder added to the final milestone)
+     stripe_transfer_id (text, nullable)
+     payout_status (enum: 'pending' | 'processing' | 'paid' | 'failed',
+       default 'pending')
+     dispute_flag (boolean default false — see deliverable 7)
+     submitted_at (timestamptz, nullable)
+     confirmed_at (timestamptz, nullable)
+     paid_at (timestamptz, nullable)
+
+   RLS: a rep can read/write only their own campaign_rep_milestones rows.
+   A brand can read/write only rows for campaign_reps belonging to their
+   campaigns.
+
+   UNIQUE constraint: (campaign_rep_id, campaign_milestone_id) — one row
+   per rep per milestone per campaign.
+
+5. Add index:
+     idx_campaign_rep_milestones_status on
+       campaign_rep_milestones(campaign_rep_id, status)
+     idx_campaign_milestones_campaign on campaign_milestones(campaign_id,
+       milestone_number)
+
+---
+
+VERIFICATION MECHANICS:
+
+Two verification methods are supported at MVP. The method is set per
+milestone at campaign creation and determines what the confirmation flow
+looks like for that milestone.
+
+'brand_confirmation': the brand manually reviews rep-submitted evidence
+and confirms the milestone. This is the simplest method and works for
+any deliverable — a post, an event appearance, a piece of content. The
+brand sees the rep's submission and clicks confirm. Identical in flow to
+the existing flat campaign confirmation, applied per milestone.
+
+'rep_submission': the milestone is considered submitted when the rep
+submits evidence via the milestone submission interface. No separate brand
+confirmation step — the submission itself triggers the payout. Use for
+milestones where the evidence is self-verifying (a screenshot of a
+published post, a link to a video). Requires a brief review window
+(24 hours) during which the brand can dispute before payout releases.
+If no dispute within the review window, payout releases automatically.
+Build the auto-release into the scheduled job runner from Prompt 3.
+
+Note on scope: an earlier draft of this prompt included a third method,
+'code_redemption' (paying out when a brand-issued referral/promo code
+hit a redemption threshold, confirmed manually since the platform has no
+real integration with brand redemption-tracking systems at MVP). It has
+been removed from this prompt entirely, for two reasons. First, without
+real tracking infrastructure it was brand-manual in exactly the same way
+'brand_confirmation' already is — it added a schema/UX distinction with
+no functional difference. Second, and more importantly: it was the only
+verification method in this prompt where a rep could do everything asked
+of them and still not get paid, because the outcome depended on a third
+party's behavior (whether a peer redeemed the code), not the rep's own.
+Both 'brand_confirmation' and 'rep_submission' only ever pay for
+something the rep directly did — every milestone in this prompt's scope
+is fully within the rep's control. Outcome-linked, third-party-contingent
+verification (via real e-commerce integration or a platform-issued
+tracked short link, not brand-manual confirmation) is deferred to a
+separate future prompt, to be written once that tracking infrastructure
+actually exists. Do not add 'code_redemption' back into this prompt's
+scope without that infrastructure and without re-deriving the UX
+safeguards a genuinely contingent payout requires (see the rep portal
+additions below).
+
+---
+
+BACKEND DELIVERABLES:
+
+1. Campaign creation (extend Prompt 8's POST /brands/campaigns):
+   When payment_type = 'milestone', require a milestones array in the
+   request body:
+     milestones: [
+       {
+         milestone_number: 1,
+         title: "Post delivered",
+         description: "Publish one Instagram post featuring the product
+           with #ad disclosure and submit the link here.",
+         verification_method: "brand_confirmation",
+         payout_percentage: 30,
+         sequence_required: true
+       },
+       {
+         milestone_number: 2,
+         title: "Story follow-up",
+         description: "Publish one Instagram Story within 7 days of
+           the post.",
+         verification_method: "rep_submission",
+         payout_percentage: 30,
+         sequence_required: true
+       },
+       {
+         milestone_number: 3,
+         title: "Bonus content",
+         description: "Publish one additional piece of content of your
+           choice (Reel, TikTok, or blog post) featuring the product.",
+         verification_method: "rep_submission",
+         payout_percentage: 40,
+         sequence_required: false
+       }
+     ]
+
+   Server-side validation at campaign creation:
+     - milestones array required when payment_type = 'milestone'
+     - minimum 2 milestones, maximum 5 milestones per campaign
+     - payout_percentage values must sum to exactly 100 (reject if the
+       brand submits percentages that sum to 99 or 101 — do not silently
+       adjust; return a clear validation error)
+     - milestone_number values must be sequential starting from 1
+     - at least one milestone must have sequence_required = true
+     - milestones with sequence_required = false may only appear after
+       all sequence_required milestones (i.e., non-sequential milestones
+       are always the final milestone(s) in a campaign — this prevents
+       a brand from making a foundational milestone non-sequential)
+
+   When payment_type = 'flat', milestones array must be absent or empty.
+   Create campaign_milestone rows atomically with the campaign in a
+   single database transaction. If milestone creation fails, roll back
+   the campaign creation.
+
+2. campaign_rep_milestones initialization: when a rep accepts a campaign
+   invitation (POST /campaigns/:id/accept), create campaign_rep_milestones
+   rows for every milestone in the campaign — one row per milestone per
+   rep, all initialized to status 'pending'. This creation is atomic with
+   the accept action. If any milestone row fails to create, roll back the
+   accept.
+
+3. GET /reps/campaigns/active (extend Prompt 5): for milestone campaigns,
+   include the milestone list with each active campaign, showing each
+   milestone's title, description, payout_percentage, status for this rep,
+   and whether it is currently actionable (sequence_required milestone
+   where all prior milestones are confirmed, or a non-sequential milestone).
+   A rep should never be confused about which milestone they are working on.
+
+4. Milestone submission (new endpoint):
+   POST /campaigns/:campaign_id/milestones/:milestone_id/submit
+     - Validates the campaign_rep exists and is in 'accepted' status
+     - Validates the milestone is actionable for this rep (sequence check)
+     - Writes rep_submission_text and rep_submission_file_urls
+     - Sets status 'pending' → 'submitted', sets submitted_at
+     - For 'rep_submission' milestones: schedules auto-release after 24
+       hours via the Prompt 3 runner (see deliverable 6 below)
+     - For 'brand_confirmation' milestones: notifies brand via email that
+       a milestone submission is awaiting their review
+
+5. Milestone confirmation (new endpoint):
+   POST /campaigns/:campaign_id/reps/:rep_id/milestones/:milestone_id/confirm
+     - Brand-only route
+     - Validates the milestone status is 'submitted'
+     - Sets status → 'confirmed', sets confirmed_at
+     - Calculates payout_cents: (payout_percentage / 100) *
+       payout_per_rep_cents, rounded down. For the final milestone,
+       add any rounding remainder so total_milestone_payout_cents across
+       all milestones equals exactly payout_per_rep_cents. Never let
+       rounding silently reduce or increase total rep earnings.
+     - Calls payout_service.release_milestone_payout(campaign_rep_milestone_id)
+       — a new function in payout_service that validates the milestone
+       row, checks the rep's Stripe Connect account is complete, and
+       creates a Transfer for payout_cents. This is the per-milestone
+       equivalent of the flat release_payout function from Prompt 10.
+     - Updates campaign_rep_milestones.milestones_completed_count and
+       total_milestone_payout_cents on the parent campaign_reps row
+     - After the final milestone is confirmed: update campaign_reps.status
+       to 'confirmed' (matching flat campaign behavior) so the rating flow
+       and overall campaign status logic from Prompt 10 still work without
+       modification. The campaign_reps row status transitions the same way
+       regardless of payment type — the milestone layer sits below it.
+
+6. Auto-release scheduled job (extend Prompt 3 runner):
+   New job: milestone_auto_release — runs every 30 minutes. Finds
+   campaign_rep_milestones rows where:
+     - verification_method = 'rep_submission'
+     - status = 'submitted'
+     - submitted_at < now() - interval '24 hours'
+     - dispute_flag = false
+   For each: call payout_service.release_milestone_payout() and set
+   status → 'confirmed'. Idempotent — a row that was already confirmed
+   is skipped without error. Log every auto-release for admin audit.
+
+7. Milestone dispute (new endpoint):
+   POST /campaigns/:campaign_id/reps/:rep_id/milestones/:milestone_id/dispute
+     - Brand-only route
+     - Legal only within 24 hours of the rep's submission (the auto-
+       release window)
+     - Sets dispute_flag = true on the campaign_rep_milestone row (see
+       the migration's own dispute_flag column in the schema addition
+       above — do not add it in a second migration)
+     - Pauses the auto-release job for this row
+     - Notifies the rep via email that the brand has flagged this
+       milestone for review
+     - Creates an admin queue entry for manual resolution — milestone
+       disputes are a new category in the admin queue from Prompt 13,
+       distinct from campaign disputes (which cover the whole campaign)
+       and payment disputes (which cover stuck transfers)
+   Resolution: admin reviews the dispute, views the rep's submission
+   evidence, and either confirms (triggering payout) or declines
+   (setting the milestone back to 'submitted' status, notifying both
+   parties). Do not build a self-serve dispute resolution between brand
+   and rep — all disputes go through admin at MVP.
+
+8. payout_service.py additions:
+   release_milestone_payout(campaign_rep_milestone_id):
+     - Validates the milestone row is in 'confirmed' status with a
+       non-null payout_cents
+     - Validates the parent campaign_rep's rep has a completed Stripe
+       Connect account
+     - Creates a Stripe Transfer for payout_cents with metadata:
+       payment_type: 'milestone', milestone_id: ..., campaign_rep_id: ...
+     - Sets payout_status → 'processing', stores stripe_transfer_id
+     - Idempotent — a milestone row with an existing stripe_transfer_id
+       is a no-op, not a duplicate transfer
+
+9. Stripe webhook additions (extend Prompt 10's handler):
+   transfer.paid where metadata.payment_type = 'milestone':
+     → campaign_rep_milestones.payout_status → 'paid', set paid_at
+     → update campaign_reps.total_milestone_payout_cents
+     → update rep_profiles cached total_earnings_cents (same mechanism
+        as Prompt 10's flat campaign recompute)
+   transfer.failed where metadata.payment_type = 'milestone':
+     → alert admin, flag milestone row for manual review
+     → same admin queue surfacing as flat campaign transfer failures
+   Distinguish by metadata.payment_type — do not change the flat
+   campaign webhook handlers. If metadata.payment_type is absent,
+   treat as flat (backward compatible with all existing transfers).
+   Metadata is a stripe.StripeObject on a real signed webhook, not a
+   plain dict — use `"payment_type" in metadata` / item access, not
+   `.get()` (see the existing `_handle_account_updated` handler's own
+   documented note on this).
+
+10. GET /reps/earnings (extend Prompt 5):
+    For milestone campaigns, the earnings breakdown must show milestone-
+    level detail: which milestones are pending, which are paid, what
+    amount each released. The rep must be able to see at a glance what
+    they have earned and what remains achievable in each active campaign.
+    Aggregate to the campaign level for the summary totals but expose
+    milestone-level detail in the campaign earnings breakdown.
+
+11. Brand billing and reporting:
+    For milestone campaigns, the brand's campaign spend view (Prompt 8,
+    deliverable 10) shows milestone-level payout history: which milestone
+    was confirmed, when, which rep, and what amount was transferred. This
+    view is the brand's proof that they paid for documented outcomes, not
+    just content delivery. It is a significant trust signal for brands
+    and a reporting tool for their own marketing attribution.
+
+---
+
+FRONTEND ADDITIONS:
+
+These additions belong in Prompt 9 (Brand Portal Frontend) and Prompt 6
+(Rep Portal Frontend). Document them here so the builders of those
+prompts know what to add.
+
+Brand portal additions (Prompt 9):
+  - Brief builder step addition: if payment_type = 'milestone', show a
+    milestone builder with add/remove milestone controls, title/description
+    fields, verification method selector, and a live payout percentage
+    calculator that shows remaining percentage as milestones are added.
+    The calculator must show a clear error state when percentages do not
+    sum to 100 before the brand can proceed.
+  - Milestone submission review: each active campaign rep shows a milestone
+    progress view — which milestones are pending, submitted, or confirmed
+    per rep. Each submitted milestone shows the rep's evidence and a
+    confirm/dispute action.
+  - Dispute window indicator: for 'rep_submission' milestones, show a
+    countdown to the 24-hour auto-release so brands know how long they
+    have to review before the payout releases automatically.
+
+Rep portal additions (Prompt 6):
+  - Campaign detail view for milestone campaigns: show each milestone
+    with its title, description, payout amount, current status, and
+    whether it is currently actionable. A rep should never have to guess
+    what they need to do next.
+  - Milestone submission interface: per-milestone submission form (text
+    + file upload) that mirrors the flat campaign submission interface
+    from deliverable 4, applied per milestone rather than per campaign.
+  - Earnings panel: milestone-level breakdown for active milestone
+    campaigns. "You have earned $X of $Y available in this campaign.
+    2 milestones remaining."
+  - Status tracker per milestone: pending → submitted → confirmed → paid,
+    same visual pattern as the flat campaign status tracker.
+
+  UX guidance — framing and progress visibility: every milestone in this
+  prompt's scope is something the rep directly does (a post, a story, a
+  submission), so there is no externally-contingent payout to soften at
+  MVP — do not use "guaranteed base + bonus" language here, since nothing
+  is actually at risk from a third party's behavior. What still matters:
+  a rep should always be able to see, at a glance, exactly what she has
+  already earned (confirmed/paid milestones) versus what remains
+  achievable through her own further effort (pending/actionable
+  milestones) — never a single blended total that obscures which part is
+  locked in. Where a milestone involves a count or threshold the rep
+  controls directly (e.g. "publish 3 pieces of content"), show real-time
+  progress toward it ("2 of 3 published") rather than a flat pending/done
+  state, so the milestone reads as trackable effort in progress, not a
+  black box. This visibility pattern — earned vs. achievable, real-time
+  progress toward thresholds — is a hard requirement to carry forward
+  into the future outcome-linked verification prompt referenced above:
+  once a milestone's payout genuinely depends on someone else's behavior,
+  this same panel must also distinguish "guaranteed for what you already
+  did" from "possible bonus outside your control," which is not a
+  distinction this prompt's milestones need to make.
+
+---
+
+ACCEPTANCE CRITERIA:
+
+Schema and data integrity:
+  - A milestone campaign with percentages summing to 99 or 101 is
+    rejected at creation with a clear validation error. Never silently
+    adjusted.
+  - campaign_rep_milestones rows are created atomically with campaign_reps
+    at accept. If any row fails, the accept is rolled back — a rep cannot
+    be in an accepted state without a complete milestone record.
+  - total_milestone_payout_cents across all confirmed milestones for a
+    single campaign_rep never exceeds payout_per_rep_cents — verified by
+    unit test covering the rounding calculation across multiple milestone
+    percentage combinations including those that do not divide evenly.
+
+State machine:
+  - A sequence_required milestone cannot be confirmed before all prior
+    milestones are confirmed — API returns 409 with a clear reason.
+  - A non-sequential milestone can be confirmed independently of later
+    milestones but not before all sequence_required milestones are
+    confirmed.
+  - A milestone in 'paid' status cannot be re-confirmed — idempotent
+    no-op or clean 409, not a duplicate transfer.
+
+Payout safety:
+  - release_milestone_payout called twice for the same milestone produces
+    exactly one Stripe Transfer — verified with a concurrency test
+    matching the pattern from Prompt 11's credit deduction test.
+  - transfer.paid webhook for a milestone transfer updates only the
+    campaign_rep_milestones row and the rep's cached earnings — does not
+    affect flat campaign payout state.
+  - transfer.paid webhook for a flat campaign transfer does not affect
+    campaign_rep_milestones rows.
+
+Auto-release:
+  - A 'rep_submission' milestone submitted 25 hours ago with no dispute
+    flag is auto-released by the scheduled job — tested directly against
+    the job function with a seeded row.
+  - A 'rep_submission' milestone submitted 25 hours ago WITH a dispute
+    flag is NOT auto-released — dispute flag correctly blocks auto-release.
+  - Running the auto-release job twice against the same eligible row
+    produces one transfer and one log entry.
+
+Backward compatibility:
+  - All existing flat campaign tests from Prompts 8, 9, and 10 pass
+    without modification after this prompt is implemented. This is the
+    single most important acceptance criterion: this prompt must not
+    break anything that was already working.
+
+Admin:
+  - Milestone disputes appear in a distinct admin queue category separate
+    from campaign-level disputes and payment disputes.
+  - Admin resolution of a milestone dispute (confirm or decline) correctly
+    triggers payout or resets status, verified by test.
+```
+
+LAUNCH GATE (not a pytest-verifiable acceptance criterion — do not try to
+automate this):
+
+Before milestone campaigns are enabled for the full rep network (even
+though nothing in this prompt's scope is externally contingent), validate
+the milestone framing itself — the language, the progress visibility, the
+"earned vs. achievable" split — with a small cohort of real teenagers.
+The thing to learn is whether staged, multi-step payout reads to a teen
+as motivating and fair or as confusing/unfair relative to a single flat
+payout for the same total amount. This matters more once the future
+outcome-linked verification prompt ships (where a milestone genuinely can
+depend on someone else's behavior), but the base framing patterns this
+prompt establishes are what that prompt will build on, so get them right
+here first. Findings from this test should shape the rep portal UI before
+general release — this is a go/no-go product gate, not a code review
+checklist item, and it blocks enabling milestone campaigns broadly even
+if every automated acceptance criterion above passes.
+
+---
+
+## 8C. Category Exclusivity
+
+**Depends on:** Prompt 8B (builds on stable campaign schema — not
+strictly on the milestone layer itself, but sequenced after it per the
+product roadmap this prompt suite follows).
+
+**Status: not yet drafted.** A campaign-level attribute and new payment
+surface — a brand can pay a premium for exclusive access to reps in a
+target category/city for the campaign's duration, preventing a
+competing brand's campaign from reaching the same reps in that
+category. Full deliverables, schema, acceptance criteria, and
+brand/rep-facing framing need to be specified in the same level of
+detail as Prompt 8B before this is buildable. Do not build from this
+one-line summary alone — treat it as a placeholder marking where this
+prompt belongs in sequence, not as an instruction.
+
+---
+
+## 8D. Advance Cohort Reservation
+
+**Depends on:** Prompt 8C (builds on stable campaign and milestone
+foundations).
+
+**Status: not yet drafted.** Introduces a pre-campaign reservation
+state — a brand can reserve a cohort of reps (by category/city/size)
+ahead of a campaign's actual brief being finalized, converting the
+reservation into a real campaign later. Full deliverables, schema,
+acceptance criteria, and the reservation-to-campaign conversion flow
+need to be specified in the same level of detail as Prompt 8B before
+this is buildable. Do not build from this one-line summary alone.
+
+---
+
+## 8E. Rep Syndicates
+
+**Depends on:** Prompt 8D (builds on stable campaign lifecycle).
+
+**Status: not yet drafted.** Introduces a new entity — a syndicate of
+reps with its own profile and payout distribution — allowing a group of
+reps to be booked and paid as a unit rather than individually. This is
+the most structurally involved of the 8B–8F additions (new entity type,
+new profile surface, new payout-splitting logic on top of the milestone
+and flat payout engines) and needs its own full schema/deliverables/
+acceptance-criteria pass, plus an explicit decision on how syndicate
+payout splits interact with individual rep Stripe Connect accounts,
+before this is buildable. Do not build from this one-line summary alone.
+
+---
+
+## 8F. Relationship Continuity Product (Year Two)
+
+**Depends on:** Prompt 8E, and real longitudinal data from completed
+multi-campaign rep histories.
+
+**Status: deferred, placeholder only.** Do not build until sufficient
+data exists to make the product credible rather than theoretical — per
+the product rationale for this prompt, building it early against
+synthetic or thin data would produce a feature nobody has evidence
+justifies. Revisit this placeholder once Prompts 8B–8E have shipped and
+enough real campaign history has accumulated to design it against actual
+usage patterns rather than speculation.
+
+---
+
 ## 9. Brand Portal — Frontend — **implemented (core flow)**
 
 **Depends on:** Prompt 8, [Section 0A](#0a-design-system--ux-standards)
@@ -1106,6 +1652,15 @@ Acceptance criteria:
 ## 10. Campaign Lifecycle & Payout Engine — **implemented**
 
 **Depends on:** Prompt 7, Prompt 8.
+
+**Note for Prompt 8B:** `release_payout` below is the flat-campaign-
+specific payout function. Prompt 8B (Performance Milestone Payments)
+adds `release_milestone_payout` as its per-milestone equivalent — the
+two coexist, neither replaces the other. The `transfer.paid`/
+`transfer.failed` webhook handlers built in this prompt gain a
+`metadata.payment_type` branch in Prompt 8B; this prompt's own flat-
+campaign handling stays the default when that key is absent, so nothing
+below needs to change for Prompt 8B to build on top of it.
 
 **Build-log note:** All 7 deliverables implemented.
 `app/services/payout_service.py`'s three stubs are now real
@@ -1540,6 +2095,12 @@ Deliverables:
 1. Backend (pytest): every Section 8 route has at least one happy-path
    test, one role-enforcement rejection test, one primary business-rule
    rejection test. Coverage report — flag any route with zero tests.
+   Every Prompt 8B milestone endpoint (submit, confirm, dispute, and the
+   auto-release job) needs this same three-test coverage pattern, plus
+   the concurrency/idempotency and backward-compatibility coverage
+   Prompt 8B's own acceptance criteria call out (two concurrent confirms
+   producing exactly one Transfer; flat-campaign tests from Prompts 8/9/10
+   passing unmodified after 8B lands).
 2. Integration tests for: (a) full campaign lifecycle from creation to
    paid-out rep (extend Prompt 10's test to true end-to-end), and (b)
    parental-consent signup-to-active flow.
@@ -1557,7 +2118,12 @@ Deliverables:
    blocked and assert it never renders — this is a safety-enforcement
    surface, not just a display concern, so it needs the same test-backed
    guarantee as the FTC checkbox rather than resting on manual
-   verification alone).
+   verification alone). Add: a rep cannot submit a sequence-required
+   milestone before prior milestones are confirmed — the submission
+   control for a non-actionable milestone must be disabled/absent in the
+   rendered UI, not just rejected server-side, since this is a safety-
+   adjacent feature protecting reps from confusion about what they've
+   agreed to deliver next.
 5. CI-runnable command running backend and frontend suites together,
    failing build on any failure.
 
