@@ -95,6 +95,14 @@ class Settings(BaseSettings):
     # platform margin, not charged to brand.
     challenge_conversion_bonus_cents: int = 750
 
+    # ── Learning Modules and Verified Badges (Build Prompt 8H) ───────
+    # UUID of the "FTC Disclosure Essentials" learning_modules row,
+    # once created by an admin. Empty string means "not configured yet"
+    # -- the FTC gate on POST /campaigns/:id/accept is skipped with a
+    # warning log rather than hard-failing every accept on a platform
+    # that hasn't created the module yet.
+    ftc_module_id: str = ""
+
     @property
     def allowed_origins(self) -> list[str]:
         return [origin.strip() for origin in self.allowed_origins_raw.split(",") if origin.strip()]

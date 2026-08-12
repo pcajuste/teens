@@ -35,6 +35,24 @@ class ChallengeActivityResponse(BaseModel):
     recent_submissions: list[ChallengeActivitySubmissionEntry]
 
 
+class ModuleActivityBadgeEntry(BaseModel):
+    badge_title: str
+    earned_at: str
+
+
+class ModuleActivityResponse(BaseModel):
+    """Parent dashboard addition (Build Prompt 8H deliverable 8) --
+    deliberately no quiz_score or wrong-answer fields anywhere in this
+    schema. Parents see completion status and badges earned, not the
+    struggle."""
+
+    total_started: int
+    total_passed: int
+    total_failed: int
+    badges_earned: list[ModuleActivityBadgeEntry]
+    ftc_module_passed: bool
+
+
 class DashboardResponse(BaseModel):
     display_name: str
     school_name: str
@@ -44,6 +62,7 @@ class DashboardResponse(BaseModel):
     total_earnings_cents: int
     total_campaigns_completed: int
     challenge_activity: ChallengeActivityResponse
+    module_activity: ModuleActivityResponse
 
 
 class PendingCampaignResponse(BaseModel):

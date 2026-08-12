@@ -280,6 +280,8 @@ async def search_reps(
             total_campaigns_completed=c.total_campaigns_completed,
             challenges_converted_count=c.challenges_converted_count,
             challenge_conversion_rate=c.challenge_conversion_rate,
+            badge_count=c.badge_count,
+            badge_titles=c.badge_titles or [],
         )
         for c in cards
     ]

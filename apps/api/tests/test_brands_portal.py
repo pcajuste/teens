@@ -450,6 +450,8 @@ def test_browse_returns_no_pii(client, db, brand_headers, onboarded_brand):
         "total_campaigns_completed",
         "challenges_converted_count",
         "challenge_conversion_rate",
+        "badge_count",
+        "badge_titles",
     }
 
 

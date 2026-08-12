@@ -9,6 +9,7 @@ JSONB).
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -19,7 +20,7 @@ _COLUMNS = (
     "bio, categories, instagram_handle, tiktok_handle, recruiter_visible, "
     "total_campaigns_completed, total_earnings_cents, average_rating, "
     "profile_completeness_score, stripe_account_id, stripe_onboarding_complete, "
-    "challenges_submitted_count, challenges_converted_count, "
+    "challenges_submitted_count, challenges_converted_count, badges, badges_earned_count, "
     "created_at, updated_at"
 )
 
@@ -47,6 +48,8 @@ class RepProfile:
     stripe_onboarding_complete: bool
     challenges_submitted_count: int
     challenges_converted_count: int
+    badges: list[dict]
+    badges_earned_count: int
     created_at: datetime
     updated_at: datetime
 
@@ -83,6 +86,8 @@ class RepProfile:
             stripe_onboarding_complete=row["stripe_onboarding_complete"],
             challenges_submitted_count=row["challenges_submitted_count"],
             challenges_converted_count=row["challenges_converted_count"],
+            badges=json.loads(row["badges"]) if isinstance(row["badges"], str) else list(row["badges"] or []),
+            badges_earned_count=row["badges_earned_count"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )
@@ -270,6 +275,35 @@ async def increment_challenges_converted_count(conn: asyncpg.Connection, rep_id:
     )
 
 
+async def append_badge_and_recompute_score(
+    conn: asyncpg.Connection, rep_id: str, *, badge: dict, new_score: int
+) -> RepProfile | None:
+    """Atomic badge issuance (Build Prompt 8H deliverable 5g): appends
+    `badge` to rep_profiles.badges, increments badges_earned_count, and
+    recomputes profile_completeness_score in one UPDATE. Called inside
+    the same transaction as
+    learning_modules_repository.mark_passed -- if this UPDATE fails for
+    any reason, the caller's transaction rolls back the completion
+    status change too, so a rep is never left 'passed' without a badge
+    (spec: "if the badges jsonb append fails, the completion status
+    must not be set to 'passed'")."""
+    row = await conn.fetchrow(
+        f"""
+        UPDATE public.rep_profiles
+        SET badges = badges || $2::jsonb,
+            badges_earned_count = badges_earned_count + 1,
+            profile_completeness_score = $3,
+            updated_at = now()
+        WHERE id = $1
+        RETURNING {_COLUMNS}
+        """,
+        rep_id,
+        json.dumps([badge]),
+        new_score,
+    )
+    return RepProfile.from_row(row) if row else None
+
+
 async def get_by_stripe_account_id(conn: asyncpg.Connection, stripe_account_id: str) -> RepProfile | None:
     """Looked up by the account.updated webhook (Build Prompt 7), which
     identifies the account by Stripe account id, not our own rep_id."""
@@ -323,6 +357,8 @@ class RepBrowseCard:
     total_campaigns_completed: int
     challenges_converted_count: int = 0
     challenge_conversion_rate: float | None = None
+    badge_count: int = 0
+    badge_titles: list = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -348,6 +384,8 @@ class RecruiterSearchCard:
     total_campaigns_completed: int
     challenges_converted_count: int = 0
     challenge_conversion_rate: float | None = None
+    badge_count: int = 0
+    badge_titles: list = None
 
 
 async def search_for_recruiter(
@@ -366,7 +404,7 @@ async def search_for_recruiter(
         """
         SELECT id, city, state, graduation_year, school_type, categories,
                profile_completeness_score, average_rating, total_campaigns_completed,
-               challenges_submitted_count, challenges_converted_count
+               challenges_submitted_count, challenges_converted_count, badges, badges_earned_count
         FROM public.rep_profiles
         WHERE recruiter_visible = TRUE
           AND ($1::int IS NULL OR graduation_year = $1)
@@ -404,6 +442,8 @@ async def search_for_recruiter(
                 if row["challenges_submitted_count"]
                 else None
             ),
+            badge_count=row["badges_earned_count"],
+            badge_titles=[b["badge_title"] for b in (json.loads(row["badges"]) if isinstance(row["badges"], str) else (row["badges"] or []))],
         )
         for row in rows
     ]
@@ -421,7 +461,7 @@ async def browse_for_brand(
         """
         SELECT id, city, state, graduation_year, school_type, categories,
                profile_completeness_score, average_rating, total_campaigns_completed,
-               challenges_submitted_count, challenges_converted_count
+               challenges_submitted_count, challenges_converted_count, badges, badges_earned_count
         FROM public.rep_profiles
         WHERE recruiter_visible = TRUE
           AND ($1::text[] IS NULL OR categories && $1::text[])
@@ -448,6 +488,8 @@ async def browse_for_brand(
                 if row["challenges_submitted_count"]
                 else None
             ),
+            badge_count=row["badges_earned_count"],
+            badge_titles=[b["badge_title"] for b in (json.loads(row["badges"]) if isinstance(row["badges"], str) else (row["badges"] or []))],
         )
         for row in rows
     ]

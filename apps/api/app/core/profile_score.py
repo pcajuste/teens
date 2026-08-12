@@ -12,6 +12,8 @@ weights, only "define the scoring rule explicitly in code comments"):
   - at least one social handle (instagram or tiktok):          15 pts
   - both social handles present:                                5 pts (on top of the 15 above)
   - at least one completed campaign (total_campaigns_completed > 0): 25 pts
+  - each verified learning-module badge (Build Prompt 8H deliverable 4),
+    up to 3 badges counted:                                       5 pts each (max 15 pts)
 
 Rationale for the weighting: display_name/school_name/city/state/
 graduation_year are all NOT NULL at the DB layer (Section 7), so every
@@ -29,7 +31,19 @@ _SCHOOL_TYPE_WEIGHT = 15
 _ONE_HANDLE_WEIGHT = 15
 _BOTH_HANDLES_BONUS = 5
 _COMPLETED_CAMPAIGN_WEIGHT = 25
+# Build Prompt 8H deliverable 4: each verified badge contributes 5 pts,
+# up to a maximum of 3 badges counted (15 pts). Badges beyond the 3rd
+# add nothing further to the score -- the score rewards "has verified
+# credentials," not "has accumulated the most badges" (a leaderboard-
+# adjacent signal the spec explicitly forbids building anywhere).
+_BADGE_WEIGHT = 5
+_MAX_BADGES_COUNTED = 3
 
+# The pre-8H fields already summed to 100 on their own (a rep with zero
+# badges can still reach a full score) -- badges are capped headroom on
+# top, not a renormalized share of the 100. The final score is clamped
+# to 100 below since bio/category/school/handles/campaign completion
+# alone can already reach that ceiling.
 MAX_SCORE = (
     _BIO_WEIGHT
     + _CATEGORY_WEIGHT
@@ -49,6 +63,7 @@ def compute_profile_completeness_score(
     instagram_handle: str | None,
     tiktok_handle: str | None,
     total_campaigns_completed: int,
+    badges_earned_count: int = 0,
 ) -> int:
     score = 0
 
@@ -71,4 +86,6 @@ def compute_profile_completeness_score(
     if total_campaigns_completed > 0:
         score += _COMPLETED_CAMPAIGN_WEIGHT
 
-    return min(score, MAX_SCORE)
+    score += min(max(badges_earned_count, 0), _MAX_BADGES_COUNTED) * _BADGE_WEIGHT
+
+    return min(score, 100)

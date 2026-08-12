@@ -37,6 +37,7 @@ from app.repositories import (
     rep_profiles_repository,
     users_repository,
 )
+from app.routers.learning_modules import enforce_ftc_gate
 from app.schemas.admin import SafetyReportCreateRequest, SafetyReportResponse
 from app.schemas.recruiters import InboxMessageResponse
 from app.schemas.reps import (
@@ -109,6 +110,7 @@ def _score(profile: rep_profiles_repository.RepProfile) -> int:
         instagram_handle=profile.instagram_handle,
         tiktok_handle=profile.tiktok_handle,
         total_campaigns_completed=profile.total_campaigns_completed,
+        badges_earned_count=profile.badges_earned_count,
     )
 
 
@@ -134,6 +136,8 @@ def _to_profile_response(p: rep_profiles_repository.RepProfile) -> RepProfileRes
         challenges_submitted_count=p.challenges_submitted_count,
         challenges_converted_count=p.challenges_converted_count,
         challenge_conversion_rate=p.challenge_conversion_rate,
+        badges=p.badges,
+        badges_earned_count=p.badges_earned_count,
     )
 
 
@@ -159,6 +163,8 @@ def _to_preview_response(p: rep_profiles_repository.RepProfile) -> RepProfilePre
         challenges_submitted_count=p.challenges_submitted_count,
         challenges_converted_count=p.challenges_converted_count,
         challenge_conversion_rate=p.challenge_conversion_rate,
+        badges=p.badges,
+        badges_earned_count=p.badges_earned_count,
     )
 
 
@@ -639,8 +645,17 @@ async def accept_campaign(
     body: AcceptCampaignRequest = AcceptCampaignRequest(),
     user: AuthenticatedUser = Depends(require_role("rep")),
     conn: asyncpg.Connection = Depends(get_connection),
+    settings: Settings = Depends(get_settings),
 ) -> CampaignParticipationResponse:
     profile = await _get_own_profile(conn, user)
+
+    # Build Prompt 8H: FTC Disclosure Essentials module gate -- runs
+    # before any other business logic in this handler (spec: "Add at
+    # the start of the accept handler, before any other business
+    # logic"). No-op with a warning log if FTC_MODULE_ID isn't
+    # configured yet.
+    await enforce_ftc_gate(conn, settings, profile.id)
+
     cr = await campaign_reps_repository.get_for_rep_and_campaign(conn, profile.id, campaign_id)
     if cr is None:
         raise HTTPException(

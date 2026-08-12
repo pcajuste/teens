@@ -47,6 +47,8 @@ class RecruiterSearchCardResponse(BaseModel):
     total_campaigns_completed: int
     challenges_converted_count: int = 0
     challenge_conversion_rate: float | None = None
+    badge_count: int = 0
+    badge_titles: list[str] = []
 
 
 class RecruiterRepDetailResponse(BaseModel):

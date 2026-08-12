@@ -71,6 +71,8 @@ class RepProfileResponse(BaseModel):
     challenges_submitted_count: int = 0
     challenges_converted_count: int = 0
     challenge_conversion_rate: float | None = None
+    badges: list[dict] = []
+    badges_earned_count: int = 0
 
 
 class RepProfilePreviewResponse(BaseModel):
@@ -97,6 +99,8 @@ class RepProfilePreviewResponse(BaseModel):
     challenges_submitted_count: int = 0
     challenges_converted_count: int = 0
     challenge_conversion_rate: float | None = None
+    badges: list[dict] = []
+    badges_earned_count: int = 0
 
 
 class AchievementRecordResponse(BaseModel):
