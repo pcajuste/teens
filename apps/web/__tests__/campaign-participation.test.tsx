@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { ParticipationSection } from "@/app/(rep)/rep/campaigns/[id]/page";
+import { ParticipationSection } from "@/components/rep/participation-section";
 import type { CampaignParticipation } from "@/lib/types";
 
 function participation(overrides: Partial<CampaignParticipation> = {}): CampaignParticipation {
