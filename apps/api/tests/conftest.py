@@ -124,7 +124,8 @@ def db(settings):
 def _clean_database(db):
     yield
     db.execute(
-        "TRUNCATE public.stripe_events, public.safety_reports, public.parent_auth_tokens, public.parent_records, "
+        "TRUNCATE public.stripe_events, public.safety_reports, public.intelligence_events_anonymized, "
+        "public.parent_auth_tokens, public.parent_records, "
         "public.campaign_reps, "
         "public.campaigns, public.recruiter_saved_profiles, public.recruiter_contacts, public.recruiter_profiles, "
         "public.rep_profiles, public.brand_profiles, public.users, auth.users CASCADE"
@@ -334,5 +335,119 @@ def seed_pending_campaign(db):
             parent_approval_status,
         )
         return campaign_id
+
+    return _seed
+
+
+@dataclass
+class SeededIntelligenceSource:
+    campaign_rep_id: str
+    campaign_id: str
+    rep_id: str
+    rep_user_id: str
+
+
+@pytest.fixture()
+def seed_confirmed_campaign_rep(db):
+    """Build Prompt 14: seeds a full-PII rep + brand + campaign +
+    campaign_reps row already in 'confirmed' or 'paid' status, for
+    testing the intelligence write path (write_intelligence_events job)
+    directly. Every PII field the build prompt calls out (display_name,
+    school_name, instagram_handle, tiktok_handle, city, school_type) is
+    populated non-default so a test can assert none of it survives into
+    intelligence_events_anonymized."""
+
+    def _seed(
+        *,
+        status: str = "confirmed",
+        target_categories: list[str] | None = None,
+        payout_per_rep_cents: int = 12000,
+        school_type: str | None = "public",
+        city: str = "Austin",
+        state: str = "TX",
+        display_name: str = "Jordan PII-Test Rep",
+        school_name: str = "Identifying High School",
+        instagram_handle: str = "jordan_ig_handle",
+        tiktok_handle: str = "jordan_tt_handle",
+    ) -> SeededIntelligenceSource:
+        rep_user_id = str(uuid.uuid4())
+        rep_id = str(uuid.uuid4())
+        brand_user_id = str(uuid.uuid4())
+        brand_id = str(uuid.uuid4())
+        campaign_id = str(uuid.uuid4())
+        campaign_rep_id = str(uuid.uuid4())
+        rep_email = f"rep-{rep_user_id}@example.com"
+        brand_email = f"brand-{brand_user_id}@example.com"
+
+        db.execute("INSERT INTO auth.users (id, email) VALUES ($1, $2)", rep_user_id, rep_email)
+        db.execute(
+            "INSERT INTO public.users (id, email, role, account_status, date_of_birth) "
+            "VALUES ($1, $2, 'rep', 'active', '2008-01-01')",
+            rep_user_id,
+            rep_email,
+        )
+        db.execute(
+            """
+            INSERT INTO public.rep_profiles
+                (id, user_id, display_name, school_name, school_type, city, state, graduation_year,
+                 categories, instagram_handle, tiktok_handle)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, 2027, $8, $9, $10)
+            """,
+            rep_id,
+            rep_user_id,
+            display_name,
+            school_name,
+            school_type,
+            city,
+            state,
+            target_categories or ["gaming"],
+            instagram_handle,
+            tiktok_handle,
+        )
+        db.execute("INSERT INTO auth.users (id, email) VALUES ($1, $2)", brand_user_id, brand_email)
+        db.execute(
+            "INSERT INTO public.users (id, email, role, account_status, date_of_birth) "
+            "VALUES ($1, $2, 'brand', 'active', '1990-01-01')",
+            brand_user_id,
+            brand_email,
+        )
+        db.execute(
+            "INSERT INTO public.brand_profiles (id, user_id, company_name) VALUES ($1, $2, 'Acme Co')",
+            brand_id,
+            brand_user_id,
+        )
+        db.execute(
+            """
+            INSERT INTO public.campaigns
+                (id, brand_id, title, status, product_name, campaign_goal, key_messaging,
+                 deliverables_description, target_categories, budget_cents, platform_fee_cents,
+                 rep_pool_cents, payout_per_rep_cents, start_date, end_date)
+            VALUES ($1, $2, 'Test Campaign', 'active', 'Widget', 'Awareness', 'Widgets are great',
+                    'One TikTok post', $3, 100000, 35000, 65000, $4, CURRENT_DATE, CURRENT_DATE + 30)
+            """,
+            campaign_id,
+            brand_id,
+            target_categories or ["gaming"],
+            payout_per_rep_cents,
+        )
+        confirmed_at = datetime.now(timezone.utc)
+        paid_at = confirmed_at if status == "paid" else None
+        db.execute(
+            """
+            INSERT INTO public.campaign_reps
+                (id, campaign_id, rep_id, status, payout_cents, confirmed_at, paid_at, ftc_disclosure_accepted)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE)
+            """,
+            campaign_rep_id,
+            campaign_id,
+            rep_id,
+            status,
+            payout_per_rep_cents,
+            confirmed_at,
+            paid_at,
+        )
+        return SeededIntelligenceSource(
+            campaign_rep_id=campaign_rep_id, campaign_id=campaign_id, rep_id=rep_id, rep_user_id=rep_user_id
+        )
 
     return _seed

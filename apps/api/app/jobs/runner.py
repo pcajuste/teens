@@ -28,7 +28,9 @@ from datetime import datetime, timezone
 from app.core.config import get_settings
 from app.db.pool import get_pool
 from app.repositories.campaign_reps_repository import auto_decline_expired_parent_approvals
+from app.repositories.intelligence_repository import insert_events, list_pending_events, mark_written
 from app.repositories.parent_records_repository import list_digest_enabled
+from app.services.intelligence_service import anonymize
 from app.services.parent_service import send_digest_email
 from app.services.resend_client import get_resend_client
 
@@ -81,6 +83,30 @@ async def auto_decline_expired_parent_approvals_job() -> None:
     pool = get_pool()
     async with pool.acquire() as conn:
         await auto_decline_expired_parent_approvals(conn, now=datetime.now(timezone.utc))
+
+
+@register_job("write_intelligence_events")
+async def write_intelligence_events_job() -> None:
+    """Runs frequently (e.g. every 15 minutes via Railway cron), same
+    cadence as auto_decline_expired_parent_approvals_job above. Build
+    Prompt 14 deliverable 2: fires whenever a campaign_reps row has
+    reached 'confirmed' or 'paid'. The runner is poll-based (Prompt 3
+    has no per-row DB trigger into the API), so "fires when a row
+    transitions" is implemented as "processes every such row that
+    hasn't been processed yet" -- intelligence_repository.list_pending_events
+    filters on campaign_reps.intelligence_event_written_at IS NULL,
+    which this job sets once its rows are written, so each transition
+    is anonymized exactly once. app/services/intelligence_service.anonymize
+    does the actual PII-stripping/bucketing; this job only wires the
+    read -> anonymize -> write -> mark-done pipeline together."""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        pending = await list_pending_events(conn)
+        if not pending:
+            return
+        events = [event for source in pending for event in anonymize(source)]
+        await insert_events(conn, events)
+        await mark_written(conn, [source.campaign_rep_id for source in pending], at=datetime.now(timezone.utc))
 
 
 router = APIRouter(prefix="/internal/jobs", tags=["jobs"])

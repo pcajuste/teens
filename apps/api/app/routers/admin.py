@@ -22,7 +22,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from app.core.config import Settings, get_settings
 from app.core.security import AuthenticatedUser, require_role
 from app.db.pool import get_connection
-from app.repositories import admin_repository, campaign_reps_repository, campaigns_repository, rep_profiles_repository, users_repository
+from app.repositories import admin_repository, campaign_reps_repository, campaigns_repository, intelligence_repository, rep_profiles_repository, users_repository
 from app.schemas.admin import (
     AccountType,
     ApprovalActionResponse,
@@ -43,6 +43,7 @@ from app.schemas.admin import (
     SafetyReportResponse,
     StuckPaymentResponse,
 )
+from app.schemas.intelligence import TrendBucketResponse
 from app.services import payout_service
 from app.services.email_service import send_account_approved_email, send_account_rejected_email
 from app.services.resend_client import ResendClient
@@ -399,3 +400,32 @@ async def resolve_safety_report(
     if updated is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"code": "not_found_or_not_open", "message": "No open safety report with that id."})
     return SafetyReportResponse(**asdict(updated))
+
+
+# ══════════════════════════════════════════════════════════════════
+# Build Prompt 14 deliverable 4: Intelligence Layer trend reports.
+# Every route below queries ONLY public.intelligence_events_anonymized
+# (via app/repositories/intelligence_repository.py) -- never a join to
+# rep_profiles/users/campaign_reps/campaigns. Each group smaller than
+# 10 underlying events comes back as the literal "insufficient sample
+# size" marker (Section 9), not a real number and not an empty result.
+# ══════════════════════════════════════════════════════════════════
+
+
+def _trend_to_response(buckets: list[intelligence_repository.TrendBucket]) -> list[TrendBucketResponse]:
+    return [TrendBucketResponse(group=b.group, sample_size=b.sample_size, completed_share=b.completed_share) for b in buckets]
+
+
+@admin_router.get("/intelligence/trends/category", response_model=list[TrendBucketResponse])
+async def intelligence_trends_by_category(conn: asyncpg.Connection = Depends(get_connection)) -> list[TrendBucketResponse]:
+    return _trend_to_response(await intelligence_repository.trend_by_category(conn))
+
+
+@admin_router.get("/intelligence/trends/region", response_model=list[TrendBucketResponse])
+async def intelligence_trends_by_region(conn: asyncpg.Connection = Depends(get_connection)) -> list[TrendBucketResponse]:
+    return _trend_to_response(await intelligence_repository.trend_by_region(conn))
+
+
+@admin_router.get("/intelligence/trends/school-type", response_model=list[TrendBucketResponse])
+async def intelligence_trends_by_school_type(conn: asyncpg.Connection = Depends(get_connection)) -> list[TrendBucketResponse]:
+    return _trend_to_response(await intelligence_repository.trend_by_school_type(conn))
