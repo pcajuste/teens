@@ -65,11 +65,11 @@ test.describe("rep login", () => {
     await expect(page).toHaveURL(/\/rep\/onboarding$/, { timeout: 15_000 });
 
     // Fresh, signed-out context: signup's own auto-sign-in proves
-    // nothing about the separate /rep/login code path.
+    // nothing about the separate /login code path.
     await page.context().clearCookies();
     await page.evaluate(() => localStorage.clear());
 
-    await page.goto("/rep/login");
+    await page.goto("/login");
     await page.getByLabel("Email", { exact: true }).fill(email);
     await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
     await page.getByRole("button", { name: "Sign in" }).click();
@@ -90,12 +90,12 @@ test.describe("rep login", () => {
     await page.context().clearCookies();
     await page.evaluate(() => localStorage.clear());
 
-    await page.goto("/rep/login");
+    await page.goto("/login");
     await page.getByLabel("Email", { exact: true }).fill(email);
     await page.getByLabel("Password", { exact: true }).fill("wrong-password-entirely");
     await page.getByRole("button", { name: "Sign in" }).click();
 
-    await expect(page).toHaveURL(/\/rep\/login$/);
+    await expect(page).toHaveURL(/\/login$/);
     await expect(page.locator("p.text-destructive")).toBeVisible({ timeout: 10_000 });
   });
 });

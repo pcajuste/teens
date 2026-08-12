@@ -81,9 +81,9 @@ async function approveBrand(email: string) {
  * in re-authenticates with GoTrue, which stamps the current
  * app_metadata into a brand-new token. */
 async function reloginToPickUpApproval(page: import("@playwright/test").Page, email: string) {
-  await page.goto("/brand/login");
+  await page.goto("/login");
   await page.evaluate(() => localStorage.clear());
-  await page.goto("/brand/login");
+  await page.goto("/login");
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByRole("button", { name: "Sign in" }).click();

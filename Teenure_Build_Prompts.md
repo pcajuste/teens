@@ -692,6 +692,51 @@ preserved below for context (0A's own acceptance criterion:
 "identify them as the same product from typography/color/spacing
 alone").
 
+**Known issue — login routes and gates need consolidation (not yet
+fixed).** `/rep/login` (this prompt) and `/brand/login` (Prompt 9)
+exist as separate pages under their respective route groups. That's a
+misapplication of the route-group pattern: route groups organize code,
+they shouldn't fragment a single auth surface into per-role URLs.
+Signup genuinely differs by role (age gate + parental consent for
+reps, business verification for brands, institution verification for
+recruiters) and should stay split under `/signup/rep`,
+`/signup/brand`, `/signup/recruiter`. Login does not — one set of
+credentials, one page, role read from the account after
+authentication. `/parent/auth` stays separate by design (magic-link,
+not a credentials login) and `/admin` stays separate and should never
+be reachable via role-detection fallthrough from the unified login.
+
+The same copy-paste pattern exists one layer up: `(rep)/rep-gate.tsx`
+and `(brand)/brand-gate.tsx` implement near-identical
+loading/redirect/suspended-account-status logic, differing only in
+`PUBLIC_PATHS` and the pending-state copy. This should collapse the
+same way the login pages do — it's the same underlying mistake, not a
+second one.
+
+Required fix, to land before Recruiter Portal frontend (Prompt 12)
+adds a third per-role login page and a third per-role gate,
+compounding both:
+- Collapse `/rep/login` and `/brand/login` into a single `/login`
+  page reused by all roles (and by the recruiter login this prompt
+  suite has not yet built).
+- Collapse `RepGate` and `BrandGate` into one shared `useRoleGate`
+  hook (or `<AuthGate roles={[...]} pendingState={...}>` component)
+  parameterized by allowed roles, public paths, and pending-status
+  copy — mirroring how the backend already does this correctly via
+  `require_role(*roles)` in `app/core/security.py`, rather than one
+  gate component per route group.
+- Role-based redirect after auth must be resolved **server-side**
+  from the authenticated session/DB record, never from a client-
+  supplied redirect/role param — consistent with this spec's
+  server-side-only rule for recruiter credit deduction and financial
+  calculations (Section 9).
+- Update `tests-e2e-auth/rep-signup-and-login.spec.ts` and the brand
+  auth E2E suite to point at `/login` once consolidated.
+
+Prompts 12 and 13 below each carry a one-line pointer back to this
+fix so it isn't independently rediscovered (and re-duplicated) per
+portal.
+
 ```
 Build the Rep Portal under apps/web/app/(rep)/.
 
@@ -1231,6 +1276,14 @@ Acceptance criteria:
 
 **Depends on:** Prompt 11, [Section 0A](#0a-design-system--ux-standards).
 
+**Before building auth for this portal:** do not add `/recruiter/login`
+or a `RecruiterGate` component. Prompt 6 documents an unresolved
+login/gate fragmentation issue (`/rep/login` vs `/brand/login`,
+`RepGate` vs `BrandGate`) that this portal must not repeat as a third
+copy — land the shared `/login` page and `useRoleGate`/`<AuthGate>`
+fix first (or as part of this prompt if still outstanding), then point
+recruiter auth at it.
+
 ```
 Build the Recruiter Portal under apps/web/app/(recruiter)/.
 
@@ -1319,6 +1372,13 @@ Acceptance criteria:
 so density/efficiency for staff working queues all day matters more
 than first-impression polish, but still uses the same design tokens,
 not a fourth divergent style).
+
+**Auth note:** admin stays a genuinely separate, heavily-protected
+surface (per Prompt 6's login-consolidation note) and must not be
+reachable via role-detection fallthrough from the unified `/login`
+page — but its own gate should still reuse the `useRoleGate`/
+`<AuthGate>` primitive from that fix rather than a bespoke
+`AdminGate`, since the loading/redirect mechanics are the same shape.
 
 ```
 Implement Admin Portal — Phase 4 from Section 5, admin routes from

@@ -8,6 +8,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/lib/supabase";
 import { api, ApiError } from "@/lib/api";
+import type { MeResponse } from "@/lib/types";
+
+// Single credentials page for every role. Role is looked up server-side via
+// GET /auth/me after sign-in -- the client never chooses where to land, so a
+// forged redirect/role query param can't send a rep into the brand portal.
+const PORTAL_PATH_BY_ROLE: Record<string, string> = {
+  rep: "/rep",
+  brand: "/brand",
+  recruiter: "/recruiter",
+  admin: "/admin",
+};
 
 export default function LoginPage() {
   const router = useRouter();
@@ -21,13 +32,21 @@ export default function LoginPage() {
     e.preventDefault();
     setPending(true);
     setError(null);
+
     const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
     if (signInError) {
       setError(signInError.message);
       setPending(false);
       return;
     }
-    router.push("/rep");
+
+    try {
+      const me = await api.get<MeResponse>("/auth/me");
+      router.push(PORTAL_PATH_BY_ROLE[me.role] ?? "/");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not load your account.");
+      setPending(false);
+    }
   }
 
   async function handleResendConsent() {
@@ -47,8 +66,17 @@ export default function LoginPage() {
           <p>
             New here?{" "}
             <a href="/rep/signup" className="font-medium text-primary hover:underline">
-              Sign up
+              Sign up as a rep
             </a>
+            ,{" "}
+            <a href="/brand/signup" className="font-medium text-primary hover:underline">
+              brand
+            </a>
+            , or{" "}
+            <a href="/recruiter/signup" className="font-medium text-primary hover:underline">
+              recruiter
+            </a>
+            .
           </p>
           <button type="button" onClick={handleResendConsent} className="text-primary hover:underline">
             Resend parental consent email

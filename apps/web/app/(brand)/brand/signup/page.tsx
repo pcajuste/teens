@@ -37,7 +37,7 @@ export default function BrandSignupPage() {
 
       const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
       if (signInError) {
-        router.push("/brand/login");
+        router.push("/login");
         return;
       }
       router.push("/brand/onboarding");
@@ -55,7 +55,7 @@ export default function BrandSignupPage() {
       footer={
         <>
           Already have an account?{" "}
-          <a href="/brand/login" className="font-medium text-primary hover:underline">
+          <a href="/login" className="font-medium text-primary hover:underline">
             Sign in
           </a>
         </>

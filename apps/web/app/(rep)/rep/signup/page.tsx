@@ -42,7 +42,7 @@ export default function SignupPage() {
       const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
       if (signInError) {
         setError("Account created. Please sign in.");
-        router.push("/rep/login");
+        router.push("/login");
         return;
       }
       router.push("/rep/onboarding");
@@ -90,7 +90,7 @@ export default function SignupPage() {
       footer={
         <>
           Already have an account?{" "}
-          <a href="/rep/login" className="font-medium text-primary hover:underline">
+          <a href="/login" className="font-medium text-primary hover:underline">
             Sign in
           </a>
         </>

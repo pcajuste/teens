@@ -1,12 +1,11 @@
 import { test, expect, type ConsoleMessage, type Page } from "@playwright/test";
 
-// Smoke coverage for the two auth pages that are reachable without an
-// authenticated Supabase session (see app/(rep)/rep-gate.tsx's
-// PUBLIC_PATHS). Every other /rep/* route is gated behind RepGate and
-// redirects to /rep/login when there is no session -- exercising them
-// meaningfully requires a real Supabase/Postgres backend running
-// alongside this suite, which is a separate follow-up (the demo portal
-// at /demo/rep, covered in demo-rep-portal.spec.ts, has no such
+// Smoke coverage for the rep signup page (still role-specific) and the
+// shared /login page. Every other /rep/* route is gated behind AuthGate
+// (lib/auth-gate.tsx) and redirects to /login when there is no session --
+// exercising them meaningfully requires a real Supabase/Postgres backend
+// running alongside this suite, which is a separate follow-up (the demo
+// portal at /demo/rep, covered in demo-rep-portal.spec.ts, has no such
 // dependency and is fully covered here).
 
 function collectPageErrors(page: Page) {
@@ -43,11 +42,11 @@ test.describe("/rep/signup", () => {
   });
 });
 
-test.describe("/rep/login", () => {
+test.describe("/login", () => {
   test("loads and renders the login form without a client-side exception", async ({ page }) => {
     const { errors, consoleErrors } = collectPageErrors(page);
 
-    await page.goto("/rep/login");
+    await page.goto("/login");
 
     await expect(page.getByRole("heading", { name: "Sign in to Teenure" })).toBeVisible();
     await expect(page.getByLabel("Email", { exact: true })).toBeVisible();
@@ -61,9 +60,9 @@ test.describe("/rep/login", () => {
 });
 
 test.describe("gated /rep routes", () => {
-  test("visiting the dashboard without a session redirects to /rep/login", async ({ page }) => {
+  test("visiting the dashboard without a session redirects to /login", async ({ page }) => {
     await page.goto("/rep");
-    await expect(page).toHaveURL(/\/rep\/login$/);
+    await expect(page).toHaveURL(/\/login$/);
     await expect(page.getByRole("heading", { name: "Sign in to Teenure" })).toBeVisible();
   });
 });
