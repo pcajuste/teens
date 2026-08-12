@@ -81,6 +81,14 @@ class Settings(BaseSettings):
     recruiter_price_id_monthly: str | None = None
     recruiter_price_id_annual: str | None = None
 
+    # ── Category Exclusivity (Build Prompt 8C) ──────────────────────
+    # Admin-set pricing for a category+city exclusivity window -- a
+    # config value, not a schema value, so pricing changes never
+    # require a migration (Section 8C: "these are config values, not
+    # schema values").
+    exclusivity_base_rate_cents_per_day: int = 5000
+    exclusivity_max_days: int = 90
+
     @property
     def allowed_origins(self) -> list[str]:
         return [origin.strip() for origin in self.allowed_origins_raw.split(",") if origin.strip()]

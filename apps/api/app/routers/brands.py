@@ -37,6 +37,7 @@ from app.repositories import (
     rep_profiles_repository,
     users_repository,
 )
+from app.services import exclusivity_service
 from app.schemas.brands import (
     ActivateCampaignResponse,
     BrandProfileResponse,
@@ -64,6 +65,56 @@ from app.services.resend_client import ResendClient, resend_client_dependency
 MILESTONE_DISPUTE_WINDOW_HOURS = 24
 
 brands_router = APIRouter(prefix="/brands", tags=["brands"])
+
+EXCLUSIVITY_CONFLICT_DETAIL = {
+    "code": "exclusivity_conflict",
+    "message": (
+        "Another brand holds exclusivity in this category and market during "
+        "your requested campaign period. Consider a different category, city, "
+        "or time window."
+    ),
+}
+
+
+def _date_to_datetime(d: date) -> datetime:
+    return datetime(d.year, d.month, d.day, tzinfo=timezone.utc)
+
+
+async def _check_campaign_exclusivity_conflict(
+    conn: asyncpg.Connection,
+    *,
+    target_categories: list[str],
+    target_cities: list[str],
+    start_date: date,
+    end_date: date | None,
+    exclude_brand_id: str,
+) -> None:
+    """Build Prompt 8C deliverable 5: runs
+    exclusivity_service.check_exclusivity_conflict for every
+    (category, city) pair a campaign targets -- the campaigns schema
+    stores target_categories/target_cities as arrays (Section 7), while
+    an exclusivity agreement is scoped to exactly one category and at
+    most one city, so a campaign that targets several categories/cities
+    conflicts if ANY one of those combinations is exclusively held.
+    Cities default to [None] (checked against platform-wide-or-null-city
+    agreements only) when the campaign doesn't target any specific
+    city. Raises the exact 409 the spec text asks for on first
+    conflict found."""
+    starts_at = _date_to_datetime(start_date)
+    ends_at = _date_to_datetime(end_date) if end_date is not None else starts_at + timedelta(days=30)
+    cities: list[str | None] = list(target_cities) if target_cities else [None]
+    for category in target_categories:
+        for city in cities:
+            conflict_brand_id = await exclusivity_service.check_exclusivity_conflict(
+                conn,
+                category=category,
+                city=city,
+                starts_at=starts_at,
+                ends_at=ends_at,
+                exclude_brand_id=exclude_brand_id,
+            )
+            if conflict_brand_id is not None:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=EXCLUSIVITY_CONFLICT_DETAIL)
 
 
 def _require_brand_profile_row(row) -> brand_profiles_repository.BrandProfile:
@@ -271,34 +322,60 @@ async def create_campaign(
         budget_cents=body.budget_cents, max_reps=body.max_reps, platform_fee_percent=settings.stripe_platform_fee_percent
     )
 
-    # Atomic: campaign + its campaign_milestones rows are created in one
-    # transaction (Build Prompt 8B deliverable 1: "If milestone creation
-    # fails, roll back the campaign creation").
-    async with conn.transaction():
-        campaign = await campaigns_repository.create_campaign(
-            conn,
-            brand_id=brand.id,
-            title=body.title,
-            product_name=body.product_name,
-            campaign_goal=body.campaign_goal,
-            key_messaging=body.key_messaging,
-            prohibited_content=body.prohibited_content,
-            deliverables_description=body.deliverables_description,
-            target_categories=body.target_categories,
-            target_cities=body.target_cities,
-            max_reps=body.max_reps,
-            budget_cents=body.budget_cents,
-            platform_fee_cents=platform_fee_cents,
-            rep_pool_cents=rep_pool_cents,
-            payout_per_rep_cents=payout_per_rep_cents,
-            start_date=body.start_date,
-            end_date=body.end_date,
-            payment_type=body.payment_type,
-        )
-        if body.payment_type == "milestone":
-            await campaign_milestones_repository.create_milestones(
-                conn, campaign.id, [m.model_dump() for m in body.milestones]
-            )
+    # Build Prompt 8C deliverable 5: the exclusivity conflict check must
+    # run in the same transaction as the campaign INSERT, and if the
+    # check passes but the INSERT fails due to a concurrent exclusivity
+    # purchase, the whole check+INSERT is retried once before giving up
+    # (Section 8C: "If the conflict check passes but the INSERT fails
+    # due to a concurrent exclusivity purchase: the INSERT must be
+    # retried once before returning an error"). Also atomic with
+    # campaign_milestones creation (Build Prompt 8B deliverable 1).
+    last_exc: Exception | None = None
+    campaign = None
+    for attempt in range(2):
+        try:
+            async with conn.transaction():
+                await _check_campaign_exclusivity_conflict(
+                    conn,
+                    target_categories=body.target_categories,
+                    target_cities=body.target_cities,
+                    start_date=body.start_date,
+                    end_date=body.end_date,
+                    exclude_brand_id=brand.id,
+                )
+                campaign = await campaigns_repository.create_campaign(
+                    conn,
+                    brand_id=brand.id,
+                    title=body.title,
+                    product_name=body.product_name,
+                    campaign_goal=body.campaign_goal,
+                    key_messaging=body.key_messaging,
+                    prohibited_content=body.prohibited_content,
+                    deliverables_description=body.deliverables_description,
+                    target_categories=body.target_categories,
+                    target_cities=body.target_cities,
+                    max_reps=body.max_reps,
+                    budget_cents=body.budget_cents,
+                    platform_fee_cents=platform_fee_cents,
+                    rep_pool_cents=rep_pool_cents,
+                    payout_per_rep_cents=payout_per_rep_cents,
+                    start_date=body.start_date,
+                    end_date=body.end_date,
+                    payment_type=body.payment_type,
+                )
+                if body.payment_type == "milestone":
+                    await campaign_milestones_repository.create_milestones(
+                        conn, campaign.id, [m.model_dump() for m in body.milestones]
+                    )
+            break
+        except HTTPException:
+            raise
+        except Exception as exc:  # noqa: BLE001 -- genuinely any DB error triggers the documented single retry
+            last_exc = exc
+            campaign = None
+            continue
+    if campaign is None:
+        raise last_exc
     return _to_campaign_response(campaign)
 
 
@@ -410,6 +487,20 @@ async def activate_campaign(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"code": "invalid_max_reps", "message": "max_reps must be greater than 0."},
+        )
+
+    # Build Prompt 8C deliverable 5: the conflict check also fires at
+    # activation, not just creation -- a campaign might be created in
+    # draft before any exclusivity agreement exists, then a competitor
+    # buys exclusivity before this brand activates it.
+    async with conn.transaction():
+        await _check_campaign_exclusivity_conflict(
+            conn,
+            target_categories=campaign.target_categories,
+            target_cities=campaign.target_cities,
+            start_date=campaign.start_date,
+            end_date=campaign.end_date,
+            exclude_brand_id=brand.id,
         )
 
     customer_id = await get_or_create_stripe_customer_id(conn, settings, brand)

@@ -37,14 +37,23 @@ from app.db.pool import get_connection
 from app.repositories import (
     brand_profiles_repository,
     campaigns_repository,
+    exclusivity_repository,
     recruiter_profiles_repository,
     rep_profiles_repository,
     stripe_events_repository,
     users_repository,
 )
 from app.services import payout_service, stripe_service
-from app.services.email_service import send_campaign_payment_failed_email
+from app.services.email_service import (
+    send_campaign_payment_failed_email,
+    send_exclusivity_purchase_confirmed_email,
+    send_exclusivity_purchase_failed_email,
+)
 from app.services.resend_client import ResendClient, resend_client_dependency
+
+import logging
+
+_logger = logging.getLogger("teenure.webhooks.exclusivity")
 
 router = APIRouter(tags=["webhooks"])
 
@@ -88,11 +97,16 @@ async def _handle_payment_intent_succeeded(conn: asyncpg.Connection, event: "str
     id never matches a campaign row."""
     intent = event["data"]["object"]
 
-    if "metadata" in intent and intent["metadata"].get("type") == "recruiter_credit_topup":
-        recruiter_id = intent["metadata"].get("recruiter_id")
-        credits = int(intent["metadata"].get("credits", "0"))
+    if "metadata" in intent and "type" in intent["metadata"] and intent["metadata"]["type"] == "recruiter_credit_topup":
+        metadata = intent["metadata"]
+        recruiter_id = metadata["recruiter_id"] if "recruiter_id" in metadata else None
+        credits = int(metadata["credits"]) if "credits" in metadata else 0
         if recruiter_id and credits > 0:
             await recruiter_profiles_repository.add_credits(conn, recruiter_id, credits=credits)
+        return
+
+    if "metadata" in intent and "type" in intent["metadata"] and intent["metadata"]["type"] == "category_exclusivity":
+        await _handle_exclusivity_payment_succeeded(conn, intent, resend_client)
         return
 
     campaign = await campaigns_repository.get_by_stripe_payment_intent_id(conn, intent["id"])
@@ -101,11 +115,57 @@ async def _handle_payment_intent_succeeded(conn: asyncpg.Connection, event: "str
     await campaigns_repository.set_active(conn, campaign.id)
 
 
+async def _handle_exclusivity_payment_succeeded(conn: asyncpg.Connection, intent, resend_client: ResendClient) -> None:
+    """Build Prompt 8C deliverable 4: payment_intent.succeeded ->
+    payment_status='paid', brand confirmation email, admin audit log.
+    Unknown PaymentIntent id (not ours yet, or a race with the
+    purchase-row insert) is a silent no-op, matching this file's other
+    handlers' precedent."""
+    agreement = await exclusivity_repository.get_by_payment_intent_id(conn, intent["id"])
+    if agreement is None:
+        return
+    updated = await exclusivity_repository.mark_paid(conn, agreement.id)
+    if updated is None:
+        # Already 'paid' -- a retried webhook delivery for the same
+        # event id never reaches here twice (stripe_events_repository
+        # guards that before dispatch), but a second, distinct event for
+        # the same intent should still be a no-op rather than re-sending
+        # the confirmation email.
+        return
+    brand = await brand_profiles_repository.get_by_id(conn, updated.brand_id)
+    if brand is None:
+        return
+    user = await users_repository.get_user_by_id(conn, brand.user_id)
+    if user is None:
+        return
+    await send_exclusivity_purchase_confirmed_email(
+        user.email,
+        category=updated.category,
+        city=updated.city,
+        starts_at=updated.starts_at.isoformat(),
+        ends_at=updated.ends_at.isoformat(),
+        client=resend_client,
+    )
+    _logger.info(
+        "exclusivity_agreement_paid: agreement_id=%s brand_id=%s category=%s city=%s fee_cents=%s",
+        updated.id,
+        updated.brand_id,
+        updated.category,
+        updated.city,
+        updated.fee_cents,
+    )
+
+
 async def _handle_payment_intent_failed(conn: asyncpg.Connection, event: "stripe.Event", settings: Settings, resend_client: ResendClient) -> None:
     """Build Prompt 10 deliverable 3: 'pending_payment' -> 'payment_failed',
     plus a notification email to the brand pointing them at
     POST /retry-payment (the only legal way out of 'payment_failed')."""
     intent = event["data"]["object"]
+
+    if "metadata" in intent and "type" in intent["metadata"] and intent["metadata"]["type"] == "category_exclusivity":
+        await _handle_exclusivity_payment_failed(conn, intent, resend_client)
+        return
+
     campaign = await campaigns_repository.get_by_stripe_payment_intent_id(conn, intent["id"])
     if campaign is None:
         return
@@ -119,6 +179,37 @@ async def _handle_payment_intent_failed(conn: asyncpg.Connection, event: "stripe
     if user is None:
         return
     await send_campaign_payment_failed_email(user.email, updated.title, resend_client)
+
+
+async def _handle_exclusivity_payment_failed(conn: asyncpg.Connection, intent, resend_client: ResendClient) -> None:
+    """Build Prompt 8C deliverable 4: payment_intent.payment_failed ->
+    payment_status='failed', status='cancelled' (failed payment = no
+    exclusivity), brand notification, admin-queue alert (logged --
+    Section 8C: no dedicated admin-alert table exists in this codebase
+    yet, so this follows the same logging-as-alert convention every
+    other 'flag for admin' path in this file uses, e.g.
+    _handle_transfer_failed's own docstring)."""
+    agreement = await exclusivity_repository.get_by_payment_intent_id(conn, intent["id"])
+    if agreement is None:
+        return
+    updated = await exclusivity_repository.mark_payment_failed(conn, agreement.id)
+    if updated is None:
+        return
+    brand = await brand_profiles_repository.get_by_id(conn, updated.brand_id)
+    if brand is None:
+        return
+    user = await users_repository.get_user_by_id(conn, brand.user_id)
+    if user is None:
+        return
+    await send_exclusivity_purchase_failed_email(user.email, category=updated.category, client=resend_client)
+    _logger.warning(
+        "ADMIN ALERT exclusivity_payment_failed: agreement_id=%s brand_id=%s category=%s city=%s fee_cents=%s",
+        updated.id,
+        updated.brand_id,
+        updated.category,
+        updated.city,
+        updated.fee_cents,
+    )
 
 
 def _is_milestone_transfer(transfer: "stripe.StripeObject") -> bool:

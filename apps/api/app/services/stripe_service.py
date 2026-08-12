@@ -269,6 +269,34 @@ async def create_subscription_checkout_session(
     return session.url
 
 
+async def cancel_payment_intent(settings: Settings, *, payment_intent_id: str) -> None:
+    """Build Prompt 8C deliverable 3f: if a category_exclusivity_agreements
+    row insert fails after the platform PaymentIntent was already
+    created, the PaymentIntent must be cancelled so it doesn't sit
+    around chargeable with nothing on our side to show for it."""
+    _configure(settings)
+    await asyncio.to_thread(stripe.PaymentIntent.cancel, payment_intent_id)
+
+
+async def refund_platform_payment_intent(
+    settings: Settings, *, payment_intent_id: str, amount_cents: int, metadata: dict
+) -> str:
+    """Platform-account refund (not Stripe Connect) -- used by Build
+    Prompt 8C's admin cancellation/proration flow
+    (POST /admin/exclusivity/:id/cancel). Distinct from refund_campaign
+    above only in that it's not tied to a campaign_id; `metadata` is
+    caller-supplied so the refund is traceable back to whatever it's
+    refunding (here, the exclusivity agreement id)."""
+    _configure(settings)
+    refund = await asyncio.to_thread(
+        stripe.Refund.create,
+        payment_intent=payment_intent_id,
+        amount=amount_cents,
+        metadata=metadata,
+    )
+    return refund.id
+
+
 def verify_webhook_signature(settings: Settings, *, payload: bytes, signature_header: str) -> stripe.Event:
     """Verify a Stripe webhook payload against STRIPE_WEBHOOK_SECRET and
     return the parsed event. Raises stripe.error.SignatureVerificationError

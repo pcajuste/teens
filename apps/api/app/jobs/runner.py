@@ -27,7 +27,7 @@ from datetime import datetime, timedelta, timezone
 
 from app.core.config import get_settings
 from app.db.pool import get_pool
-from app.repositories import campaign_milestones_repository, campaign_reps_repository
+from app.repositories import campaign_milestones_repository, campaign_reps_repository, exclusivity_repository
 from app.repositories.campaign_reps_repository import auto_decline_expired_parent_approvals
 from app.repositories.intelligence_repository import insert_events, list_pending_events, mark_written
 from app.repositories.parent_records_repository import list_digest_enabled
@@ -160,6 +160,34 @@ async def milestone_auto_release_job() -> None:
                 crm.id,
                 result.outcome,
                 result.stripe_transfer_id,
+            )
+
+
+@register_job("exclusivity_auto_expire")
+async def exclusivity_auto_expire_job() -> None:
+    """Runs hourly (Build Prompt 8C deliverable 6, external scheduler
+    assumption -- only the job body is implemented here, following
+    milestone_auto_release_job's exact pattern above). Finds
+    category_exclusivity_agreements with ends_at < now() and
+    status = 'active', sets status = 'expired'. Idempotent by
+    construction: exclusivity_repository.expire_due's own
+    WHERE status = 'active' guard means a row already expired by an
+    earlier run of this job simply doesn't match a second time, so
+    running the job twice against the same agreement logs exactly once.
+    Does NOT initiate refunds -- expiry is the natural, no-refund end of
+    an agreement (admin cancellation, not expiry, is the only refund
+    path -- see app/routers/admin.py's cancel_exclusivity_agreement)."""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        expired = await exclusivity_repository.expire_due(conn, now=datetime.now(timezone.utc))
+        for agreement in expired:
+            _logger.info(
+                "exclusivity_auto_expire: agreement_id=%s brand_id=%s category=%s city=%s ends_at=%s",
+                agreement.id,
+                agreement.brand_id,
+                agreement.category,
+                agreement.city,
+                agreement.ends_at,
             )
 
 

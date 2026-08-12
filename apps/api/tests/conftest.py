@@ -127,7 +127,7 @@ def _clean_database(db):
         "TRUNCATE public.stripe_events, public.safety_reports, public.intelligence_events_anonymized, "
         "public.parent_auth_tokens, public.parent_records, "
         "public.milestone_disputes, public.campaign_rep_milestones, public.campaign_milestones, "
-        "public.campaign_reps, "
+        "public.campaign_reps, public.category_exclusivity_agreements, "
         "public.campaigns, public.recruiter_saved_profiles, public.recruiter_contacts, public.recruiter_profiles, "
         "public.rep_profiles, public.brand_profiles, public.users, auth.users CASCADE"
     )

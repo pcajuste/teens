@@ -24,9 +24,11 @@ from app.core.security import AuthenticatedUser, require_role
 from app.db.pool import get_connection
 from app.repositories import (
     admin_repository,
+    brand_profiles_repository,
     campaign_milestones_repository,
     campaign_reps_repository,
     campaigns_repository,
+    exclusivity_repository,
     intelligence_repository,
     rep_profiles_repository,
     users_repository,
@@ -53,9 +55,22 @@ from app.schemas.admin import (
     SafetyReportResponse,
     StuckPaymentResponse,
 )
+from app.schemas.exclusivity import (
+    AdminExclusivityActiveResponse,
+    AdminExclusivityAgreementResponse,
+    AdminExclusivityAnalyticsResponse,
+    AdminExclusivityCancelRequest,
+    AdminExclusivityCancelResponse,
+    AdminExclusivityListResponse,
+)
 from app.schemas.intelligence import TrendBucketResponse
-from app.services import payout_service
-from app.services.email_service import send_account_approved_email, send_account_rejected_email, send_milestone_dispute_resolved_email
+from app.services import payout_service, stripe_service
+from app.services.email_service import (
+    send_account_approved_email,
+    send_account_rejected_email,
+    send_exclusivity_cancelled_email,
+    send_milestone_dispute_resolved_email,
+)
 from app.services.resend_client import ResendClient
 from app.services.resend_client import resend_client_dependency as _resend_client_dependency
 from app.services.supabase_auth_client import get_supabase_auth_client
@@ -520,3 +535,129 @@ async def intelligence_trends_by_region(conn: asyncpg.Connection = Depends(get_c
 @admin_router.get("/intelligence/trends/school-type", response_model=list[TrendBucketResponse])
 async def intelligence_trends_by_school_type(conn: asyncpg.Connection = Depends(get_connection)) -> list[TrendBucketResponse]:
     return _trend_to_response(await intelligence_repository.trend_by_school_type(conn))
+
+
+# ══════════════════════════════════════════════════════════════════
+# Build Prompt 8C deliverable 7/8: Category Exclusivity management --
+# cancellation/proration, agreement listing, revenue analytics.
+# ══════════════════════════════════════════════════════════════════
+
+
+def _agreement_to_admin_response(a: exclusivity_repository.ExclusivityAgreement) -> AdminExclusivityAgreementResponse:
+    return AdminExclusivityAgreementResponse(
+        id=a.id,
+        brand_id=a.brand_id,
+        category=a.category,
+        city=a.city,
+        starts_at=a.starts_at,
+        ends_at=a.ends_at,
+        status=a.status,
+        payment_status=a.payment_status,
+        fee_cents=a.fee_cents,
+        refund_cents=a.refund_cents,
+        stripe_payment_intent_id=a.stripe_payment_intent_id,
+        cancelled_at=a.cancelled_at,
+        cancellation_reason=a.cancellation_reason,
+        created_at=a.created_at,
+    )
+
+
+@admin_router.get("/exclusivity", response_model=AdminExclusivityListResponse)
+async def list_exclusivity_agreements(
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> AdminExclusivityListResponse:
+    agreements = await exclusivity_repository.list_all(conn, limit=limit, offset=offset)
+    total = await exclusivity_repository.count_all(conn)
+    return AdminExclusivityListResponse(
+        agreements=[_agreement_to_admin_response(a) for a in agreements], total=total, limit=limit, offset=offset
+    )
+
+
+@admin_router.get("/exclusivity/active", response_model=list[AdminExclusivityActiveResponse])
+async def list_active_exclusivity_agreements(
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> list[AdminExclusivityActiveResponse]:
+    agreements = await exclusivity_repository.list_active(conn)
+    now = datetime.now(timezone.utc)
+    result = []
+    for a in agreements:
+        days_remaining = max(0, (a.ends_at - now).days)
+        result.append(AdminExclusivityActiveResponse(**asdict_agreement(a), days_remaining=days_remaining))
+    return result
+
+
+def asdict_agreement(a: exclusivity_repository.ExclusivityAgreement) -> dict:
+    return _agreement_to_admin_response(a).model_dump()
+
+
+@admin_router.get("/analytics/exclusivity", response_model=AdminExclusivityAnalyticsResponse)
+async def exclusivity_analytics(conn: asyncpg.Connection = Depends(get_connection)) -> AdminExclusivityAnalyticsResponse:
+    data = await exclusivity_repository.revenue_analytics(conn)
+    return AdminExclusivityAnalyticsResponse(**data)
+
+
+@admin_router.post("/exclusivity/{agreement_id}/cancel", response_model=AdminExclusivityCancelResponse)
+async def cancel_exclusivity_agreement(
+    agreement_id: str,
+    body: AdminExclusivityCancelRequest,
+    settings: Settings = Depends(get_settings),
+    conn: asyncpg.Connection = Depends(get_connection),
+    resend_client: ResendClient = Depends(_resend_client_dependency),
+) -> AdminExclusivityCancelResponse:
+    """Build Prompt 8C deliverable 7: admin-only cancellation with
+    proration. Full refund if starts_at hasn't passed yet; otherwise the
+    remaining days (from now to ends_at, inclusive of "today" per the
+    floor-division below) are refunded proportionally, rounded DOWN --
+    the spec is explicit ("rounded down") since a rounded-up refund
+    would occasionally exceed fee_cents. Brands cannot self-cancel a
+    paid agreement (Section 8C: "No self-serve cancellation at MVP") --
+    this is the only cancellation path in the codebase."""
+    agreement = await exclusivity_repository.get_by_id(conn, agreement_id)
+    if agreement is None or agreement.status != "active":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "not_found_or_not_active", "message": "No active exclusivity agreement with that id."},
+        )
+
+    now = datetime.now(timezone.utc)
+    total_days = max(1, (agreement.ends_at - agreement.starts_at).days)
+    if now <= agreement.starts_at:
+        refund_cents = agreement.fee_cents
+    else:
+        remaining_days = max(0, (agreement.ends_at - now).days)
+        refund_cents = (agreement.fee_cents * remaining_days) // total_days
+
+    if refund_cents > 0:
+        await stripe_service.refund_platform_payment_intent(
+            settings,
+            payment_intent_id=agreement.stripe_payment_intent_id,
+            amount_cents=refund_cents,
+            metadata={"category_exclusivity_agreement_id": agreement.id},
+        )
+
+    updated = await exclusivity_repository.cancel(
+        conn,
+        agreement_id,
+        cancellation_reason=body.cancellation_reason,
+        refund_cents=refund_cents,
+        at=now,
+    )
+    if updated is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "already_cancelled", "message": "This agreement was already cancelled."},
+        )
+
+    brand = await brand_profiles_repository.get_by_id(conn, updated.brand_id)
+    if brand is not None:
+        user = await users_repository.get_user_by_id(conn, brand.user_id)
+        if user is not None:
+            await send_exclusivity_cancelled_email(
+                user.email, category=updated.category, refund_cents=refund_cents, client=resend_client
+            )
+
+    return AdminExclusivityCancelResponse(
+        id=updated.id, status=updated.status, cancelled_at=updated.cancelled_at, refund_cents=refund_cents
+    )

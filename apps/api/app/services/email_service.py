@@ -123,6 +123,46 @@ async def send_milestone_disputed_email(rep_email: str, *, campaign_title: str, 
     await client.send_email(to=rep_email, subject=f"Milestone under review: {campaign_title}", html=html)
 
 
+async def send_exclusivity_purchase_confirmed_email(
+    brand_email: str, *, category: str, city: str | None, starts_at: str, ends_at: str, client: ResendClient
+) -> None:
+    """Build Prompt 8C deliverable 4: payment_intent.succeeded webhook
+    for a category_exclusivity_agreements row -- exact copy per the
+    spec: "Your category exclusivity in [category] in [city or 'all
+    markets'] from [dates] is now active." """
+    where = city or "all markets"
+    html = f"""
+    <p>Your category exclusivity in <strong>{category}</strong> in
+    <strong>{where}</strong> from {starts_at} to {ends_at} is now
+    active.</p>
+    """
+    await client.send_email(to=brand_email, subject=f"Category exclusivity active: {category}", html=html)
+
+
+async def send_exclusivity_purchase_failed_email(brand_email: str, *, category: str, client: ResendClient) -> None:
+    """Build Prompt 8C deliverable 4: payment_intent.payment_failed --
+    failed payment means no exclusivity, so the brand is told plainly."""
+    html = f"""
+    <p>The payment for your category exclusivity request in
+    <strong>{category}</strong> failed. No exclusivity was granted and
+    you have not been charged.</p>
+    """
+    await client.send_email(to=brand_email, subject=f"Category exclusivity payment failed: {category}", html=html)
+
+
+async def send_exclusivity_cancelled_email(
+    brand_email: str, *, category: str, refund_cents: int, client: ResendClient
+) -> None:
+    """Build Prompt 8C deliverable 7: admin-initiated cancellation with
+    proration -- the brand is told the refund amount."""
+    html = f"""
+    <p>Your category exclusivity in <strong>{category}</strong> has been
+    cancelled by Teenure. A refund of ${refund_cents / 100:.2f} has been
+    issued to your original payment method.</p>
+    """
+    await client.send_email(to=brand_email, subject=f"Category exclusivity cancelled: {category}", html=html)
+
+
 async def send_account_suspended_email(rep_email: str, client: ResendClient) -> None:
     html = """
     <p>Your Teenure account has been suspended by your parent/guardian.
