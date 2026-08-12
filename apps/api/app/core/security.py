@@ -5,13 +5,15 @@ Two distinct token types flow through this module:
 
 1. Supabase JWTs (HS256, signed with SUPABASE_JWT_SECRET) — issued to
    reps/brands/recruiters/admins on login. `role` and `account_status`
-   are read from the token's `app_metadata` claim, which a Postgres
-   trigger keeps in sync with `public.users` (role, account_status)
-   on every insert/update — see docs/rep_profiles_cache_recompute.md
-   sibling note for the trigger design. This avoids a DB round-trip
-   on every request; a status change (e.g. suspension) takes effect
-   on the user's next token refresh, matching Supabase's standard
-   session-refresh cadence.
+   are read from the token's `app_metadata` claim, which
+   app/services/supabase_auth_client.py sets directly via Supabase's
+   Auth Admin API at account creation and updates the same way
+   whenever `public.users.account_status` changes (e.g. Prompt 4's
+   parent-verify flipping pending -> active) — no DB-side sync trigger
+   needed, since the Admin API manages `app_metadata` natively. This
+   avoids a DB round-trip on every request; a status change takes
+   effect on the user's next token refresh, matching Supabase's
+   standard session-refresh cadence.
 2. Parent session tokens (HS256, signed with PARENT_SESSION_SECRET —
    a distinct secret) — issued when a parent clicks their magic-link
    email (Prompt 4A). Parents have no `auth.users` row (Section 7), so

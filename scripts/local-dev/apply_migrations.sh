@@ -9,7 +9,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 MIGRATIONS_DIR="$REPO_ROOT/supabase/migrations"
 CONTAINER=teenure_postgres
 DB_USER=teenure
-DB_NAME=teenure
+DB_NAME="${DB_NAME:-teenure}"
 
 for f in "$MIGRATIONS_DIR"/*.sql; do
   echo "Applying $(basename "$f") ..."

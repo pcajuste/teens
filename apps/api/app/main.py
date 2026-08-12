@@ -7,19 +7,30 @@ effects.
 """
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
 from app.core.errors import register_exception_handlers
+from app.db.pool import close_pool, init_pool
 from app.jobs.runner import router as jobs_router
-from app.routers import health
+from app.routers import auth, health
 
 
 def create_app() -> FastAPI:
     settings = get_settings()
 
-    app = FastAPI(title="Teenure API")
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        await init_pool(settings)
+        try:
+            yield
+        finally:
+            await close_pool()
+
+    app = FastAPI(title="Teenure API", lifespan=lifespan)
 
     app.add_middleware(
         CORSMiddleware,
@@ -33,6 +44,7 @@ def create_app() -> FastAPI:
 
     app.include_router(health.router)
     app.include_router(jobs_router)
+    app.include_router(auth.router)
 
     return app
 

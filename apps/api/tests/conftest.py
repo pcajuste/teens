@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import time
 
+import asyncpg
 import jwt
 import pytest
 from fastapi.testclient import TestClient
@@ -12,7 +14,7 @@ _TEST_ENV = {
     "NEXT_PUBLIC_SUPABASE_URL": "http://localhost:54321",
     "NEXT_PUBLIC_SUPABASE_ANON_KEY": "test-anon-key",
     "SUPABASE_SERVICE_ROLE_KEY": "test-service-role-key",
-    "DATABASE_URL": "postgresql://teenure:teenure@localhost:5434/teenure_test",
+    "DATABASE_URL": "postgresql://teenure:teenure_dev_only@localhost:5434/teenure_test",
     "SUPABASE_JWT_SECRET": "test-supabase-jwt-secret",
     "STRIPE_SECRET_KEY": "sk_test_dummy",
     "STRIPE_PUBLISHABLE_KEY": "pk_test_dummy",
@@ -34,6 +36,8 @@ for _key, _value in _TEST_ENV.items():
 from app.core.config import get_settings  # noqa: E402
 from app.core.security import PARENT_SESSION_ISSUER  # noqa: E402
 from app.main import create_app  # noqa: E402
+from app.routers import auth as auth_router  # noqa: E402
+from app.services.resend_client import FakeResendClient  # noqa: E402
 
 
 @pytest.fixture(scope="session")
@@ -43,13 +47,68 @@ def settings():
 
 
 @pytest.fixture()
-def app(settings):
-    return create_app()
+def fake_resend_client():
+    return FakeResendClient()
+
+
+@pytest.fixture()
+def app(settings, fake_resend_client):
+    application = create_app()
+    application.dependency_overrides[auth_router._resend_client_dependency] = lambda: fake_resend_client
+    return application
 
 
 @pytest.fixture()
 def client(app):
-    return TestClient(app)
+    with TestClient(app) as test_client:
+        yield test_client
+
+
+class SyncDB:
+    """Test-side DB access via short-lived standalone connections --
+    deliberately NOT the app's asyncpg pool, which lives on TestClient's
+    background-thread event loop (starlette.testclient runs the ASGI
+    app via an anyio portal in its own thread). Reusing that pool from
+    a pytest-asyncio-driven fixture would hand asyncpg a connection
+    bound to a different event loop. A fresh connection per call, each
+    wrapped in its own asyncio.run(), sidesteps that entirely."""
+
+    def __init__(self, dsn: str):
+        self._dsn = dsn
+
+    def _run(self, coro):
+        return asyncio.run(coro)
+
+    def fetchval(self, query: str, *args):
+        async def _inner():
+            conn = await asyncpg.connect(dsn=self._dsn)
+            try:
+                return await conn.fetchval(query, *args)
+            finally:
+                await conn.close()
+
+        return self._run(_inner())
+
+    def execute(self, query: str, *args):
+        async def _inner():
+            conn = await asyncpg.connect(dsn=self._dsn)
+            try:
+                return await conn.execute(query, *args)
+            finally:
+                await conn.close()
+
+        return self._run(_inner())
+
+
+@pytest.fixture()
+def db(settings):
+    return SyncDB(settings.database_url)
+
+
+@pytest.fixture(autouse=True)
+def _clean_database(db):
+    yield
+    db.execute("TRUNCATE public.parent_records, public.users, auth.users CASCADE")
 
 
 def _supabase_jwt(settings, *, role: str, account_status: str = "active") -> str:
