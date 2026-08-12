@@ -16,7 +16,7 @@ from app.core.config import get_settings
 from app.core.errors import register_exception_handlers
 from app.db.pool import close_pool, init_pool
 from app.jobs.runner import router as jobs_router
-from app.routers import auth, health, parent, parent_auth
+from app.routers import auth, health, parent, parent_auth, reps
 
 
 def create_app() -> FastAPI:
@@ -47,6 +47,8 @@ def create_app() -> FastAPI:
     app.include_router(auth.router)
     app.include_router(parent_auth.router)
     app.include_router(parent.router)
+    app.include_router(reps.reps_router)
+    app.include_router(reps.campaigns_router)
 
     return app
 

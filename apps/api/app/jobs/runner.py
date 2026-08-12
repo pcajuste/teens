@@ -23,8 +23,11 @@ from typing import Final
 
 from fastapi import APIRouter, Header, HTTPException, status
 
+from datetime import datetime, timezone
+
 from app.core.config import get_settings
 from app.db.pool import get_pool
+from app.repositories.campaign_reps_repository import auto_decline_expired_parent_approvals
 from app.repositories.parent_records_repository import list_digest_enabled
 from app.services.parent_service import send_digest_email
 from app.services.resend_client import get_resend_client
@@ -62,6 +65,22 @@ async def send_monthly_parent_digests() -> None:
         parents = await list_digest_enabled(conn)
         for parent in parents:
             await send_digest_email(conn, resend_client, parent_id=parent.parent_id)
+
+
+@register_job("auto_decline_expired_parent_approvals")
+async def auto_decline_expired_parent_approvals_job() -> None:
+    """Runs frequently (e.g. every 15 minutes via Railway cron). Build
+    Prompt 5 deliverable 7: enforces the 48-hour parent-approval window
+    on campaign invitations -- any campaign_reps row still
+    status='invited'/parent_approval_status='pending' past its
+    parent_approval_deadline is auto-declined so a non-response doesn't
+    leave an invitation open indefinitely. The DB update itself lives in
+    campaign_reps_repository.auto_decline_expired_parent_approvals so it
+    can be unit-tested directly against a real connection without
+    waiting on a real clock (Build Prompt 5 acceptance criterion)."""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        await auto_decline_expired_parent_approvals(conn, now=datetime.now(timezone.utc))
 
 
 router = APIRouter(prefix="/internal/jobs", tags=["jobs"])

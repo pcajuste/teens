@@ -65,6 +65,37 @@ class RepContext:
     total_campaigns_completed: int
 
 
+async def create_parent_record(
+    conn: asyncpg.Connection,
+    *,
+    rep_id: str,
+    parent_email: str,
+    campaign_approval_required: bool = True,
+    digest_enabled: bool = True,
+    portal_expires_at: datetime,
+) -> ParentRecord:
+    """Prompt 5: created at the moment rep_profiles is first created
+    during onboarding, only for reps whose public.users.parent_verified_at
+    IS NOT NULL (the under-16 consent-flow path) -- see
+    docs/parent_records_creation_timing.md. Always called inside the
+    same transaction as the rep_profiles insert."""
+    row = await conn.fetchrow(
+        f"""
+        INSERT INTO public.parent_records
+            (rep_id, parent_email, campaign_approval_required, values_filters,
+             digest_enabled, portal_expires_at)
+        VALUES ($1, $2, $3, '[]'::jsonb, $4, $5)
+        RETURNING {_PARENT_COLUMNS}
+        """,
+        rep_id,
+        parent_email,
+        campaign_approval_required,
+        digest_enabled,
+        portal_expires_at,
+    )
+    return ParentRecord.from_row(row)
+
+
 async def get_parent_by_id(conn: asyncpg.Connection, parent_id: str) -> ParentRecord | None:
     row = await conn.fetchrow(
         f"SELECT {_PARENT_COLUMNS} FROM public.parent_records WHERE parent_id = $1", parent_id
@@ -121,6 +152,40 @@ async def get_rep_context(conn: asyncpg.Connection, rep_id: str) -> RepContext |
         total_earnings_cents=row["total_earnings_cents"],
         total_campaigns_completed=row["total_campaigns_completed"],
     )
+
+
+async def create_parent_record(
+    conn: asyncpg.Connection,
+    *,
+    rep_id: str,
+    parent_email: str,
+    portal_expires_at: datetime,
+    campaign_approval_required: bool = True,
+    digest_enabled: bool = True,
+) -> ParentRecord:
+    """Creates the parent_records row at rep onboarding time (Prompt 5,
+    PUT /reps/me creating rep_profiles for the first time), ONLY for
+    reps who went through the under-16 consent flow
+    (public.users.parent_verified_at IS NOT NULL) -- see
+    docs/parent_records_creation_timing.md for the full design note.
+    Callers are expected to run this inside the same transaction as the
+    rep_profiles insert it depends on (parent_records.rep_id is a
+    NOT NULL UNIQUE FK to rep_profiles.id)."""
+    row = await conn.fetchrow(
+        f"""
+        INSERT INTO public.parent_records
+            (rep_id, parent_email, campaign_approval_required, values_filters,
+             digest_enabled, portal_expires_at)
+        VALUES ($1, $2, $3, '[]'::jsonb, $4, $5)
+        RETURNING {_PARENT_COLUMNS}
+        """,
+        rep_id,
+        parent_email,
+        campaign_approval_required,
+        digest_enabled,
+        portal_expires_at,
+    )
+    return ParentRecord.from_row(row)
 
 
 async def update_magic_link_last_requested_at(conn: asyncpg.Connection, parent_id: str, *, at: datetime) -> None:
