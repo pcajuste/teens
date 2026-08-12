@@ -141,6 +141,24 @@ export function MilestoneBuilder({
               Must be completed in order (sequence required)
             </Label>
           </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor={`milestone-threshold-${i}`}>Count/threshold (optional)</Label>
+            <Input
+              id={`milestone-threshold-${i}`}
+              type="number"
+              min={1}
+              placeholder="Leave blank for a single-submission milestone"
+              value={m.threshold_count ?? ""}
+              onChange={(e) =>
+                update(i, { threshold_count: e.target.value === "" ? null : Number(e.target.value) })
+              }
+            />
+            <p className="text-xs text-muted-foreground">
+              Only set this for a milestone the rep completes by repeated submission (e.g. "publish 3 pieces
+              of content"). The rep will see live "X of Y" progress instead of a flat pending/done state.
+            </p>
+          </div>
         </div>
       ))}
 

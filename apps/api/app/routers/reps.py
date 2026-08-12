@@ -216,6 +216,8 @@ def _compute_milestone_participation(
                 actionable=actionable,
                 payout_cents=crm.payout_cents,
                 payout_status=crm.payout_status,
+                threshold_count=m.threshold_count,
+                current_count=crm.current_count,
                 submitted_at=crm.submitted_at,
                 confirmed_at=crm.confirmed_at,
                 paid_at=crm.paid_at,
@@ -795,20 +797,48 @@ async def submit_milestone(
             },
         )
 
-    updated = await campaign_milestones_repository.submit(
-        conn,
-        next(p.id for p in progress if p.campaign_milestone_id == milestone_id),
-        submission_text=body.submission_text,
-        submission_file_urls=body.submission_file_urls,
-        at=datetime.now(timezone.utc),
-    )
-    if updated is None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={"code": "illegal_transition", "message": "This milestone has already been submitted."},
-        )
+    crm_id = next(p.id for p in progress if p.campaign_milestone_id == milestone_id)
 
-    if milestone.verification_method == "brand_confirmation":
+    if milestone.threshold_count is not None:
+        # Count-based milestone (Teenure_Build_Prompts.md 8B FRONTEND
+        # ADDITIONS > UX guidance: "publish 3 pieces of content" should
+        # show "2 of 3" progress). Each call is one increment, not a
+        # full submission -- status only flips to 'submitted' (and the
+        # usual brand_confirmation/rep_submission/auto-release flow
+        # engages) once current_count reaches threshold_count.
+        updated = await campaign_milestones_repository.submit_increment(
+            conn,
+            crm_id,
+            threshold_count=milestone.threshold_count,
+            submission_text=body.submission_text,
+            submission_file_urls=body.submission_file_urls,
+            at=datetime.now(timezone.utc),
+        )
+        if updated is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "illegal_transition",
+                    "message": "This milestone has already reached its threshold and been submitted.",
+                },
+            )
+        reached_threshold = updated.current_count >= milestone.threshold_count
+    else:
+        updated = await campaign_milestones_repository.submit(
+            conn,
+            crm_id,
+            submission_text=body.submission_text,
+            submission_file_urls=body.submission_file_urls,
+            at=datetime.now(timezone.utc),
+        )
+        if updated is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"code": "illegal_transition", "message": "This milestone has already been submitted."},
+            )
+        reached_threshold = True
+
+    if reached_threshold and milestone.verification_method == "brand_confirmation":
         campaign = await campaigns_repository.get_by_id(conn, campaign_id)
         brand = await brand_profiles_repository.get_by_id(conn, campaign.brand_id) if campaign else None
         brand_user = await users_repository.get_user_by_id(conn, brand.user_id) if brand else None
@@ -819,7 +849,8 @@ async def submit_milestone(
     # 'rep_submission' milestones need no immediate notification --
     # the 24h auto-release window is the brand's review period, and the
     # milestone_auto_release job (app/jobs/runner.py) is what acts on
-    # it, not an email.
+    # it, not an email. Same for a threshold milestone that hasn't yet
+    # reached its threshold -- there's nothing for the brand to review.
 
     refreshed = [_p for _p in _compute_milestone_participation(milestone_defs, [updated] + [p for p in progress if p.id != updated.id])]
     return next(p for p in refreshed if p.campaign_milestone_id == milestone_id)

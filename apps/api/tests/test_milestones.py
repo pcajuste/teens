@@ -660,3 +660,134 @@ def test_admin_declines_dispute_resets_to_submitted(client, db, brand_headers, r
     row = db.fetch("SELECT status, dispute_flag FROM public.campaign_rep_milestones WHERE campaign_milestone_id = $1", milestone_ids[2])[0]
     assert row["status"] == "submitted"
     assert row["dispute_flag"] is False
+
+
+# ---------------------------------------------------------------------
+# Count-based threshold progress (fills the 8B FRONTEND ADDITIONS > UX
+# guidance gap: "publish 3 pieces of content" -> "2 of 3" progress
+# instead of a flat pending/done state). Milestone 1 in this fixture
+# gets threshold_count=3; milestones 2/3 are left without a
+# threshold_count so their existing binary behavior can be asserted
+# unaffected in the same test run.
+# ---------------------------------------------------------------------
+
+_THRESHOLD_MILESTONES = [
+    {**_MILESTONES[0], "threshold_count": 3},
+    _MILESTONES[1],
+    _MILESTONES[2],
+]
+
+
+def test_submit_below_threshold_stays_pending_and_increments_count(
+    client, db, brand_headers, rep_headers_factory, onboarded_brand, fake_resend_client
+):
+    created, rep_id, rep_headers, milestone_ids = _accept_milestone_campaign(
+        client, db, brand_headers, rep_headers_factory, onboarded_brand, milestones=_THRESHOLD_MILESTONES
+    )
+    response = client.post(
+        f"/campaigns/{created['id']}/milestones/{milestone_ids[1]}/submit",
+        json={"submission_text": "post 1", "submission_file_urls": []},
+        headers=rep_headers,
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "pending"
+    assert body["current_count"] == 1
+    assert body["threshold_count"] == 3
+    # Not yet complete -- the brand shouldn't be notified until the
+    # threshold is reached.
+    assert len(fake_resend_client.sent) == 0
+
+
+def test_submit_exactly_at_threshold_transitions_to_submitted(
+    client, db, brand_headers, rep_headers_factory, onboarded_brand, fake_resend_client
+):
+    created, rep_id, rep_headers, milestone_ids = _accept_milestone_campaign(
+        client, db, brand_headers, rep_headers_factory, onboarded_brand, milestones=_THRESHOLD_MILESTONES
+    )
+    for i in range(1, 4):
+        response = client.post(
+            f"/campaigns/{created['id']}/milestones/{milestone_ids[1]}/submit",
+            json={"submission_text": f"post {i}", "submission_file_urls": []},
+            headers=rep_headers,
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["current_count"] == i
+        if i < 3:
+            assert body["status"] == "pending"
+        else:
+            assert body["status"] == "submitted"
+
+    # milestone 1 is 'brand_confirmation' -- brand is notified exactly
+    # once, only on the increment that reached the threshold.
+    assert len(fake_resend_client.sent) == 1
+
+    row = db.fetch(
+        "SELECT status, current_count, rep_submission_text FROM public.campaign_rep_milestones WHERE campaign_milestone_id = $1",
+        milestone_ids[1],
+    )[0]
+    assert row["status"] == "submitted"
+    assert row["current_count"] == 3
+    # Evidence accumulates across all three calls rather than being
+    # overwritten by the last one.
+    assert "post 1" in row["rep_submission_text"]
+    assert "post 2" in row["rep_submission_text"]
+    assert "post 3" in row["rep_submission_text"]
+
+
+def test_submit_once_already_at_threshold_is_rejected(
+    client, db, brand_headers, rep_headers_factory, onboarded_brand
+):
+    created, rep_id, rep_headers, milestone_ids = _accept_milestone_campaign(
+        client, db, brand_headers, rep_headers_factory, onboarded_brand, milestones=_THRESHOLD_MILESTONES
+    )
+    for i in range(1, 4):
+        client.post(
+            f"/campaigns/{created['id']}/milestones/{milestone_ids[1]}/submit",
+            json={"submission_text": f"post {i}", "submission_file_urls": []},
+            headers=rep_headers,
+        )
+    response = client.post(
+        f"/campaigns/{created['id']}/milestones/{milestone_ids[1]}/submit",
+        json={"submission_text": "post 4", "submission_file_urls": []},
+        headers=rep_headers,
+    )
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "milestone_not_actionable"
+
+
+def test_milestone_without_threshold_count_is_unaffected(
+    client, db, brand_headers, rep_headers_factory, onboarded_brand, fake_resend_client, fake_stripe
+):
+    """Milestones with threshold_count left unset must behave exactly
+    as they did before this feature -- a single submit call transitions
+    straight to 'submitted', current_count stays 0, threshold_count is
+    null in the response."""
+    created, rep_id, rep_headers, milestone_ids = _accept_milestone_campaign(
+        client, db, brand_headers, rep_headers_factory, onboarded_brand, milestones=_THRESHOLD_MILESTONES
+    )
+    # milestone 1 has threshold_count=3; drive it to 'submitted' first
+    # so milestone 2 (no threshold_count) becomes actionable.
+    for i in range(1, 4):
+        client.post(
+            f"/campaigns/{created['id']}/milestones/{milestone_ids[1]}/submit",
+            json={"submission_text": f"post {i}", "submission_file_urls": []},
+            headers=rep_headers,
+        )
+    client.post(
+        f"/brands/campaigns/{created['id']}/reps/{rep_id}/milestones/{milestone_ids[1]}/confirm",
+        headers=brand_headers,
+    )
+
+    response = client.post(
+        f"/campaigns/{created['id']}/milestones/{milestone_ids[2]}/submit",
+        json={"submission_text": "story link", "submission_file_urls": []},
+        headers=rep_headers,
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "submitted"
+    assert body["current_count"] == 0
+    assert body["threshold_count"] is None
+

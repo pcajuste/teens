@@ -22,7 +22,7 @@ import asyncpg
 
 _MILESTONE_COLUMNS = """
     id, campaign_id, milestone_number, title, description, verification_method,
-    payout_percentage, sequence_required, created_at
+    payout_percentage, sequence_required, threshold_count, created_at
 """
 
 
@@ -36,6 +36,7 @@ class CampaignMilestone:
     verification_method: str
     payout_percentage: int
     sequence_required: bool
+    threshold_count: int | None
     created_at: datetime
 
     @classmethod
@@ -49,6 +50,7 @@ class CampaignMilestone:
             verification_method=row["verification_method"],
             payout_percentage=row["payout_percentage"],
             sequence_required=row["sequence_required"],
+            threshold_count=row["threshold_count"],
             created_at=row["created_at"],
         )
 
@@ -70,8 +72,8 @@ async def create_milestones(
             f"""
             INSERT INTO public.campaign_milestones
                 (campaign_id, milestone_number, title, description, verification_method,
-                 payout_percentage, sequence_required)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+                 payout_percentage, sequence_required, threshold_count)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             RETURNING {_MILESTONE_COLUMNS}
             """,
             campaign_id,
@@ -81,6 +83,7 @@ async def create_milestones(
             m["verification_method"],
             m["payout_percentage"],
             m["sequence_required"],
+            m.get("threshold_count"),
         )
         created.append(CampaignMilestone.from_row(row))
     return created
@@ -110,7 +113,7 @@ async def get_by_id_and_campaign(conn: asyncpg.Connection, milestone_id: str, ca
 _CRM_COLUMNS = """
     id, campaign_rep_id, campaign_milestone_id, status, rep_submission_text,
     rep_submission_file_urls, brand_confirmation_note, payout_cents,
-    stripe_transfer_id, payout_status, dispute_flag, submitted_at, confirmed_at, paid_at
+    stripe_transfer_id, payout_status, dispute_flag, current_count, submitted_at, confirmed_at, paid_at
 """
 
 # Same column list, qualified with the crm. alias -- needed whenever
@@ -120,7 +123,7 @@ _CRM_COLUMNS = """
 _CRM_COLUMNS_QUALIFIED = """
     crm.id, crm.campaign_rep_id, crm.campaign_milestone_id, crm.status, crm.rep_submission_text,
     crm.rep_submission_file_urls, crm.brand_confirmation_note, crm.payout_cents,
-    crm.stripe_transfer_id, crm.payout_status, crm.dispute_flag, crm.submitted_at, crm.confirmed_at, crm.paid_at
+    crm.stripe_transfer_id, crm.payout_status, crm.dispute_flag, crm.current_count, crm.submitted_at, crm.confirmed_at, crm.paid_at
 """
 
 
@@ -137,6 +140,7 @@ class CampaignRepMilestone:
     stripe_transfer_id: str | None
     payout_status: str
     dispute_flag: bool
+    current_count: int
     submitted_at: datetime | None
     confirmed_at: datetime | None
     paid_at: datetime | None
@@ -155,6 +159,7 @@ class CampaignRepMilestone:
             stripe_transfer_id=row["stripe_transfer_id"],
             payout_status=row["payout_status"],
             dispute_flag=row["dispute_flag"],
+            current_count=row["current_count"],
             submitted_at=row["submitted_at"],
             confirmed_at=row["confirmed_at"],
             paid_at=row["paid_at"],
@@ -307,6 +312,64 @@ async def submit(
         at,
         submission_text,
         submission_file_urls,
+    )
+    return CampaignRepMilestone.from_row(row) if row else None
+
+
+async def submit_increment(
+    conn: asyncpg.Connection,
+    campaign_rep_milestone_id: str,
+    *,
+    threshold_count: int,
+    submission_text: str,
+    submission_file_urls: list[str],
+    at: datetime,
+) -> CampaignRepMilestone | None:
+    """Threshold-mode counterpart to submit() above, for milestones with
+    campaign_milestones.threshold_count set (e.g. "publish 3 pieces of
+    content" -- Teenure_Build_Prompts.md 8B FRONTEND ADDITIONS > UX
+    guidance). Each call is one increment, not a full submission:
+    rep_submission_file_urls accumulates (extends the existing TEXT[]
+    column, the same multi-file-evidence pattern already used
+    elsewhere in this codebase, rather than overwriting it) and
+    rep_submission_text accumulates as a newline-delimited log entry
+    per submission, since that column is a single TEXT rather than an
+    array. current_count only ever increments by exactly 1 per call.
+
+    Legal only from 'pending' with current_count < threshold_count --
+    guarded entirely in the UPDATE...WHERE clause (matching how
+    submit()/confirm() above guard every other milestone transition),
+    so a call once current_count == threshold_count is a no-op (returns
+    None), which the caller (routers/reps.py) turns into a 409 -- the
+    same "already done" idempotency shape used for a plain milestone
+    already submitted.
+
+    Status flips to 'submitted' (and submitted_at is stamped) only on
+    the increment that brings current_count up to threshold_count --
+    every prior increment leaves status at 'pending', which is exactly
+    the "leave status pending, count incremented" behavior the rep-
+    facing 'X of Y' progress UI needs. Once 'submitted', the existing
+    brand_confirmation/rep_submission/auto-release flow (unchanged)
+    takes over."""
+    row = await conn.fetchrow(
+        f"""
+        UPDATE public.campaign_rep_milestones
+        SET current_count = current_count + 1,
+            rep_submission_text = CASE
+                WHEN rep_submission_text IS NULL OR rep_submission_text = '' THEN $3
+                ELSE rep_submission_text || E'\\n---\\n' || $3
+            END,
+            rep_submission_file_urls = rep_submission_file_urls || $4::text[],
+            status = (CASE WHEN current_count + 1 >= $5 THEN 'submitted' ELSE 'pending' END)::campaign_rep_milestone_status,
+            submitted_at = CASE WHEN current_count + 1 >= $5 THEN $2 ELSE submitted_at END
+        WHERE id = $1 AND status = 'pending' AND current_count < $5
+        RETURNING {_CRM_COLUMNS}
+        """,
+        campaign_rep_milestone_id,
+        at,
+        submission_text,
+        submission_file_urls,
+        threshold_count,
     )
     return CampaignRepMilestone.from_row(row) if row else None
 

@@ -140,6 +140,8 @@ class MilestoneParticipationResponse(BaseModel):
     actionable: bool
     payout_cents: int | None
     payout_status: str
+    threshold_count: int | None = None
+    current_count: int = 0
     submitted_at: datetime | None
     confirmed_at: datetime | None
     paid_at: datetime | None

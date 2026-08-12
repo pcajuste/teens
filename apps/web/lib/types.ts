@@ -64,6 +64,12 @@ export interface MilestoneRequest {
   verification_method: VerificationMethod;
   payout_percentage: number;
   sequence_required: boolean;
+  /** Optional count-based milestone support: when set, the rep must
+   * submit this many times before the milestone is considered
+   * complete (e.g. 3 for "publish 3 pieces of content"). Leave
+   * undefined for an ordinary single-submission milestone -- most
+   * milestones won't set this. */
+  threshold_count?: number | null;
 }
 
 /** Per-milestone entry within GET /reps/campaigns/active for a
@@ -84,6 +90,11 @@ export interface MilestoneParticipation {
   actionable: boolean;
   payout_cents: number | null;
   payout_status: string;
+  /** Set only for a count-based milestone (see MilestoneRequest). When
+   * present, the rep UI should render "current_count of threshold_count"
+   * progress instead of a flat pending/actionable state. */
+  threshold_count: number | null;
+  current_count: number;
   submitted_at: string | null;
   confirmed_at: string | null;
   paid_at: string | null;
@@ -105,6 +116,8 @@ export interface MilestoneProgress {
   payout_cents: number | null;
   payout_status: string;
   dispute_flag: boolean;
+  threshold_count: number | null;
+  current_count: number;
   submitted_at: string | null;
   confirmed_at: string | null;
   paid_at: string | null;

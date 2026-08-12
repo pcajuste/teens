@@ -790,6 +790,8 @@ def _to_milestone_progress_response(
         payout_cents=crm.payout_cents,
         payout_status=crm.payout_status,
         dispute_flag=crm.dispute_flag,
+        threshold_count=m.threshold_count,
+        current_count=crm.current_count,
         submitted_at=crm.submitted_at,
         confirmed_at=crm.confirmed_at,
         paid_at=crm.paid_at,

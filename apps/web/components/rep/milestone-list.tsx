@@ -41,6 +41,31 @@ function MilestoneStatusTracker({ status }: { status: string }) {
   );
 }
 
+/** Real-time "X of Y" progress for a count-based milestone (Build
+ * Prompt 8B FRONTEND ADDITIONS > UX guidance: "Where a milestone
+ * involves a count or threshold the rep controls directly ... show
+ * real-time progress toward it ('2 of 3 published') rather than a
+ * flat pending/done state"). Shown instead of MilestoneStatusTracker
+ * while the milestone is still pending; once current_count reaches
+ * threshold_count, status flips to 'submitted' and the normal
+ * submitted/confirmed/paid tracker above takes over. */
+function MilestoneThresholdProgress({ current, threshold }: { current: number; threshold: number }) {
+  const pct = Math.min(100, Math.round((current / threshold) * 100));
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center justify-between text-xs">
+        <span className="font-medium">
+          {current} of {threshold} submitted
+        </span>
+        <span className="text-muted-foreground">{pct}%</span>
+      </div>
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+        <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
 /** Per-milestone submission form, mirroring the flat campaign
  * submission form on the campaign detail page (text + file upload,
  * uploaded via the same POST .../submission-files endpoint) but wired
@@ -51,10 +76,19 @@ function MilestoneSubmitForm({
   campaignId,
   milestone,
   onSubmitted,
+  remaining,
 }: {
   campaignId: string;
   milestone: MilestoneParticipation;
   onSubmitted: () => void;
+  /** Count-based milestones only: how many more submissions are
+   * needed before this milestone reaches its threshold_count. null
+   * for an ordinary single-submission milestone. The form stays open
+   * and resets itself after each submit until this reaches 0 --
+   * "let the rep submit multiple times ... until the threshold is
+   * hit, then transition to the normal submitted/confirmed/paid
+   * tracker" (Build Prompt 8B FRONTEND ADDITIONS > UX guidance). */
+  remaining: number | null;
 }) {
   const [text, setText] = useState("");
   const [files, setFiles] = useState<File[]>([]);
@@ -95,6 +129,13 @@ function MilestoneSubmitForm({
         submission_text: text,
         submission_file_urls: uploadedUrls,
       });
+      // Threshold milestones: reset the form and stay open for the
+      // next submission rather than navigating away, since the
+      // milestone is still 'pending' (not yet at threshold_count).
+      // onSubmitted() re-fetches, which will unmount this form once
+      // status flips to 'submitted'.
+      setText("");
+      setFiles([]);
       onSubmitted();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not submit this milestone.");
@@ -130,7 +171,11 @@ function MilestoneSubmitForm({
       </div>
       {error ? <p className="text-xs text-destructive">{error}</p> : null}
       <Button size="sm" onClick={handleSubmit} disabled={pending}>
-        {pending ? "Submitting..." : "Submit milestone"}
+        {pending
+          ? "Submitting..."
+          : remaining !== null
+            ? `Submit (${remaining} more needed)`
+            : "Submit milestone"}
       </Button>
     </div>
   );
@@ -185,7 +230,11 @@ export function MilestoneList({
                 <span className="font-semibold">{money(estimatedPayoutCents)}</span>
               </div>
 
-              <MilestoneStatusTracker status={m.status} />
+              {m.threshold_count !== null && m.status === "pending" ? (
+                <MilestoneThresholdProgress current={m.current_count} threshold={m.threshold_count} />
+              ) : (
+                <MilestoneStatusTracker status={m.status} />
+              )}
 
               {!m.actionable && m.status === "pending" ? (
                 <p className="rounded-md bg-muted/60 px-2.5 py-1.5 text-xs text-muted-foreground">
@@ -200,7 +249,12 @@ export function MilestoneList({
               ) : null}
 
               {m.actionable && m.status === "pending" ? (
-                <MilestoneSubmitForm campaignId={campaignId} milestone={m} onSubmitted={onChanged} />
+                <MilestoneSubmitForm
+                  campaignId={campaignId}
+                  milestone={m}
+                  onSubmitted={onChanged}
+                  remaining={m.threshold_count !== null ? m.threshold_count - m.current_count : null}
+                />
               ) : null}
             </CardContent>
           </Card>

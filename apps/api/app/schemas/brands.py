@@ -29,6 +29,14 @@ class MilestoneRequest(BaseModel):
     verification_method: VerificationMethod
     payout_percentage: int
     sequence_required: bool = True
+    threshold_count: int | None = None
+    """Optional count-based milestone support (fills the 8B FRONTEND
+    ADDITIONS > UX guidance gap: 'publish 3 pieces of content' should
+    show '2 of 3' progress, not a flat pending/done state). Only
+    meaningful for milestones the rep completes by repeated submission
+    -- most milestones leave this unset, and an unset threshold_count
+    behaves identically to how every milestone worked before this was
+    added."""
 
     @field_validator("payout_percentage")
     @classmethod
@@ -44,6 +52,13 @@ class MilestoneRequest(BaseModel):
             raise ValueError("milestone_number must be >= 1")
         return value
 
+    @field_validator("threshold_count")
+    @classmethod
+    def _positive_threshold(cls, value: int | None) -> int | None:
+        if value is not None and value < 1:
+            raise ValueError("threshold_count must be >= 1 when provided")
+        return value
+
 
 class MilestoneResponse(BaseModel):
     id: str
@@ -53,6 +68,7 @@ class MilestoneResponse(BaseModel):
     verification_method: VerificationMethod
     payout_percentage: int
     sequence_required: bool
+    threshold_count: int | None = None
 
 
 class BrandProfileUpdateRequest(BaseModel):
@@ -173,6 +189,8 @@ class MilestoneProgressResponse(BaseModel):
     payout_cents: int | None
     payout_status: str
     dispute_flag: bool
+    threshold_count: int | None = None
+    current_count: int = 0
     submitted_at: datetime | None
     confirmed_at: datetime | None
     paid_at: datetime | None
