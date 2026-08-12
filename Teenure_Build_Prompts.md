@@ -339,33 +339,12 @@ Acceptance criteria:
 **Depends on:** Prompt 4. Canonically sits between Prompts 4 and 5 in
 the build sequence — the parent campaign-approval gate and values-filter
 exclusion in Prompt 5 depend on the parent_service functions this
-prompt implements.
-
-**This repo already built Prompt 5 and Prompt 6 before this prompt
-existed** (see Teenure_MVP_Gameplan.md's Section 9A, added after the
-fact — the spec was updated to match, not the other way around). That
-means deliverables 1-8 below are new work, but this prompt must also
-close the gap they leave in the already-shipped code, as its own
-explicit final deliverable rather than a separate follow-up prompt:
-
-9. **Retrofit Prompt 5** (`apps/api`): add the `parent_approval_status`
-   check to `POST /campaigns/:id/accept` (403 "awaiting parent approval"
-   if pending), add the values-filter exclusion to
-   `GET /reps/campaigns/available`'s query, add
-   `POST /campaigns/:id/withdraw`, and extend the existing
-   `expire_invites` job (`app/jobs/runner.py`) to also auto-decline
-   invitations whose `parent_approval_deadline` has lapsed. Add pytest
-   coverage for all four alongside the existing test_reps.py suite —
-   do not let this ship as untested churn on top of a suite that was
-   previously fully green.
-10. **Retrofit Prompt 6** (`apps/web`): add the prominent one-tap
-    withdraw button to the active-campaign view, add the "awaiting
-    parent approval" state to the campaign detail view (replacing
-    accept/decline while status is `pending`), and confirm a
-    parent-blocked-category campaign correctly never appears in the
-    dashboard's available-campaigns panel (it won't, since the exclusion
-    is server-side per deliverable 9 — this is a rendering sanity check,
-    not new gating logic on the frontend).
+prompt implements. Because this prompt is built before Prompt 5 in this
+repo, Prompt 5's parent-approval gate, values-filter exclusion, and
+withdraw endpoint (its own deliverables 3, 7, and 9) are native parts of
+its original implementation — there is no retrofit step here or in
+Prompt 5/6; build each prompt once, in order, using the parent_service
+functions this prompt creates.
 
 ```
 Build the Parent Portal: a separate authenticated surface for parents of
@@ -484,20 +463,6 @@ Acceptance criteria:
     a digest with no recruiter message content, no submission text, and
     no brand contact details in the output — verified by inspecting the
     generated email payload.
-  - Retrofit only: the full pre-existing test_reps.py suite still passes
-    after deliverable 9's changes, plus new coverage for the
-    accept-blocked-pending-parent-approval case, the values-filter
-    exclusion, and withdraw. Run the whole apps/api suite, not just the
-    new tests, to catch regressions in the state machine deliverable 9
-    is modifying.
-  - Retrofit only: manually confirm the Prompt 6 UI changes against a
-    rep with a `parent_records` row set to `campaign_approval_required =
-    TRUE` — the campaign detail view must show the waiting state, not
-    accept/decline controls, for a still-pending invitation. This manual
-    check is a build-time sanity pass only, not the permanent guarantee
-    for the values-filter exclusion — Prompt 16 deliverable 4 adds the
-    real frontend test for that; do not treat this checkbox as
-    substituting for it.
 ```
 
 ---
@@ -1143,8 +1108,8 @@ Deliverables:
    (mock the API response with a category the seeded rep's parent has
    blocked and assert it never renders — this is a safety-enforcement
    surface, not just a display concern, so it needs the same test-backed
-   guarantee as the FTC checkbox rather than resting on the Prompt 4A
-   retrofit's manual-verification acceptance criterion alone).
+   guarantee as the FTC checkbox rather than resting on manual
+   verification alone).
 5. CI-runnable command running backend and frontend suites together,
    failing build on any failure.
 
