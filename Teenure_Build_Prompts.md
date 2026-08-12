@@ -633,9 +633,40 @@ Acceptance criteria:
 
 ---
 
-## 7. Stripe Foundation: Connect Onboarding & Platform Billing
+## 7. Stripe Foundation: Connect Onboarding & Platform Billing — **implemented**
 
 **Depends on:** Prompt 4. Can run parallel to Prompts 5–6.
+
+**Build-log note:** All 5 deliverables implemented. `stripe_service.py`
+now implements `create_customer`, `create_connect_account`,
+`create_connect_onboarding_link`, and `verify_webhook_signature`
+(checkout/transfer/refund remain `NotImplementedError` stubs, correctly
+scoped to Prompt 10). `rep_profiles` gained `stripe_account_id` +
+`stripe_onboarding_complete` columns (migration
+`20260814090000_stripe_connect_columns.sql`). New endpoint
+`POST /reps/stripe/onboarding` creates-or-resumes Connect onboarding.
+New `POST /webhooks/stripe` verifies signatures before any dispatch and
+implements `account.updated`; every other Section 8 event is a
+registered no-op stub returning 200 so Stripe doesn't retry before its
+owning prompt lands. `docs/stripe-minors-policy.md` researched against
+Stripe's actual primary sources (not the SEO content-farm sites a plain
+search surfaces) and linked from the README, per the acceptance
+criteria.
+
+**Flagged for human/legal review before real (non-test-mode) Connect
+payouts go live for any rep under 18** — see
+`docs/stripe-minors-policy.md`'s last section: Teenure's own age gate
+(parental consent under 16) is narrower than Stripe's Representative
+requirement (applies to everyone under 18), which is a real product gap
+for 16-17-year-old reps with no parent otherwise involved in their
+account. The gameplan's own "parent-as-payee fallback" note is the
+likely direction but is not implemented in this prompt — it needs a
+product decision and legal sign-off, not a guess.
+
+14 new tests in `tests/test_stripe.py` (service-level Stripe SDK call
+shape, onboarding create-vs-resume, webhook signature
+verification/rejection, `account.updated` handling). All 93 backend
+tests pass.
 
 ```
 Implement the Stripe integration foundation. Covers account creation and

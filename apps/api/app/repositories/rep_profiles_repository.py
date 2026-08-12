@@ -18,7 +18,8 @@ _COLUMNS = (
     "id, user_id, display_name, school_name, school_type, city, state, graduation_year, "
     "bio, categories, instagram_handle, tiktok_handle, recruiter_visible, "
     "total_campaigns_completed, total_earnings_cents, average_rating, "
-    "profile_completeness_score, created_at, updated_at"
+    "profile_completeness_score, stripe_account_id, stripe_onboarding_complete, "
+    "created_at, updated_at"
 )
 
 
@@ -41,6 +42,8 @@ class RepProfile:
     total_earnings_cents: int
     average_rating: float | None
     profile_completeness_score: int
+    stripe_account_id: str | None
+    stripe_onboarding_complete: bool
     created_at: datetime
     updated_at: datetime
 
@@ -64,6 +67,8 @@ class RepProfile:
             total_earnings_cents=row["total_earnings_cents"],
             average_rating=float(row["average_rating"]) if row["average_rating"] is not None else None,
             profile_completeness_score=row["profile_completeness_score"],
+            stripe_account_id=row["stripe_account_id"],
+            stripe_onboarding_complete=row["stripe_onboarding_complete"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )
@@ -167,4 +172,27 @@ async def update_profile_completeness_score(conn: asyncpg.Connection, rep_id: st
         "UPDATE public.rep_profiles SET profile_completeness_score = $2, updated_at = now() WHERE id = $1",
         rep_id,
         score,
+    )
+
+
+async def get_by_stripe_account_id(conn: asyncpg.Connection, stripe_account_id: str) -> RepProfile | None:
+    """Looked up by the account.updated webhook (Build Prompt 7), which
+    identifies the account by Stripe account id, not our own rep_id."""
+    row = await conn.fetchrow(f"SELECT {_COLUMNS} FROM public.rep_profiles WHERE stripe_account_id = $1", stripe_account_id)
+    return RepProfile.from_row(row) if row else None
+
+
+async def set_stripe_account_id(conn: asyncpg.Connection, rep_id: str, stripe_account_id: str) -> None:
+    await conn.execute(
+        "UPDATE public.rep_profiles SET stripe_account_id = $2, updated_at = now() WHERE id = $1",
+        rep_id,
+        stripe_account_id,
+    )
+
+
+async def set_stripe_onboarding_complete(conn: asyncpg.Connection, rep_id: str, complete: bool) -> None:
+    await conn.execute(
+        "UPDATE public.rep_profiles SET stripe_onboarding_complete = $2, updated_at = now() WHERE id = $1",
+        rep_id,
+        complete,
     )

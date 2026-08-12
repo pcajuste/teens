@@ -67,6 +67,7 @@ class RepProfileResponse(BaseModel):
     total_earnings_cents: int
     average_rating: float | None
     profile_completeness_score: int
+    stripe_onboarding_complete: bool
 
 
 class RepProfilePreviewResponse(BaseModel):
@@ -137,3 +138,12 @@ class EarningsResponse(BaseModel):
     confirmed_cents: int
     paid_cents: int
     lifetime_paid_cents: int
+
+
+class StripeOnboardingResponse(BaseModel):
+    """POST /reps/stripe/onboarding response. `url` is single-use and
+    short-lived (Stripe's default Account Link expiry) -- callers must
+    request a fresh one rather than caching this, which is also why
+    this is a POST, not a GET."""
+
+    url: str

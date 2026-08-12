@@ -41,8 +41,10 @@ from app.schemas.reps import (
     RepProfilePreviewResponse,
     RepProfileResponse,
     RepProfileUpdateRequest,
+    StripeOnboardingResponse,
     SubmitCampaignRequest,
 )
+from app.services import stripe_service
 from app.services.parent_service import apply_values_filter
 from app.services.storage_service import SubmissionUploadError, get_storage_client
 
@@ -115,6 +117,7 @@ def _to_profile_response(p: rep_profiles_repository.RepProfile) -> RepProfileRes
         total_earnings_cents=p.total_earnings_cents,
         average_rating=p.average_rating,
         profile_completeness_score=p.profile_completeness_score,
+        stripe_onboarding_complete=p.stripe_onboarding_complete,
     )
 
 
@@ -332,6 +335,43 @@ async def earnings(
         paid_cents=breakdown["paid_cents"],
         lifetime_paid_cents=profile.total_earnings_cents,
     )
+
+
+@reps_router.post("/stripe/onboarding", response_model=StripeOnboardingResponse)
+async def stripe_onboarding(
+    user: AuthenticatedUser = Depends(require_role("rep")),
+    settings: Settings = Depends(get_settings),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> StripeOnboardingResponse:
+    """Build Prompt 7 deliverable 3: creates a Stripe Connect Express
+    account on first call, reuses the stored account id on every
+    subsequent call (Stripe Account Links are single-use and
+    short-lived, so "resuming" onboarding means requesting a fresh
+    link for the same underlying account, not creating a new account).
+    Onboarding completion is confirmed later via the account.updated
+    webhook (app/routers/webhooks.py), never assumed from reaching
+    return_url -- see docs/stripe-minors-policy.md for why Stripe's
+    hosted onboarding, not this endpoint, is what handles the
+    Representative/guardian requirement for reps under 18."""
+    profile = await _get_own_profile(conn, user)
+
+    account_id = profile.stripe_account_id
+    if account_id is None:
+        account_id = await stripe_service.create_connect_account(
+            settings,
+            email=user.email,
+            metadata={"user_id": user.id, "rep_profile_id": profile.id},
+        )
+        await rep_profiles_repository.set_stripe_account_id(conn, profile.id, account_id)
+
+    onboarding_url = f"{settings.next_public_app_url}/rep/onboarding/stripe"
+    url = await stripe_service.create_connect_onboarding_link(
+        settings,
+        account_id=account_id,
+        refresh_url=onboarding_url,
+        return_url=onboarding_url,
+    )
+    return StripeOnboardingResponse(url=url)
 
 
 # ══════════════════════════════════════════════════════════════════
