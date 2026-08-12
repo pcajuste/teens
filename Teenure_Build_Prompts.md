@@ -1,4 +1,4 @@
-# TEENURE — AI Builder Prompt Suite v1.3
+# TEENURE — AI Builder Prompt Suite v1.4
 
 > Companion to `Teenure_MVP_Gameplan.md` (the spec of record). That document is the source of truth for schema, routes, business rules, and legal constraints — this document sequences the build into discrete, verbatim prompts an AI coding assistant can execute one at a time, in order.
 >
@@ -25,6 +25,8 @@
 8D. [Advance Cohort Reservation](#8d-advance-cohort-reservation)
 8E. [Rep Syndicates](#8e-rep-syndicates)
 8F. [Relationship Continuity Product (Year Two)](#8f-relationship-continuity-product-year-two)
+8G. [Skill Challenges](#8g-skill-challenges)
+8H. [Learning Modules and Verified Badges](#8h-learning-modules-and-verified-badges)
 9. [Brand Portal — Frontend](#9-brand-portal--frontend)
 10. [Campaign Lifecycle & Payout Engine](#10-campaign-lifecycle--payout-engine)
 11. [Recruiter Portal — Backend](#11-recruiter-portal--backend)
@@ -556,6 +558,13 @@ Deliverables:
        earnings this month and lifetime, profile completeness change,
        categories active in. Does NOT contain: recruiter message content,
        submission text or files, brand contact details.
+     - Added by Prompt 8G: a "Challenge Submissions" line in the digest —
+       challenges submitted this month, how many converted, and any
+       conversion bonus earned. This exists because a parent who sees
+       only "submitted to 4 challenges, 0 converted" without context may
+       reasonably read that as unpaid labor rather than the speculative,
+       no-obligation activity it is. Showing the conversion bonus when
+       earned makes the compensation model visible, not just the effort.
 
 6. Account controls:
      - POST /parent/account/suspend: immediately sets rep account_status
@@ -575,6 +584,12 @@ Deliverables:
      - Account controls with confirmation dialogs.
      - A "what parents see" explainer panel — parents unfamiliar with the
        platform need context on what each section means, not just data.
+     - Added by Prompt 8G: a "Challenge Submissions" section on the
+       dashboard — separate from campaign activity — listing which
+       challenges the rep submitted to, conversion status, and any
+       conversion bonus earned. Parents need to see this before their
+       child submits repeatedly to challenges that never convert, not
+       only in the monthly digest.
 
 8. Portal expiry at age 18: when a rep turns 18, portal_expires_at
    triggers (enforce at login, not just at account creation — add a check
@@ -660,6 +675,124 @@ Deliverables:
 11. File upload via Supabase Storage: validate file type/size server-side,
     scoped so only the rep and relevant brand can read. Only accept uploads
     for campaigns the rep is actually invited to.
+12. Living Achievement Link — GET /reps/me/achievement-link:
+    Generates or retrieves a persistent, shareable verified profile URL
+    for the rep. The URL is stable (does not change on profile updates)
+    and resolves to a public-facing verified profile page that reflects
+    the rep's current verified data in real time.
+
+    Implementation:
+      - Add achievement_link_token (text, unique, nullable) to
+        rep_profiles. Generated once on first request, never regenerated
+        (the same URL works forever so bookmarks and application
+        submissions never break).
+      - Token generation: a cryptographically random 32-character URL-
+        safe string. Store the token, expose the full URL:
+        https://teenure.com/verified/:token
+      - The /verified/:token route is public — no authentication required
+        to view it. This is intentional: a college admissions officer
+        who receives the link must be able to open it without creating
+        a Teenure account.
+      - The public profile rendered at this URL shows only: display name,
+        school, graduation year, city, categories, badges, campaigns
+        completed count, average rating, total earnings (optional — rep
+        controls whether earnings are shown via a toggle in profile
+        settings), and a Teenure verification badge confirming the profile
+        is real and verified. It does NOT show: Instagram/TikTok handles,
+        submission content, recruiter messages, parent information, or
+        any PII beyond what the rep has explicitly made public.
+      - Add a verified_profile_public boolean to rep_profiles (default
+        true when recruiter_visible = true, default false otherwise).
+        The achievement link only resolves if verified_profile_public =
+        true. If false, the URL returns a "this profile is not currently
+        public" page — not a 404, because the rep may share the link
+        before turning on visibility and should be able to explain what
+        the recipient will see.
+      - Add earnings_visible_on_public_profile boolean to rep_profiles
+        (default false — earnings are opt-in for the public profile,
+        always visible in the rep's own dashboard).
+      - GET /reps/me/achievement-link returns the full URL, the token,
+        and the current visibility settings so the rep can preview
+        before sharing.
+
+    RLS: the /verified/:token route bypasses RLS — it is a public
+    endpoint. All other achievement link management endpoints require
+    rep authentication. The public endpoint renders only from the
+    verified_profile_public = true path — it cannot be used to access
+    private profile data regardless of authentication state.
+
+13. Goal Setting and Progress Tracking:
+    Reps set personal achievement goals. The platform tracks progress
+    and surfaces it in the dashboard.
+
+    Schema addition (include in this migration or a separate one —
+    document which):
+
+    New table: rep_goals
+      id (UUID PK)
+      rep_id (FK to rep_profiles)
+      goal_type (enum: 'campaigns_completed' | 'earnings_total' |
+        'categories_active' | 'badges_earned' | 'profile_completeness')
+      target_value (integer — the number to reach:
+        campaigns_completed: 10 means "complete 10 campaigns"
+        earnings_total: in cents, e.g. 50000 = "$500"
+        categories_active: 3 means "campaigns in 3 different categories"
+        badges_earned: 3 means "earn 3 badges"
+        profile_completeness: 100 means "reach 100% completeness")
+      target_date (date, nullable — optional deadline; null means
+        "before graduation")
+      current_value (integer default 0 — cached current progress,
+        updated when the underlying metric changes)
+      status (enum: 'active' | 'completed' | 'abandoned', default
+        'active')
+      completed_at (timestamptz, nullable)
+      created_at (timestamptz default now())
+
+    Constraints: maximum 3 active goals per rep at any time. A rep
+    who wants a fourth goal must abandon one existing goal first.
+    This limit is intentional — more than 3 goals dilutes focus and
+    reduces the motivational impact of each.
+
+    Endpoints:
+    POST /reps/goals — create goal. Validates: goal_type is valid,
+      target_value is positive and appropriate for the goal_type
+      (earnings_total minimum $10 = 1000 cents, profile_completeness
+      maximum 100), active goal count < 3.
+    DELETE /reps/goals/:id — abandon goal (sets status → 'abandoned').
+      Completed goals cannot be abandoned.
+    GET /reps/goals — all active and recently completed goals with
+      current_value, target_value, progress percentage, and projected
+      completion date based on current pace.
+
+    Progress update mechanism: extend the rep_profiles cached-field
+    recompute (Prompt 2's trigger or service-layer mechanism) to also
+    update rep_goals.current_value for all active goals belonging to
+    the rep whenever the relevant underlying metric changes:
+      - Campaign confirmed → update 'campaigns_completed' goals
+      - Transfer paid → update 'earnings_total' goals
+      - Campaign confirmed in a new category → update 'categories_active'
+        goals (count distinct categories across confirmed campaigns)
+      - Module passed → update 'badges_earned' goals
+      - Profile completeness score changes → update
+        'profile_completeness' goals
+
+    Goal completion check: after each current_value update, if
+    current_value >= target_value set status → 'completed', set
+    completed_at. Notify the rep via email: "You hit your goal." No
+    confetti, no points, no leaderboard — just a clean notification
+    that real progress happened.
+
+    GET /reps/goals/suggestions — returns suggested goals based on the
+    rep's current profile state. Not personalized AI recommendations —
+    simple rule-based suggestions:
+      - If campaigns_completed < 5: suggest "Complete 5 campaigns"
+      - If profile_completeness < 80: suggest "Reach 80% profile
+        completeness"
+      - If badges_earned = 0: suggest "Earn your first badge"
+      - If categories_active < 2: suggest "Work in 2 categories"
+    Suggestions exclude goal_types the rep already has an active goal
+    for. Returns at most 3 suggestions. This endpoint is simple enough
+    to be stateless — computed on request, not stored.
 
 Acceptance criteria:
   - A campaign in a parent-blocked category never appears in available
@@ -779,6 +912,59 @@ Deliverables:
 8. Section 1A enforcement in frontend: no UI for messaging another rep,
    browsing other rep profiles, or posting outside a campaign submission
    context. These are structural absences, not disabled buttons.
+9. Achievement Link sharing UI:
+   - In the profile preview screen: a "Share your verified profile"
+     section showing the achievement link URL with a copy button and
+     a QR code (generated client-side from the URL — no server
+     dependency). One toggle for earnings visibility. One toggle for
+     public profile on/off.
+   - A preview of exactly what the public link shows before the rep
+     turns it on. "This is what a college admissions officer sees when
+     they open your link."
+   - The public /verified/:token page: clean, professional, Teenure-
+     branded. Not a marketing page — a credential document. Shows the
+     rep's verified data with a clear "Verified by Teenure" mark and
+     the date last updated. No CTAs to sign up, no navigation to the
+     app — this page exists for the person receiving the link, not for
+     converting them to a Teenure user. Keep it focused.
+10. Goal setting UI:
+    - Goals panel on the dashboard: current active goals with progress
+      bars, current value versus target value, projected completion at
+      current pace.
+    - Add goal flow: goal type selector (plain language labels, not
+      enum values — "Complete X campaigns" not "campaigns_completed"),
+      target value input with sensible defaults and input validation,
+      optional target date.
+    - Suggestions panel: "Goals to consider" showing the rule-based
+      suggestions from GET /reps/goals/suggestions. One-tap to add a
+      suggested goal.
+    - Goal completion notification: when a goal completes, the dashboard
+      shows a completion state for that goal before it moves to the
+      completed history. No animation, no points — a clean "Goal
+      reached" state with the completed goal details.
+    - The 3-goal limit is communicated proactively: when a rep has 3
+      active goals, the "add goal" action is replaced with "Manage
+      your goals to add a new one" with a link to abandon an existing
+      goal. Never a silent rejection.
+11. Mobile-first verification for all new surfaces:
+    Every screen added in deliverables 9 and 10 must pass the same
+    375px viewport check required for the original Prompt 6 deliverables.
+    The achievement link QR code must be large enough to scan on a
+    phone screen. The goals panel must render without truncation on a
+    375px viewport. This is not a new requirement — it is the existing
+    mobile-first requirement applied explicitly to the new deliverables
+    so it is not overlooked.
+
+**Also depends on (added by Prompts 8G/8H):** Prompt 8G (Skill
+Challenges) adds a challenge-discovery panel, pre-submission disclosure,
+and challenge-submission UI to this portal; Prompt 8H (Learning Modules
+and Verified Badges) adds a learning hub, pre-module disclosure, module
+experience, and badge display. Both add a line item to the dashboard
+earnings panel — conversion bonus earnings (8G) shown distinctly from
+campaign earnings, and module completions are called out as unpaid in
+context so the earnings panel is never misread as incomplete. See those
+prompts' "Frontend additions" sections — apply them alongside
+deliverables 1–11 above.
 
 Acceptance criteria:
   - Under-16 pending parental consent → "waiting on your parent" state,
@@ -1558,6 +1744,1221 @@ usage patterns rather than speculation.
 
 ---
 
+## 8G. Skill Challenges
+
+**Depends on:** Prompt 8 (Brand Portal backend — implemented), Prompt 5
+(Rep Portal backend — implemented), Prompt 10 (Campaign Lifecycle &
+Payout Engine — implemented, specifically Stripe Connect payout path
+which this prompt extends for the conversion bonus).
+
+**Also affects:** Prompt 9 (Brand Portal frontend — add challenge
+management tab), Prompt 6 (Rep Portal frontend — add challenge discovery
+panel and disclosure copy), Prompt 4A (Parent Portal — add challenge
+activity to parent dashboard). Execute those additions when you reach
+this prompt; do not defer them to a separate cleanup pass.
+
+**Numbering note:** The builder named this 8G. The planning conversation
+called it 8C. Both refer to the same feature. The suite document should
+be updated to reflect 8G before this prompt is executed.
+
+```
+Implement skill challenges — an open, low-commitment submission surface
+where brands post creative briefs that any matching rep can respond to
+without a formal campaign relationship. Challenges are how brands
+discover talent before committing campaign budget. For reps, challenges
+are a way to build profile depth and earn potential campaign invitations
+even before being directly approached by a brand.
+
+THE FUNDAMENTAL DISTINCTION FROM CAMPAIGNS — enforce this everywhere:
+
+  Campaigns: formal relationship, guaranteed payout, FTC disclosure
+    required, parent approval required for under-16, rep is invited
+    by the brand.
+  Challenges: open audition, NO guaranteed payout, NO FTC disclosure
+    (no compensation means no sponsored content), NO parent approval
+    required (no financial transaction involving a minor), any matching
+    rep can submit, brand discovers talent.
+
+This distinction is the legal and safety architecture. A challenge that
+offers compensation is a campaign and must use the full campaign flow.
+A challenge that offers only the possibility of a future campaign
+invitation is categorically different and subject to different rules.
+
+The pre-challenge disclosure is NOT optional UI copy. It is a server-
+enforced contract. A rep submitting via direct API call without seeing
+the disclosure UI is still submitting to a system that never promised
+payment. The schema and API response must make this explicit.
+
+COMPENSATION DESIGN — read before building:
+
+  Challenges are unpaid by design. However, when a brand converts a
+  challenge submission to a campaign invitation, the platform pays a
+  small conversion bonus to the rep from platform margin — not from
+  the brand. This bonus signals that creative effort has real value
+  and that the platform respects the rep's time even when they did
+  not know upfront whether their work would convert.
+
+  Conversion bonus amount: defined in config as
+  CHALLENGE_CONVERSION_BONUS_CENTS (starting value: 750 cents = $7.50).
+  This is a platform cost, not a brand charge. Document it as a rep
+  acquisition cost — the platform spends $7.50 to convert a passive
+  rep into an active campaign participant, which is a fraction of the
+  cost of any other acquisition channel.
+
+  All conversion bonuses flow through the existing Stripe Connect
+  payout path from Prompt 10. No new payment infrastructure.
+
+TEEN AND PARENT EXPECTATION MANAGEMENT:
+
+  Some reps and parents will expect payment for challenge submissions.
+  The platform handles this through radical transparency, not fine print:
+    - The challenge submission flow states clearly before any work is
+      done: "Challenges are unpaid. Brands use them to discover reps
+      for paid campaigns. If a brand invites you to a campaign based
+      on your submission, you receive a $7.50 discovery bonus from
+      Teenure — but this is not guaranteed."
+    - The parent portal shows all challenge activity and any conversion
+      bonuses earned, so parents always know what their child submitted
+      to and what they received.
+    - Declined submissions are never shown to reps (protects confidence)
+      but ARE shown in aggregate in the parent dashboard ("submitted to
+      4 challenges, 1 converted, $7.50 earned") so parents have the
+      full picture.
+
+---
+
+SCHEMA ADDITIONS (new migration, separately numbered from all prior
+migrations — do not alter any existing migration file):
+
+1. New table: challenges
+     id (UUID PK default gen_random_uuid())
+     brand_id (UUID not null references brand_profiles(id)
+       on delete restrict)
+     title (text not null)
+     brief (text not null)
+     category (text not null — must be a value from the centrally-
+       defined category list in Prompt 5; enforce at API layer)
+     target_cities (text[] not null default '{}' — empty array means
+       all cities; non-empty means only reps in those cities)
+     submission_format (text not null default 'both'
+       check (submission_format in ('text', 'file', 'both')))
+     submission_prompt (text not null — specific instruction to the rep:
+       what to create, how long, what format)
+     status (text not null default 'draft'
+       check (status in ('draft', 'active', 'closed')))
+     max_submissions (integer nullable — null means unlimited)
+     submissions_count (integer not null default 0)
+     opens_at (timestamptz nullable — null means immediately on activate)
+     closes_at (timestamptz nullable — null means brand closes manually)
+     conversion_count (integer not null default 0)
+     created_at (timestamptz not null default now())
+     updated_at (timestamptz not null default now())
+
+2. New table: challenge_submissions
+     id (UUID PK default gen_random_uuid())
+     challenge_id (UUID not null references challenges(id)
+       on delete restrict)
+     rep_id (UUID not null references rep_profiles(id)
+       on delete restrict)
+     submission_text (text nullable)
+     submission_file_urls (text[] not null default '{}')
+     status (text not null default 'submitted'
+       check (status in ('submitted', 'reviewed', 'converted',
+       'declined')))
+     brand_note (text nullable — internal only, never returned in any
+       rep-facing endpoint response)
+     converted_to_campaign_id (UUID nullable references campaigns(id))
+     payout_cents (integer nullable — null until conversion; set to
+       CHALLENGE_CONVERSION_BONUS_CENTS on convert action)
+     payout_status (text nullable default null
+       check (payout_status in (null, 'pending', 'processing',
+       'paid', 'failed')))
+     stripe_transfer_id (text nullable unique)
+     submitted_at (timestamptz not null default now())
+     reviewed_at (timestamptz nullable)
+     converted_at (timestamptz nullable)
+     paid_at (timestamptz nullable)
+     UNIQUE (challenge_id, rep_id)
+
+3. Add to rep_profiles:
+     challenges_submitted_count (integer not null default 0)
+     challenges_converted_count (integer not null default 0)
+   These are cached counts updated on submission and conversion.
+   The conversion rate (challenges_converted_count /
+   challenges_submitted_count) is derived at the API layer — never
+   stored separately, always computed from these two fields to avoid
+   drift.
+
+4. Indexes:
+     CREATE INDEX idx_challenges_status_category
+       ON challenges(status, category)
+       WHERE status = 'active';
+     CREATE INDEX idx_challenges_brand
+       ON challenges(brand_id, status);
+     CREATE INDEX idx_challenge_submissions_rep
+       ON challenge_submissions(rep_id, status);
+     CREATE INDEX idx_challenge_submissions_challenge
+       ON challenge_submissions(challenge_id, status);
+     CREATE INDEX idx_challenge_submissions_payout
+       ON challenge_submissions(payout_status)
+       WHERE payout_status IN ('pending', 'processing');
+
+5. RLS policies:
+     Enable RLS on both new tables before any application code touches
+     them — this is the ground rule from the Master Context Prompt.
+
+     challenges:
+       Brands read and write only their own challenges (brand_id matches
+       authenticated brand's brand_profiles.id). Reps read only active
+       challenges (status = 'active'). No rep can read draft or closed
+       challenges. Recruiters and parents have no direct table access.
+       Admin uses service role.
+
+     challenge_submissions:
+       Reps read and write only their own rows (rep_id matches
+       authenticated rep's rep_profiles.id). Brands read all submissions
+       for challenges they own. Reps cannot read other reps' submissions
+       under any circumstances — submissions are never public. Recruiters
+       and parents have no direct table access. Admin uses service role.
+
+     The brand_note column must never appear in any rep-facing serializer
+     regardless of RLS — add this as an explicit serializer exclusion,
+     not just an RLS trust.
+
+---
+
+BACKEND DELIVERABLES:
+
+1. Config addition:
+   Add CHALLENGE_CONVERSION_BONUS_CENTS to app/core/config.py, loaded
+   from environment variables. Starting value: 750. Document in
+   .env.example with comment: "Platform-funded bonus paid to a rep
+   when their challenge submission converts to a campaign invitation.
+   Funded from platform margin, not charged to brand."
+
+2. Brand challenge management (new router: app/routers/challenges.py):
+
+   POST /brands/challenges
+     Creates a challenge in 'draft' status. Required fields: title,
+     brief, category (validated against centrally-defined list),
+     submission_format, submission_prompt. Optional: target_cities,
+     max_submissions, opens_at, closes_at. Returns full challenge
+     object. Brand must be in 'active' account_status.
+
+   PUT /brands/challenges/:id
+     Edit challenge. Legal only in 'draft' status — return 409 if
+     status is 'active' or 'closed' with message: "Active challenges
+     cannot be edited. Close this challenge and create a new one."
+     Brands can update all fields while in draft.
+
+   POST /brands/challenges/:id/activate
+     Transitions 'draft' → 'active'. Validates: title, brief, category,
+     submission_prompt all present and non-empty. Sets opens_at to
+     now() if not specified. Challenges are free for brands at launch
+     — no Stripe charge. Document this explicitly: challenges are a
+     brand acquisition tool. Charging at launch reduces adoption. Pricing
+     is introduced when value is demonstrated, not before.
+
+   POST /brands/challenges/:id/close
+     Transitions 'active' → 'closed'. Idempotent — closing an already-
+     closed challenge returns the current state with a 200, not a 409.
+     No submissions can be made against a closed challenge.
+
+   GET /brands/challenges
+     List all brand's challenges. Include per-challenge: submissions_count,
+     conversion_count, derived conversion_rate, status, and
+     closes_at countdown if applicable.
+
+   GET /brands/challenges/:id/submissions
+     All submissions for a brand's challenge. Returns per submission:
+       - rep_id (opaque UUID only — brand cannot directly identify the
+         rep from this field alone)
+       - rep display_name, city, categories, profile_completeness_score,
+         campaigns_completed, average_rating, challenges_converted_count,
+         derived conversion_rate — this is the no-PII card for challenge
+         context
+       - submission_text and submission_file_urls
+       - submitted_at, status (submitted/reviewed/converted — never
+         'declined' in the brand's own view, that would be misleading;
+         declined submissions show as 'reviewed' from the brand's list
+         perspective — the decline was their action)
+     Does NOT include: brand_note (that is internal server state),
+     rep Instagram/TikTok handles, school name, date of birth, or any
+     other PII not listed above.
+
+     Full profile view: in the challenge submission context, a brand may
+     view a rep's full profile (GET /reps/:id/profile — add this brand-
+     facing endpoint if it does not already exist from Prompt 8's
+     implementation) without spending a recruiter credit. The rep
+     submitted voluntarily to the brand's challenge; the brand has
+     implicit context to view their full profile. Document this decision
+     explicitly so it does not conflict with the recruiter credit model:
+     recruiter credit applies to cold discovery. Challenge submission
+     is warm discovery — the rep initiated contact by submitting.
+
+3. Brand submission review actions:
+
+   POST /brands/challenges/:id/submissions/:submission_id/review
+     Marks submission as reviewed. Accepts optional brand_note (internal
+     only — never returned in any rep-facing endpoint). Sets status
+     'submitted' → 'reviewed'. No rep notification. Reviewed is a brand-
+     internal state for managing their inbox.
+
+   POST /brands/challenges/:id/submissions/:submission_id/convert
+     The key action. Converts a challenge submission into a campaign
+     invitation. Required: campaign_id (must be an active campaign
+     belonging to this brand). Process:
+       a. Validate: challenge_submission exists, belongs to this brand's
+          challenge, status is 'submitted' or 'reviewed' (not already
+          'converted' or 'declined').
+       b. Validate: campaign_id is active, belongs to this brand,
+          has available rep slots (reps_accepted_count < max_reps).
+       c. Create a campaign_reps invitation row for this rep on this
+          campaign — status 'invited', invite_expires_at set per the
+          standard 48-hour window. This invitation is identical in
+          structure to a direct brand invitation from Prompt 8. The
+          RLS policies from Prompt 2 must hold for this row — verify
+          that a campaign_reps row created through this path is
+          indistinguishable from one created through the normal
+          invitation flow from the payout engine's perspective.
+       d. Set challenge_submissions.status → 'converted'.
+       e. Set converted_to_campaign_id, converted_at.
+       f. Set payout_cents = CHALLENGE_CONVERSION_BONUS_CENTS from config.
+       g. Set payout_status = 'pending'.
+       h. Call payout_service.release_challenge_conversion_bonus(
+          challenge_submission_id) — a new function in payout_service
+          (see deliverable 5).
+       i. Update challenges.conversion_count (+1).
+       j. Update rep_profiles.challenges_converted_count (+1).
+       k. Notify rep via email: "A brand loved your challenge submission
+          and has invited you to a paid campaign. You've also earned a
+          $7.50 discovery bonus from Teenure." The bonus amount should
+          be formatted from CHALLENGE_CONVERSION_BONUS_CENTS, not
+          hardcoded in the email template.
+     All steps a–k must execute atomically in a database transaction.
+     If any step fails, the entire conversion rolls back. A partially-
+     converted submission is worse than a failed conversion.
+     Idempotent: if called twice with the same submission_id, the second
+     call returns the current converted state with 200, not a 500 or
+     a duplicate payout.
+
+   POST /brands/challenges/:id/submissions/:submission_id/decline
+     Sets status → 'declined'. Idempotent. No rep notification —
+     declined submissions are silently archived. Reps see their own
+     submission status as 'submitted', 'reviewed', or 'converted' only.
+     'declined' is never returned in any rep-facing endpoint. This is a
+     deliberate UX decision: protecting rep confidence, especially for
+     younger users who may internalize rejection disproportionately.
+
+4. Rep challenge discovery and submission:
+
+   GET /reps/challenges/available
+     Active challenges where:
+       - challenge.category intersects rep's categories (same logic as
+         campaign matching from Prompt 5)
+       - challenge.target_cities matches rep's city, OR target_cities
+         is empty (all cities)
+       - rep does not already have a challenge_submission row for this
+         challenge (already submitted)
+       - challenge is not closed and max_submissions has not been reached
+         (submissions_count < max_submissions, or max_submissions is null)
+     Does NOT apply parent values_filter — challenges are unpaid, do not
+     involve a brand relationship, and do not require parent approval.
+     However: if the rep is under 16 and parent campaign_approval_required
+     is TRUE, challenges are still available — the approval gate is
+     specific to paid campaigns. Document this decision.
+
+   GET /reps/challenges/submitted
+     Rep's own submission history. Returns: challenge title, category,
+     submitted_at, status — but status mapping for rep-facing output:
+       'submitted' → 'submitted'
+       'reviewed' → 'submitted' (rep sees no difference between reviewed
+         and unreviewed — this is intentional)
+       'converted' → 'converted' (with campaign name and payout_cents)
+       'declined' → never returned, row excluded from this endpoint
+     If status is 'converted': include the campaign they were invited to
+     (campaign title, payout_per_rep_cents) and the conversion bonus
+     amount (payout_cents). This is the direct line from effort to
+     outcome that makes challenges worth doing.
+
+   POST /reps/challenges/:id/submit
+     Creates a challenge_submission row. Process:
+       a. Validate challenge is active.
+       b. Validate max_submissions not exceeded.
+       c. Validate rep has not already submitted (UNIQUE constraint will
+          catch this, but return a clear error before hitting the
+          constraint: "You have already submitted to this challenge").
+       d. Validate submission content matches submission_format: if format
+          is 'text', submission_text required and non-empty; if 'file',
+          at least one submission_file_url required; if 'both', at least
+          one of the two required.
+       e. Record disclosure_acknowledged: the request body must include
+          disclosure_acknowledged: true (boolean). If absent or false,
+          return 400 with message: "Challenge disclosure acknowledgment
+          required. Challenges are unpaid brand discovery tools. Your
+          submission may result in a paid campaign invitation, but this
+          is not guaranteed." This is the server-side enforcement of the
+          pre-challenge disclosure — a rep who calls this endpoint via
+          direct API without the disclosure UI must still acknowledge the
+          terms, or the submission is rejected.
+       f. Create challenge_submission row.
+       g. Increment challenges.submissions_count (+1, atomic).
+       h. Increment rep_profiles.challenges_submitted_count (+1).
+       i. Return the created submission with status 'submitted'. Do not
+          return an estimated response time or any implication that the
+          brand will respond. Neutral confirmation only.
+
+5. payout_service.py addition:
+
+   release_challenge_conversion_bonus(challenge_submission_id: UUID):
+     - Fetch the challenge_submission row. Validate:
+         status = 'converted'
+         payout_cents is not null and > 0
+         payout_status = 'pending' (not already processing or paid)
+         rep has a completed Stripe Connect account (same check as
+           release_payout from Prompt 10)
+     - Create a Stripe Transfer from the platform account to the rep's
+       Connected Account for payout_cents. Transfer metadata:
+         payment_type: 'challenge_conversion_bonus'
+         challenge_submission_id: <id>
+         rep_id: <rep_id>
+     - Set payout_status → 'processing', store stripe_transfer_id.
+     - Idempotent: if stripe_transfer_id already exists on this row,
+       return without creating a duplicate Transfer. This is the
+       primary idempotency guard — the Transfer ID proves the payout
+       was already initiated.
+
+6. Stripe webhook additions (extend Prompt 10's handler):
+
+   transfer.paid where metadata.payment_type = 'challenge_conversion_bonus':
+     → challenge_submissions.payout_status → 'paid', set paid_at
+     → update rep_profiles.total_earnings_cents (same cached-field
+       recompute mechanism from Prompt 10 — challenge conversion bonuses
+       count toward the rep's total lifetime earnings)
+   transfer.failed where metadata.payment_type = 'challenge_conversion_bonus':
+     → alert admin queue, set payout_status → 'failed', flag for manual
+       review
+     → same admin surfacing pattern as flat campaign transfer failures
+
+   Distinguish by metadata.payment_type. If metadata.payment_type is
+   absent or has a different value, do not handle in this branch —
+   fall through to the existing handlers. Never let a challenge bonus
+   webhook handler touch campaign payout rows or vice versa.
+
+7. Challenge auto-close scheduled job (extend Prompt 3 runner):
+   New job: challenge_auto_close — runs every hour.
+   Finds challenges where:
+     closes_at < now()
+     status = 'active'
+   Transitions status → 'closed'. Idempotent — a challenge already
+   'closed' is skipped without error. Logs every auto-close with
+   challenge_id, closes_at, and the timestamp of closure.
+
+8. Profile serializer additions:
+   Add to the rep profile serializer used by:
+     - GET /reps/me
+     - GET /reps/me/profile-preview
+     - Brand-facing rep browse (GET /brands/campaigns/:id/reps/browse)
+     - Recruiter search results (GET /recruiters/reps/search)
+   Fields to add:
+     challenges_submitted_count (integer)
+     challenges_converted_count (integer)
+     challenge_conversion_rate (derived: challenges_converted_count /
+       challenges_submitted_count, rounded to 2 decimal places; null
+       if challenges_submitted_count = 0 to avoid division by zero)
+   For recruiter search results (no-PII cards): include
+   challenges_converted_count and challenge_conversion_rate — these
+   are achievement signals, not PII, and do not require a credit spend
+   to see. A rep's conversion rate is as relevant to a recruiter as
+   their campaign count.
+
+9. Admin analytics addition (extend Prompt 13):
+   GET /admin/analytics/challenges
+   Returns:
+     - Total challenges created, active, closed
+     - Total submissions platform-wide
+     - Platform-wide conversion rate
+     - Conversion bonus total paid (in cents) — this is a platform cost
+       that leadership needs to track
+     - Top categories by submission volume
+     - Brands with highest conversion rates (a quality signal — a brand
+       that converts 40% of submissions is a better platform partner
+       than one that converts 5% and wastes rep effort)
+     - Brands with zero conversions after 30+ submissions (a warning
+       signal — these brands may be using challenges to harvest creative
+       work without paying for campaigns)
+
+10. Parent portal addition (extend Prompt 4A):
+    Add to GET /parent/dashboard:
+      challenge_activity: {
+        total_submitted: integer
+        total_converted: integer
+        total_bonus_earned_cents: integer
+        recent_submissions: [last 5, with challenge title, submitted_at,
+          status visible to parent ('submitted'|'converted'), and
+          bonus_earned_cents if converted]
+      }
+    Parents see aggregate challenge activity and bonuses earned.
+    Parents do NOT see declined submissions (same protection as reps —
+    no reason to expose rejection to a parent who may pressure their
+    child about it). Parents DO see 'converted' submissions including
+    the campaign the rep was invited to, because a campaign invitation
+    is a financial event the parent has a legitimate interest in knowing
+    about before their child accepts.
+
+---
+
+FRONTEND ADDITIONS:
+
+Brand portal (add to Prompt 9's challenge management tab):
+  - Challenges tab in the brand dashboard navigation alongside Campaigns.
+  - Challenge creation form: title, brief field, category selector
+    (same options as campaign targeting), submission format selector,
+    submission prompt field, optional max submissions and close date.
+    A preview panel showing exactly what a rep will see before the
+    brand activates.
+  - Challenge list: all challenges with status, submissions_count,
+    conversion_count, conversion_rate per challenge.
+  - Submissions inbox per challenge: rep no-PII card, submission
+    content, submitted_at. Review, Convert, and Decline actions.
+    Convert action requires selecting an active campaign from a
+    dropdown. A clear note on the Convert action: "Converting sends
+    the rep a campaign invitation and a $7.50 Teenure discovery bonus.
+    This does not create a billing event — the campaign budget was
+    set at campaign activation."
+  - Zero-conversions warning state: if a brand has closed a challenge
+    with 30+ submissions and zero conversions, surface a prompt:
+    "Consider using challenges to discover reps for active campaigns.
+    Reps invest time in submissions — converting the best ones builds
+    your brand reputation on Teenure."
+
+Rep portal (add to Prompt 6's challenge panel):
+  - Challenge discovery panel on the dashboard. Visually distinct from
+    the Campaigns panel. Header: "Brand Challenges — Unpaid Discovery"
+    with a one-line explanation: "Submit your creative work. Brands may
+    invite you to a paid campaign based on what you submit."
+  - Challenge detail view: full brief, submission prompt, format,
+    close date if applicable. Before the submission form, a mandatory
+    disclosure box (cannot be hidden or scrolled past):
+      "This challenge is unpaid. You are sharing your creative work
+      to help a brand discover talent. If the brand loves your
+      submission, they may invite you to a paid campaign and Teenure
+      will pay you a $7.50 discovery bonus. This is not guaranteed."
+    A checkbox: "I understand this challenge is unpaid." The checkbox
+    must be checked before the submission form is accessible. The
+    checkbox sends disclosure_acknowledged: true to the server — this
+    is the UI implementation of the server-side enforcement in
+    deliverable 4e above.
+  - Submission interface: text field and/or file upload per format.
+    Character count for text submissions. File type and size validation
+    mirroring server-side checks. A submit button with the label
+    "Submit My Work" — not "Apply" (implies job application framing)
+    and not "Earn" (implies payment). Submit confirmation: "Submitted.
+    You'll hear from us if a brand wants to work with you."
+  - Submitted challenges panel: challenge title, submitted_at, and
+    status. Status display:
+      In review → "Submitted — brand is reviewing"
+      Converted → "Brand invited you to [campaign name]. +$7.50 bonus
+        added to your earnings."
+    No declined state visible — simply absent from the list once declined.
+  - Mobile-first: all challenge surfaces must pass the 375px viewport
+    check per the mobile-first requirement from Prompt 6.
+
+---
+
+ACCEPTANCE CRITERIA:
+
+Schema and RLS:
+  - brand_note is never present in any rep-facing API response payload —
+    verified by inspecting GET /reps/challenges/submitted and the
+    challenge detail response.
+  - A rep cannot read another rep's challenge_submissions rows — RLS
+    verified by attempting cross-rep access with two seeded reps.
+  - A rep cannot see declined submissions in any rep-facing endpoint —
+    verified by seeding a declined submission and confirming it is
+    absent from GET /reps/challenges/submitted.
+
+Disclosure enforcement:
+  - POST /reps/challenges/:id/submit with disclosure_acknowledged absent
+    or false returns 400 with the correct disclosure message. Verified
+    by calling the endpoint directly without a UI session.
+  - A rep who submits via direct API with disclosure_acknowledged: true
+    but no UI interaction creates a valid submission — the server
+    does not require UI interaction, only the acknowledgment flag.
+
+Submission validation:
+  - Submitting to a closed challenge returns a clear "challenge is
+    closed" error, not a generic 4xx.
+  - Submitting to a challenge already submitted returns "already
+    submitted," not a UNIQUE constraint violation error.
+  - Submitting to a challenge at max_submissions returns a clear
+    "challenge is full" error.
+
+Conversion:
+  - Converting a submission creates a campaign_reps invitation row
+    that is indistinguishable from a direct brand invitation — verified
+    by running Prompt 10's existing campaign lifecycle integration test
+    against a campaign_reps row created via conversion.
+  - Converting the same submission twice does not create a duplicate
+    Transfer — verified by calling the convert endpoint twice and
+    asserting stripe_transfer_id is identical on both responses and
+    only one Stripe Transfer exists.
+  - Converting a submission to a campaign with no available rep slots
+    returns 409 "campaign is full" and does not create a
+    campaign_reps row or initiate a payout.
+  - The conversion transaction is atomic — if the campaign_reps
+    creation fails, the challenge_submission status does not change
+    to 'converted' and no payout is initiated.
+
+Payout safety:
+  - release_challenge_conversion_bonus called twice for the same
+    submission_id produces exactly one Stripe Transfer — verified
+    with a concurrency test matching the pattern from Prompt 11's
+    credit deduction test.
+  - transfer.paid for a challenge bonus Transfer updates only
+    challenge_submissions and rep_profiles.total_earnings_cents —
+    does not touch any campaign_reps or campaign payout rows.
+  - transfer.paid for a campaign Transfer does not affect
+    challenge_submissions rows.
+
+Auto-close job:
+  - A challenge with closes_at in the past is transitioned to 'closed'
+    when the job runs — tested directly against the job function.
+  - Running the job twice against the same expired challenge produces
+    one log entry and no duplicate state transition.
+
+Profile serializer:
+  - challenge_conversion_rate is null when challenges_submitted_count
+    is 0 — unit test the division-by-zero guard explicitly.
+  - challenge_conversion_rate appears in recruiter search results
+    without a credit spend — verified by calling the search endpoint
+    as an authenticated recruiter and asserting the field is present.
+
+Parent portal:
+  - Converted submissions appear in the parent dashboard challenge
+    activity with the campaign name and bonus amount.
+  - Declined submissions are absent from the parent dashboard.
+```
+
+---
+
+## 8H. Learning Modules and Verified Badges
+
+**Depends on:** Prompt 5 (Rep Portal backend — implemented), Prompt 8G
+(establishes the non-campaign rep activity pattern this prompt follows;
+specifically the disclosure architecture, the profile serializer
+additions, and the admin analytics pattern).
+
+**Also affects:** Prompt 6 (Rep Portal frontend — learning hub, module
+player, badge display), Prompt 13 (Admin Portal — module management
+interface and analytics), Prompt 4A (Parent Portal — module activity
+in parent dashboard). Execute those additions when you reach this prompt.
+
+**FTC module dependency:** This prompt introduces the FTC Disclosure
+module as a prerequisite for campaign acceptance. This changes the
+behavior of POST /campaigns/:id/accept from Prompt 5. Update that
+endpoint in this prompt — do not leave it for a separate pass. The
+compliance audit in Prompt 15 will check for this; it should find it
+already implemented, not open.
+
+```
+Implement learning modules and verified badges — short, platform-curated
+educational content that reps complete to earn verified profile badges.
+Badges are issued by Teenure, not self-reported by reps. They appear on
+the rep's profile and are visible to brands and recruiters as verified
+credentials.
+
+PURPOSE (three distinct goals — design against all three):
+
+  1. Give new reps with zero campaigns a reason to stay active and
+     build profile depth. A rep who just signed up should land in
+     the learning hub if no campaigns are available, not a blank screen.
+
+  2. Give districts and schools a curriculum hook. When district licensing
+     activates, modules become the curriculum that districts pay for.
+     The module infrastructure must support a future district-funded
+     completion stipend without a rebuild (see payout_cents field below).
+
+  3. Give brands a quality signal beyond campaign count. A rep with
+     verified FTC knowledge and client communication credentials is more
+     credible than one without.
+
+COMPENSATION DESIGN — read before building:
+
+  Modules are unpaid at MVP. However the schema includes a payout_cents
+  field on rep_module_completions that is null at MVP. This field exists
+  to enable district-funded module completion stipends when district
+  licensing activates: a district pays Teenure, Teenure pays reps a
+  stipend for completing curriculum, stipend flows through Stripe Connect.
+  Do not implement the payment logic now. Do implement the field so the
+  payment logic can be added via a new prompt without a schema migration.
+
+  The pre-module disclosure states the current compensation model
+  honestly: "This module is unpaid. Completing it earns a verified badge
+  that appears on your profile and is visible to brands and colleges. If
+  your school district has a Teenure curriculum agreement, you may be
+  eligible for a completion stipend — check with your school counselor."
+  This disclosure future-proofs the model without overpromising.
+
+TEEN AND PARENT EXPECTATION MANAGEMENT:
+
+  Same principle as challenges: radical transparency before any work
+  is done. The disclosure is mandatory and server-enforced. A rep who
+  completes a module without passing the disclosure acknowledgment has
+  not completed the module in the platform's view.
+
+CONTENT GOVERNANCE:
+
+  Modules are platform-created, admin-curated. Brands do not create
+  modules. Reps do not create modules. This is intentional — the badge's
+  value depends on consistent quality standards. A community-generated
+  badge is not a verified credential. An admin-curated badge is.
+
+  Module content must never be editable after activation. Archive and
+  recreate is the only path to content changes. This protects reps who
+  earned a badge on a specific version of the content — the badge they
+  earned remains accurate even if the content is later updated.
+
+FTC DISCLOSURE MODULE — MANDATORY:
+
+  One specific module — title: "FTC Disclosure Essentials", defined in
+  a config constant FTC_MODULE_ID — is mandatory for all reps before
+  their first campaign acceptance. This replaces the current checkbox-
+  only mechanism with a verified understanding check. The checkbox at
+  campaign acceptance remains as an acknowledgment that the rep already
+  understands the requirement — it is now backed by a verified module
+  completion, not just a click.
+
+  The gate logic in POST /campaigns/:id/accept must be updated in this
+  prompt: before allowing accept, check that the rep has a 'passed'
+  rep_module_completions row for FTC_MODULE_ID. If not, return 403 with
+  message: "Complete the FTC Disclosure Essentials module before
+  accepting campaigns. It takes about 5 minutes and is required to
+  work with brands on Teenure."
+
+---
+
+SCHEMA ADDITIONS (new migration, separately numbered):
+
+1. New table: learning_modules
+     id (UUID PK default gen_random_uuid())
+     title (text not null)
+     description (text not null)
+     category (text nullable — if set, this module is especially
+       relevant to reps in this category; null means relevant to all)
+     content_blocks (jsonb not null — ordered array. Each element:
+       {
+         "type": "text" | "video_url" | "image_url" | "quiz",
+         "content": <string for text/video_url/image_url> |
+           <array of question objects for quiz>
+       }
+       Quiz question object:
+       {
+         "question": "string",
+         "options": ["string", "string", "string", "string"],
+         "correct_index": integer  ← NEVER sent to client
+       }
+       The correct_index field in quiz blocks is stored server-side and
+       evaluated server-side. It must never appear in any client-facing
+       API response regardless of authentication role — including admin
+       preview mode. Admin previews the module as a rep sees it, with
+       correct answers hidden. This is enforced by a dedicated module
+       serializer that strips correct_index from all outbound responses.)
+     passing_score (integer nullable — minimum percentage correct to
+       pass. null means no quiz; completion on content view alone)
+     badge_title (text not null)
+     badge_description (text not null — one sentence explaining what
+       the rep demonstrated)
+     badge_color (text not null — hex color e.g. '#6C3FC5')
+     badge_icon (text nullable — icon name from the shared icon set)
+     estimated_minutes (integer not null)
+     status (text not null default 'draft'
+       check (status in ('draft', 'active', 'archived')))
+     created_at (timestamptz not null default now())
+     updated_at (timestamptz not null default now())
+
+2. New table: rep_module_completions
+     id (UUID PK default gen_random_uuid())
+     rep_id (UUID not null references rep_profiles(id) on delete restrict)
+     module_id (UUID not null references learning_modules(id)
+       on delete restrict)
+     status (text not null default 'in_progress'
+       check (status in ('in_progress', 'passed', 'failed')))
+     quiz_score (integer nullable — percentage correct 0–100; null if
+       no quiz in module)
+     attempts (integer not null default 1)
+     last_attempt_at (timestamptz nullable)
+     passed_at (timestamptz nullable)
+     badge_issued_at (timestamptz nullable — same as passed_at at MVP;
+       separate field anticipates future where badge issuance could be
+       decoupled from completion)
+     disclosure_acknowledged_at (timestamptz nullable — set when the
+       rep acknowledges the pre-module disclosure; required before
+       start is recorded)
+     payout_cents (integer nullable default null — null at MVP; set
+       to the district stipend amount when district licensing activates;
+       do not implement payment logic now, implement the field)
+     payout_status (text nullable default null
+       check (payout_status in (null, 'pending', 'processing',
+       'paid', 'failed')))
+     stripe_transfer_id (text nullable unique)
+     UNIQUE (rep_id, module_id) — one completion record per rep per
+       module; retakes update the existing row, never create a new one
+
+3. Add to rep_profiles:
+     badges (jsonb not null default '[]' — denormalized array of
+       earned badge data for fast profile rendering:
+       [{"module_id": "uuid", "badge_title": "string",
+         "badge_description": "string", "badge_color": "#hex",
+         "badge_icon": "string|null", "earned_at": "iso8601"}]
+       Updated atomically with rep_module_completions when a module
+       is passed. The badges jsonb is for display; rep_module_completions
+       is the source of truth for audit.)
+     badges_earned_count (integer not null default 0 — cached count,
+       updated when badges jsonb is appended to)
+
+4. Add to profile_completeness_score calculation (from Prompt 5
+   deliverable 10): each badge up to a maximum of 3 contributes to
+   the score. Define exact weights in the centrally-defined scoring
+   function — document the weights in code comments. Suggested: each
+   badge adds 5 points to the completeness score (max 15 points from
+   badges). Update only the scoring function, not the schema — the
+   score is computed, not stored separately.
+
+5. Config addition:
+   Add FTC_MODULE_ID to app/core/config.py. Value: the UUID of the
+   FTC Disclosure Essentials module once created by admin. Use an empty
+   string as the default — if FTC_MODULE_ID is empty, the gate check
+   in campaign accept is skipped with a warning log. This allows the
+   platform to activate before the module is created, but any deploy
+   where FTC_MODULE_ID is not set should generate a visible warning.
+
+6. Indexes:
+     CREATE INDEX idx_learning_modules_status
+       ON learning_modules(status) WHERE status = 'active';
+     CREATE INDEX idx_rep_module_completions_rep
+       ON rep_module_completions(rep_id, status);
+     CREATE INDEX idx_rep_module_completions_ftc
+       ON rep_module_completions(module_id, rep_id, status)
+       WHERE status = 'passed';
+       (This index specifically optimizes the FTC gate check on
+       campaign accept, which runs on every accept action.)
+
+7. RLS policies:
+     Enable RLS on both tables before any application code touches them.
+
+     learning_modules:
+       All authenticated users can SELECT active modules
+       (status = 'active'). Only admin (service role) can read draft
+       or archived modules, and can insert, update, or delete.
+
+     rep_module_completions:
+       Reps can SELECT and UPDATE only their own rows (rep_id matches).
+       Reps can INSERT only their own rows. Admin uses service role.
+       No other role has direct table access.
+
+     The correct_index fields within content_blocks (jsonb) are not
+     row-level security concerns — they are serializer-level concerns.
+     RLS does not protect jsonb sub-fields. The serializer must strip
+     correct_index on every outbound response. This is enforced via a
+     dedicated ModulePublicSerializer that never includes correct_index,
+     used for every client-facing response regardless of role.
+
+---
+
+BACKEND DELIVERABLES:
+
+1. Admin module management (new admin routes, extend Prompt 13's router):
+
+   POST /admin/modules
+     Create module in 'draft' status. Required: title, description,
+     estimated_minutes, badge_title, badge_description, badge_color,
+     content_blocks (validated: at least one block, quiz questions have
+     exactly 4 options each, correct_index is 0–3, passing_score is
+     null if no quiz blocks or 1–100 if quiz blocks are present).
+     Returns module with correct_index STRIPPED from content_blocks
+     even in admin response — admin creates with correct answers but
+     never retrieves them via this API; they are write-only after creation.
+     If admin needs to verify correct answers, they do so in the database
+     directly, not via the API.
+
+   PUT /admin/modules/:id
+     Edit module. Draft status only — 409 if active or archived with
+     message: "Active modules cannot be edited. Archive this module
+     and create a new one to preserve the integrity of existing badges."
+
+   POST /admin/modules/:id/activate
+     Validates: all required fields present, content_blocks is valid,
+     passing_score is consistent with quiz presence. Transitions
+     'draft' → 'active'. Once active, the module is visible to reps
+     and completions can be recorded.
+
+   POST /admin/modules/:id/archive
+     Transitions 'active' → 'archived'. Reps who already earned the
+     badge keep it permanently — archiving does not revoke badges.
+     No new completions can be started against an archived module.
+     In-progress completions (status = 'in_progress') are orphaned —
+     document how to handle: return them as 'in_progress' in rep-facing
+     endpoints with a message "This module is no longer available" if
+     the rep tries to complete it.
+
+   GET /admin/modules
+     All modules (all statuses) with: completion_count (total passed),
+     pass_rate (passed / (passed + failed), null if no completions),
+     average_attempts (mean attempts across all completions),
+     in_progress_count. Pass rate and average_attempts are content
+     quality signals — surface them prominently in the admin UI.
+
+2. FTC gate update (modify Prompt 5's POST /campaigns/:id/accept):
+   Add at the start of the accept handler, before any other business
+   logic:
+
+   If FTC_MODULE_ID is set (non-empty string in config):
+     Check for a rep_module_completions row where:
+       rep_id = current rep
+       module_id = FTC_MODULE_ID
+       status = 'passed'
+     If no such row exists:
+       Return 403 with body:
+         {"error": {"code": "ftc_module_required",
+           "message": "Complete the FTC Disclosure Essentials module
+           before accepting campaigns. It takes about 5 minutes and
+           is required to ensure you understand sponsored content
+           disclosure rules.",
+           "module_id": FTC_MODULE_ID}}
+       The module_id in the error response allows the frontend to deep-
+       link directly to the module without a separate lookup.
+   If FTC_MODULE_ID is not set (empty string):
+     Log warning: "FTC_MODULE_ID not configured. FTC gate skipped."
+     Continue with accept flow normally.
+
+   This change must have its own test in this prompt's acceptance
+   criteria and must be added to the Prompt 15 compliance audit
+   checklist as item 10.
+
+3. Rep module discovery and progress:
+
+   GET /reps/modules/available
+     Active modules the rep has NOT passed (no 'passed' row in
+     rep_module_completions). Include modules with 'in_progress' or
+     'failed' rows — those are available to continue or retake.
+     Sorted: FTC module first (always), then category-matched modules,
+     then general modules. For each module: id, title, description,
+     category, badge_title, badge_description, badge_color, badge_icon,
+     estimated_minutes, passing_score (as a percentage, e.g. 80),
+     rep_progress (object: status, attempts, quiz_score, last_attempt_at
+     — or null if no completion row exists yet).
+
+   GET /reps/modules/completed
+     Modules the rep has passed. Returns full badge details and
+     passed_at. This is the source of truth for badge history — the
+     badges jsonb on rep_profiles is for display; this endpoint is for
+     the complete audit trail.
+
+   GET /reps/modules/:id
+     Full module content using ModulePublicSerializer — content_blocks
+     with correct_index STRIPPED from all quiz questions. Every field
+     present except correct_index. The frontend renders content blocks
+     in order; the quiz question format includes options but no answer.
+
+4. Module start:
+   POST /reps/modules/:id/start
+     Body must include: disclosure_acknowledged: true
+     If absent or false: return 400 with message:
+       "Module disclosure acknowledgment required. This module is
+       unpaid. Completing it earns a verified badge on your profile.
+       Your school district may offer a completion stipend — check
+       with your school counselor."
+     Validate module is active (not draft or archived).
+     Validate no 'passed' row exists (cannot restart a passed module —
+       return 409 "already completed").
+     Validate retake cooldown: if status = 'failed' and last_attempt_at
+       > now() - interval '24 hours', return 429 with:
+         {"error": {"code": "retake_cooldown",
+           "message": "You can retake this module in X hours and Y
+           minutes.",
+           "available_at": "<iso8601 timestamp>"}}
+       The available_at field allows the frontend to show a precise
+       countdown without a separate server call.
+     Upsert the rep_module_completions row:
+       If no row exists: INSERT with status 'in_progress', attempts 1
+       If row exists with status 'failed': UPDATE status →
+         'in_progress', increment attempts, set last_attempt_at = now()
+       Set disclosure_acknowledged_at = now() in both cases.
+     Returns the module content (same as GET /reps/modules/:id) plus
+     the rep's current completion record.
+
+5. Module completion:
+   POST /reps/modules/:id/complete
+     Body: {"answers": [integer, integer, ...]} — one answer index per
+     quiz question in content_block order. For modules with no quiz:
+     empty array is valid and the module passes immediately.
+     Process:
+       a. Validate rep has an 'in_progress' completion row (cannot
+          complete without starting — 409 if no in_progress row).
+       b. Validate module is still active (not archived mid-session —
+          rare but possible; return 410 Gone with explanation).
+       c. Fetch content_blocks including correct_index values (use
+          service role or a server-side query that bypasses the public
+          serializer — never rely on client-submitted correct answers).
+       d. For each quiz block in content_blocks (in order), compare the
+          rep's submitted answer against correct_index. Count correct.
+       e. Calculate quiz_score = (correct / total_questions) * 100,
+          rounded to nearest integer. If no quiz questions: quiz_score
+          = null.
+       f. Determine pass/fail:
+            If passing_score is null (no quiz): passed.
+            If quiz_score >= passing_score: passed.
+            Else: failed.
+       g. On pass:
+            Update rep_module_completions: status → 'passed',
+              quiz_score, passed_at = now(), badge_issued_at = now()
+            Append to rep_profiles.badges atomically:
+              {module_id, badge_title, badge_description, badge_color,
+               badge_icon, earned_at: now()}
+            Increment rep_profiles.badges_earned_count (+1)
+            Recompute rep_profiles.profile_completeness_score using the
+              centrally-defined scoring function (which now includes
+              badge contribution)
+            Return: {passed: true, quiz_score, badge: {badge_title,
+              badge_description, badge_color, badge_icon},
+              profile_completeness_score: <new score>}
+       h. On fail:
+            Update rep_module_completions: status → 'failed', quiz_score,
+              last_attempt_at = now()
+            Return: {passed: false, quiz_score, passing_score,
+              correct_answers: [{question_index, correct_index,
+              rep_answer_index}] — return which questions the rep got
+              wrong with the correct answers. This is a learning tool.
+              Showing correct answers after failure is intentional.
+              Do NOT return correct answers for questions the rep got
+              right.}
+       Steps g must execute atomically: if the badges jsonb append fails,
+       the completion status must not be set to 'passed'. A rep whose
+       module passed but whose badge was not issued is in an inconsistent
+       state that requires manual admin resolution.
+
+6. Badge display in profile serializers:
+   Add badges (full array from rep_profiles.badges) and
+   badges_earned_count to:
+     - GET /reps/me (full array)
+     - GET /reps/me/profile-preview (full array)
+     - Brand-facing rep browse: badge_count and badge_titles array only
+       (enough for brand to see credentials without full badge detail)
+     - Recruiter search results (no-PII cards): badge_count and
+       badge_titles — no credit required to see badge count and titles.
+       Badges are verified credentials, not PII.
+
+7. Leaderboard: explicitly NOT built. No rep-to-rep badge count
+   comparison, module completion ranking, or any other comparative
+   metric. A rep's badge record is their own achievement. Leaderboards
+   create social dynamics that violate Section 1A's no-discovery
+   mechanics. If this is requested later, it requires an explicit
+   product decision and safety review before the prompt is written.
+
+8. Parent portal addition (extend Prompt 4A):
+   Add to GET /parent/dashboard:
+     module_activity: {
+       total_started: integer
+       total_passed: integer
+       total_failed: integer (so parents understand if their child is
+         struggling — not to pressure them, but to offer support)
+       badges_earned: [badge_title, earned_at] — the parent can
+         celebrate these with their child
+       ftc_module_passed: boolean — explicitly surfaced because the
+         FTC module is a prerequisite for campaign acceptance; parents
+         should know their child has demonstrated understanding of
+         disclosure rules
+     }
+   Note: parents do not see quiz scores or incorrect answers. The
+   detailed performance data is the rep's own. Parents see completion
+   status and badges earned — the outcome, not the struggle.
+
+9. Admin analytics addition (extend Prompt 13):
+   GET /admin/analytics/modules
+   Returns:
+     - Total modules (by status)
+     - Total completions (by status: in_progress, passed, failed)
+     - Per-module: pass_rate, average_attempts, completion_count
+     - FTC module specifically: what percentage of reps who have
+       tried to accept a campaign have the FTC module passed? This
+       is a launch readiness metric — if it is low, reps are hitting
+       the gate and bouncing.
+     - Badge distribution: which badges are most earned, by category
+     - Modules with pass_rate < 50%: flag these for content review
+       (too hard or poorly written)
+     - Modules with average_attempts > 2: flag for content review
+       (confusing questions)
+
+---
+
+FRONTEND ADDITIONS:
+
+Rep portal (add to Prompt 6 as the learning hub):
+  - Learning Hub: a dedicated section accessible from the main
+    navigation (not buried in settings or profile). After onboarding,
+    if no campaigns are available, the rep lands here by default rather
+    than an empty dashboard.
+  - Module list: available modules (not yet passed). FTC module pinned
+    to the top with a badge: "Required before campaigns." Category-
+    matched modules next. General modules last. Each card shows:
+    badge preview (color and title), estimated_minutes, and a progress
+    state if in_progress or failed.
+  - Completed modules: a separate section showing earned badges with
+    passed_at dates.
+  - Pre-module disclosure modal: shown before content begins.
+    Cannot be dismissed without acknowledging. Text:
+      "This module is unpaid. Completing it earns a verified [badge_title]
+      badge that appears on your profile and is visible to brands and
+      colleges. If your school has a Teenure curriculum agreement, you
+      may be eligible for a completion stipend — check with your
+      counselor."
+    Checkbox: "I understand this module is unpaid and I am completing
+    it to earn a verified credential." Start button enabled only when
+    checked. Sends disclosure_acknowledged: true to the server.
+  - Module player: content blocks rendered in sequence.
+      text blocks: readable prose with appropriate line length
+      video_url blocks: embedded video player
+      image_url blocks: full-width image with alt text
+      quiz blocks: one question at a time, four answer options as radio
+        buttons, "Next Question" after selecting (cannot go back),
+        "Submit Quiz" on the final question — one-shot submission, no
+        per-question feedback during the quiz
+    Progress bar showing position through all content blocks. The
+    submit button is visible only after all non-quiz content blocks
+    have been scrolled past (client-side scroll tracking — not a timer,
+    not a checkbox, actual content engagement).
+  - Pass screen: badge reveal. Badge color, title, description. "This
+    badge has been added to your profile." Two CTAs: "View My Profile"
+    and "Continue Learning." No confetti, no points, no score display
+    on the pass screen — the badge is the reward, not the score.
+  - Fail screen: "Not quite — review and try again in 24 hours."
+    Show the questions the rep got wrong and the correct answers (not
+    the ones they got right). Countdown timer to retake availability.
+    Warm, encouraging tone. Not "You failed" — "Almost there."
+  - FTC module gate modal: if a rep tries to accept a campaign before
+    passing the FTC module, show a modal (not a redirect):
+      "Before accepting campaigns, complete the FTC Disclosure
+      Essentials module. It takes about 5 minutes and ensures you
+      understand the sponsored content disclosure rules that protect
+      you and your followers."
+    CTA: "Go to Learning Hub" — deep-links to the FTC module.
+    Do not reject silently. Do not redirect without explanation.
+  - Badge display on profile preview: badges rendered as colored chips
+    with badge_title. Tap/hover shows badge_description and earned_at.
+    Same rendering in profile preview mode so reps see exactly what
+    brands and recruiters see before opting into visibility.
+  - Mobile-first: all learning hub surfaces must pass the 375px
+    viewport check. Quiz options must be large enough to tap without
+    mis-selection. Badge chips must wrap cleanly on narrow screens.
+
+Admin portal (add to Prompt 13's admin frontend):
+  - Module management section: module list with status, pass_rate,
+    average_attempts. Create, preview, activate, archive actions.
+  - Module builder:
+      content block builder: add blocks (text/video/image/quiz),
+        drag to reorder, remove blocks
+      text block: rich text editor or plain textarea
+      video block: URL input with preview
+      image block: URL input or upload to Supabase Storage
+      quiz block: question text input, four option inputs, correct
+        answer selector (radio button selecting which option is correct)
+    Passing score input (shown only when quiz blocks are present).
+    Badge configuration: title, description, color picker, icon selector.
+    Estimated minutes input.
+  - Preview mode: renders the module exactly as a rep sees it, with
+    correct answers hidden. Admin cannot see correct answers in preview.
+    This enforces the security model at the UI level — the API already
+    enforces it server-side, the UI should too.
+  - Module analytics panel per module: pass_rate, average_attempts,
+    completion timeline chart. Flags for low pass_rate and high
+    average_attempts.
+
+---
+
+ACCEPTANCE CRITERIA:
+
+Security — correct answers never exposed:
+  - GET /reps/modules/:id response payload contains no correct_index
+    field anywhere in the content_blocks structure — verified by
+    recursively searching the JSON response for the key "correct_index".
+  - GET /admin/modules/:id response payload contains no correct_index
+    field — same verification. Admin sees the module structure but
+    not the answer key via the API.
+  - POST /reps/modules/:id/complete rejects if the request body
+    contains correct answer indices submitted by the client — the
+    server fetches correct answers independently and ignores any
+    correct-answer-adjacent fields in the request body.
+
+Disclosure enforcement:
+  - POST /reps/modules/:id/start with disclosure_acknowledged absent
+    or false returns 400 with the correct message — verified by direct
+    API call without UI session.
+
+FTC gate:
+  - POST /campaigns/:id/accept with a rep who has no FTC module
+    completion returns 403 with code "ftc_module_required" and
+    module_id in the error body.
+  - POST /campaigns/:id/accept with a rep who has a 'failed' FTC
+    module completion returns 403 (failed is not passed).
+  - POST /campaigns/:id/accept with a rep who has a 'passed' FTC
+    module completion proceeds normally.
+  - If FTC_MODULE_ID is not configured (empty string), the gate is
+    skipped and a warning is logged — acceptance proceeds normally.
+  - These four cases must each have a named pytest test.
+
+Retake cooldown:
+  - POST /reps/modules/:id/start for a rep with a 'failed' row and
+    last_attempt_at within 24 hours returns 429 with available_at.
+  - POST /reps/modules/:id/start for a rep with a 'failed' row and
+    last_attempt_at more than 24 hours ago succeeds.
+  - POST /reps/modules/:id/start for a rep with a 'passed' row
+    returns 409 "already completed."
+
+Completion atomicity:
+  - Passing a module updates rep_module_completions, rep_profiles.badges,
+    and rep_profiles.badges_earned_count atomically — if the badges
+    append fails, the completion status is not set to 'passed'. Verified
+    by mocking a database failure mid-transaction and asserting the
+    rolled-back state.
+  - Failing a module does not modify rep_profiles.badges.
+
+Badge in serializers:
+  - badges_earned_count appears in recruiter no-PII search result cards
+    without a credit spend — verified by calling the search endpoint
+    and asserting the field is present.
+  - badge_titles array appears in brand-facing rep browse — verified
+    by seeding a rep with badges and calling the browse endpoint.
+
+Module content protection:
+  - An archived module cannot be started (400 with explanation).
+  - An in_progress completion on an archived module returns a clear
+    message when the rep attempts to complete it.
+
+Prompt 15 compliance update:
+  - Add item 10 to the compliance checklist: "FTC module gate on
+    campaign accept — verified by named pytest tests for all four
+    cases (no completion, failed completion, passed completion, no
+    FTC_MODULE_ID configured)."
+  - Add item 11: "Module correct answers never present in any API
+    response — verified by recursive key search on representative
+    responses from GET /reps/modules/:id and GET /admin/modules."
+
+Prompt 19 PostHog update:
+  Add these events to the instrumentation list:
+    - module_started (module_id, category — no rep identity)
+    - module_passed (module_id, quiz_score, attempts — no rep identity)
+    - module_failed (module_id, quiz_score, attempts — no rep identity)
+    - ftc_gate_triggered (when a rep hits the FTC gate — critical
+      funnel metric; high volume here means reps are ready to accept
+      campaigns but haven't completed the module)
+    - badge_earned (badge_title, module category — no rep identity)
+    - challenge_submitted (category — no rep identity)
+    - challenge_converted (category, bonus_amount — no rep identity)
+```
+
+---
+
 ## 9. Brand Portal — Frontend — **implemented (core flow)**
 
 **Depends on:** Prompt 8, [Section 0A](#0a-design-system--ux-standards)
@@ -1969,6 +3370,13 @@ Deliverables:
 8. Admin frontend under apps/web/app/(admin)/: queues, oversight table,
    stuck-payments list, analytics dashboards, safety report lane.
 
+**Also depends on (added by Prompts 8G/8H):** Prompt 8G (Skill Challenges)
+adds GET /admin/analytics/challenges to deliverable 4's analytics routes.
+Prompt 8H (Learning Modules and Verified Badges) adds a module management
+interface (create/preview/activate/archive, content block builder, quiz
+builder) and module analytics (completion rates, pass rates, average
+attempts, badge distribution) to deliverable 8's admin frontend.
+
 Acceptance criteria:
   - Non-admin JWT cannot reach /admin/* routes.
   - Approving a pending brand flips account_status to 'active' and unblocks
@@ -2067,6 +3475,19 @@ docs/compliance-checklist.md.
    describe (what's collected, why, retention, who sees it, minor-specific
    rights, parent rights, portal expiry at 18). Source from what's
    actually implemented, not the aspirational spec.
+10. FTC module gate (added by Prompt 8H) — confirm POST /campaigns/:id/accept
+    returns 403 unless the rep has a 'passed' row on the FTC Disclosure
+    learning module, distinct from and in addition to the
+    ftc_disclosure_accepted checkbox acknowledgment already covered above.
+11. Module correct answers never present in any API response (added by
+    Prompt 8H) — verified by recursive key search for "correct_index" on
+    representative responses from GET /reps/modules/:id and
+    GET /admin/modules, including admin preview mode.
+12. Public achievement link (added by Prompt 5 deliverable 12) — confirm the
+    public /verified/:token page renders no PII beyond what the rep has
+    explicitly enabled, verified by inspecting the public endpoint response
+    under each combination of verified_profile_public and
+    earnings_visible_on_public_profile toggle states.
 
 Deliverable: docs/compliance-checklist.md mapping every Section 9
 requirement to (a) implementing code location, (b) covering test(s),
@@ -2123,7 +3544,13 @@ Deliverables:
    control for a non-actionable milestone must be disabled/absent in the
    rendered UI, not just rejected server-side, since this is a safety-
    adjacent feature protecting reps from confusion about what they've
-   agreed to deliver next.
+   agreed to deliver next. Add (from Prompt 8H): the FTC module gate
+   modal that appears when a rep tries to accept a campaign before
+   passing the FTC Disclosure module. Add (from Prompt 5 deliverable 13):
+   the goal completion state on the dashboard. Add (from Prompt 5
+   deliverable 12): the achievement link visibility toggles (public
+   profile on/off, earnings visible on/off) and that the previewed public
+   page reflects each toggle state correctly.
 5. CI-runnable command running backend and frontend suites together,
    failing build on any failure.
 
@@ -2252,6 +3679,19 @@ Deliverables:
      - demo surfaces: demo page viewed (tagged by which demo), demo CTA
        clicked, demo-to-signup conversion (anonymous ID carried across
        redirect, no PII used for join)
+     - (from Prompts 8G/8H/5) module_started, module_passed, module_failed
+       (module_id, quiz_score, attempts — no rep identity), badge_earned
+       (badge_title, module category — no rep identity), ftc_gate_triggered
+       (fires when a rep hits the FTC module gate on campaign accept — a
+       critical funnel metric; high volume means reps are ready to accept
+       campaigns but haven't completed the module), challenge_submitted
+       and challenge_converted (category, bonus_amount — no rep identity),
+       goal created, goal completed, achievement link generated,
+       achievement link page viewed (this last one fires on the public
+       /verified/:token page — it is the only analytics event that fires
+       without an authenticated session, and it is aggregate-safe since
+       it carries no user identity, only a timestamp and a referrer if
+       available)
 4. PostHog dashboard for Section 13's six milestones. Wire events for
    milestones 1–4 (milestone 4 — intelligence report sale — is a manual
    sales event, not automatable; note this explicitly rather than
@@ -2266,6 +3706,27 @@ Acceptance criteria:
 ---
 
 ## Changelog
+
+**v1.4** — added Prompt 8G (Skill Challenges): open, unpaid brand-
+discovery submissions with a server-enforced pre-submission disclosure
+(disclosure_acknowledged required at the API layer, not just UI copy)
+and a small platform-funded conversion bonus (CHALLENGE_CONVERSION_BONUS_CENTS,
+starting $7.50) paid through the existing Stripe Connect payout path
+when a submission converts to a campaign invitation. Added Prompt 8H
+(Learning Modules and Verified Badges): admin-curated modules with
+server-only quiz answer evaluation (correct_index never sent to any
+client, including admin preview), a mandatory FTC Disclosure Essentials
+module gating campaign acceptance (POST /campaigns/:id/accept, replacing
+the checkbox-only enforcement), a 24-hour retake cooldown, atomic badge
+issuance, and a payout_cents/payout_status field on rep_module_completions
+left null at MVP to support a future district-funded completion stipend
+without a schema migration. Both prompts add parent-dashboard visibility
+into challenge and module activity, admin analytics, and PostHog events.
+Updated Prompt 15's compliance checklist to items 10–12 (FTC module gate,
+module answer security, public achievement link scope). Numbered 8G/8H
+to preserve 8C–8F as placeholders for Category Exclusivity, Advance
+Cohort Reservation, Rep Syndicates, and the Relationship Continuity
+Product, none of which are built yet.
 
 **Build-log note (post-8, design system added)** — Added
 [Section 0A: Design System & UX Standards](#0a-design-system--ux-standards),
