@@ -2,14 +2,20 @@
 server-side fee-split + activation/retry-payment/pause/cancel, rep
 discovery/invite, submission review/confirm/revision/rate.
 
-Every route requires an active brand account (require_role("brand"),
-which also requires account_status='active') -- consistent with how
-Prompt 5's tests already seed brand users directly as 'active' via SQL
-(there is no admin-approval flow yet; Prompt 13 builds it). A brand's
-own rep_profiles-equivalent row (brand_profiles) is looked up from the
-authenticated user's id on every request, never trusted from the URL,
-so a brand can never read or write another brand's campaigns (mirrors
-Build Prompt 5's rep-ownership acceptance criterion).
+Every route requires account_status='active' (require_role("brand")) --
+consistent with how Prompt 5's tests already seed brand users directly
+as 'active' via SQL (there is no admin-approval flow yet; Prompt 13
+builds it) -- EXCEPT GET/PUT /brands/me, which uses
+require_role_any_status: a brand must be able to submit their profile
+for review while still 'pending', since submitting it is what an admin
+would review. Discovered as a real gap while building the frontend for
+this prompt -- a freshly signed-up brand (always 'pending' at signup)
+could not reach PUT /brands/me at all under the original require_role
+everywhere, meaning no brand account could ever progress past signup.
+A brand's own rep_profiles-equivalent row (brand_profiles) is looked up
+from the authenticated user's id on every request, never trusted from
+the URL, so a brand can never read or write another brand's campaigns
+(mirrors Build Prompt 5's rep-ownership acceptance criterion).
 """
 from __future__ import annotations
 
@@ -20,7 +26,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.core.config import Settings, get_settings
 from app.core.crypto import decrypt_ein, encrypt_ein
-from app.core.security import AuthenticatedUser, require_role
+from app.core.security import AuthenticatedUser, require_role, require_role_any_status
 from app.db.pool import get_connection
 from app.repositories import brand_profiles_repository, campaign_reps_repository, campaigns_repository, rep_profiles_repository
 from app.schemas.brands import (
@@ -139,7 +145,7 @@ def _to_campaign_rep_response(cr: campaign_reps_repository.CampaignRep) -> Campa
 
 @brands_router.get("/me", response_model=BrandProfileResponse)
 async def get_me(
-    user: AuthenticatedUser = Depends(require_role("brand")),
+    user: AuthenticatedUser = Depends(require_role_any_status("brand")),
     conn: asyncpg.Connection = Depends(get_connection),
 ) -> BrandProfileResponse:
     profile = await _get_own_brand_profile(conn, user)
@@ -149,12 +155,17 @@ async def get_me(
 @brands_router.put("/me", response_model=BrandProfileResponse)
 async def put_me(
     body: BrandProfileUpdateRequest,
-    user: AuthenticatedUser = Depends(require_role("brand")),
+    user: AuthenticatedUser = Depends(require_role_any_status("brand")),
     settings: Settings = Depends(get_settings),
     conn: asyncpg.Connection = Depends(get_connection),
 ) -> BrandProfileResponse:
     """Creates brand_profiles on first call (onboarding) or updates it
-    on subsequent calls, mirroring reps.py's PUT /reps/me. `ein` is
+    on subsequent calls, mirroring reps.py's PUT /reps/me. Uses
+    require_role_any_status, not require_role: a brand must be able to
+    submit their profile for review while still account_status='pending'
+    -- that submission is what admin review (Prompt 13) actually
+    reviews. Every other route in this file still requires 'active'.
+    `ein` is
     encrypted here (app/core/crypto.py) before it ever reaches the
     repository/DB layer -- Section 7: "ein TEXT, -- stored encrypted in
     production", implemented now per Build Prompt 8 deliverable 1

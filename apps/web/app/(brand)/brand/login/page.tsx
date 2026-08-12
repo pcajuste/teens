@@ -7,15 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/lib/supabase";
-import { api, ApiError } from "@/lib/api";
 
-export default function LoginPage() {
+export default function BrandLoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [resent, setResent] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -27,34 +25,20 @@ export default function LoginPage() {
       setPending(false);
       return;
     }
-    router.push("/rep");
-  }
-
-  async function handleResendConsent() {
-    try {
-      await api.post("/auth/resend-consent", { email });
-      setResent(true);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not resend consent email.");
-    }
+    router.push("/brand");
   }
 
   return (
     <AuthShell
       title="Sign in to Teenure"
+      subtitle="Brand portal"
       footer={
-        <div className="flex flex-col gap-2">
-          <p>
-            New here?{" "}
-            <a href="/rep/signup" className="font-medium text-primary hover:underline">
-              Sign up
-            </a>
-          </p>
-          <button type="button" onClick={handleResendConsent} className="text-primary hover:underline">
-            Resend parental consent email
-          </button>
-          {resent ? <p className="text-xs">If that email needs a consent link, we&apos;ve sent one.</p> : null}
-        </div>
+        <>
+          New here?{" "}
+          <a href="/brand/signup" className="font-medium text-primary hover:underline">
+            Sign up
+          </a>
+        </>
       }
     >
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">

@@ -5,18 +5,21 @@ import Link from "next/link";
 import { AvailableCampaignCard, ActiveCampaignCard } from "@/components/rep/campaign-cards";
 import { EarningsPanel } from "@/components/rep/earnings-panel";
 import { CompletenessPanel } from "@/components/rep/completeness-panel";
+import { RepShell } from "@/components/rep/rep-shell";
 import { Button } from "@/components/ui/button";
-import { useAuth } from "@/lib/auth-context";
+import { Card } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
 import { api, ApiError } from "@/lib/api";
 import type { CampaignParticipation, CampaignSummary, Earnings, RepProfile } from "@/lib/types";
 
 export default function RepDashboardPage() {
-  const { signOut } = useAuth();
   const [profile, setProfile] = useState<RepProfile | null>(null);
   const [available, setAvailable] = useState<CampaignSummary[]>([]);
   const [active, setActive] = useState<CampaignParticipation[]>([]);
   const [earnings, setEarnings] = useState<Earnings | null>(null);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   async function load() {
@@ -37,6 +40,8 @@ export default function RepDashboardPage() {
         return;
       }
       setError(err instanceof ApiError ? err.message : "Could not load your dashboard.");
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -47,10 +52,13 @@ export default function RepDashboardPage() {
 
   if (needsOnboarding) {
     return (
-      <main className="flex min-h-screen flex-col items-center justify-center gap-4 p-6 text-center">
-        <h1 className="text-xl font-semibold">Finish setting up your profile</h1>
+      <main className="flex min-h-screen flex-col items-center justify-center gap-4 bg-secondary/30 p-6 text-center">
+        <h1 className="text-xl font-semibold tracking-tight">Finish setting up your profile</h1>
+        <p className="max-w-sm text-sm text-muted-foreground">
+          A few quick details and you&apos;re ready to see campaigns matched to you.
+        </p>
         <Link href="/rep/onboarding">
-          <Button className="h-11">Start onboarding</Button>
+          <Button size="lg">Start onboarding</Button>
         </Link>
       </main>
     );
@@ -60,64 +68,74 @@ export default function RepDashboardPage() {
     available.find((c) => c.id === campaignId)?.title ?? "Campaign";
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-md flex-col gap-6 p-4 pb-16">
-      <header className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Your dashboard</h1>
-        <div className="flex gap-2">
-          <Link href="/rep/profile-preview" className="text-sm font-medium underline">
-            Preview
-          </Link>
-          <button onClick={() => signOut()} className="text-sm text-muted-foreground underline">
-            Sign out
-          </button>
-        </div>
-      </header>
+    <RepShell title="Your dashboard">
+      <div className="flex flex-col gap-8">
+        {error ? (
+          <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>
+        ) : null}
 
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
-
-      {profile ? (
-        <section>
-          <CompletenessPanel profile={profile} />
-        </section>
-      ) : null}
-
-      {earnings ? (
-        <section className="flex flex-col gap-2">
-          <h2 className="text-sm font-semibold text-muted-foreground">Earnings</h2>
-          <EarningsPanel earnings={earnings} />
-        </section>
-      ) : null}
-
-      <section className="flex flex-col gap-2">
-        <h2 className="text-sm font-semibold text-muted-foreground">Active campaigns</h2>
-        {active.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No active campaigns yet.</p>
-        ) : (
-          <div className="flex flex-col gap-3">
-            {active.map((cr) => (
-              <ActiveCampaignCard
-                key={cr.campaign_id}
-                participation={cr}
-                title={titleFor(cr.campaign_id)}
-                onWithdrawn={load}
-              />
-            ))}
+        {loading ? (
+          <div className="flex flex-col gap-6">
+            <Skeleton className="h-24 w-full" />
+            <Skeleton className="h-20 w-full" />
+            <Skeleton className="h-40 w-full" />
           </div>
-        )}
-      </section>
-
-      <section className="flex flex-col gap-2">
-        <h2 className="text-sm font-semibold text-muted-foreground">Available campaigns</h2>
-        {available.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No campaigns match your profile right now.</p>
         ) : (
-          <div className="flex flex-col gap-3">
-            {available.map((c) => (
-              <AvailableCampaignCard key={c.id} campaign={c} />
-            ))}
-          </div>
+          <>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {profile ? (
+                <Card className="p-5">
+                  <CompletenessPanel profile={profile} />
+                </Card>
+              ) : null}
+
+              {earnings ? (
+                <Card className="p-5">
+                  <p className="mb-2 text-sm font-semibold text-muted-foreground">Earnings</p>
+                  <EarningsPanel earnings={earnings} />
+                </Card>
+              ) : null}
+            </div>
+
+            <section className="flex flex-col gap-3">
+              <h2 className="text-sm font-semibold text-muted-foreground">Active campaigns</h2>
+              {active.length === 0 ? (
+                <EmptyState
+                  title="No active campaigns yet"
+                  description="Accepted campaigns will show up here with their current status."
+                />
+              ) : (
+                <div className="flex flex-col gap-3">
+                  {active.map((cr) => (
+                    <ActiveCampaignCard
+                      key={cr.campaign_id}
+                      participation={cr}
+                      title={titleFor(cr.campaign_id)}
+                      onWithdrawn={load}
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <section className="flex flex-col gap-3">
+              <h2 className="text-sm font-semibold text-muted-foreground">Available campaigns</h2>
+              {available.length === 0 ? (
+                <EmptyState
+                  title="No campaigns match your profile right now"
+                  description="Check back soon, or improve your profile completeness to widen your matches."
+                />
+              ) : (
+                <div className="flex flex-col gap-3">
+                  {available.map((c) => (
+                    <AvailableCampaignCard key={c.id} campaign={c} />
+                  ))}
+                </div>
+              )}
+            </section>
+          </>
         )}
-      </section>
-    </main>
+      </div>
+    </RepShell>
   );
 }

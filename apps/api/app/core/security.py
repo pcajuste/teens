@@ -157,6 +157,36 @@ def require_role(*roles: Role):
     return _dependency
 
 
+def require_role_any_status(*roles: Role):
+    """Same role check as require_role, but does NOT require
+    account_status == 'active'. Every brand/recruiter signup lands
+    account_status='pending' until Prompt 13's admin-approval flow
+    exists (and even once it does, a brand is *reviewed on* their
+    profile -- they can't submit one for review if submitting it
+    requires already being approved). Use this only for routes that
+    must work pre-approval, e.g. GET/PUT /brands/me -- money-moving or
+    campaign-launching routes must keep using require_role, which still
+    requires 'active'. Discovered as a real gap (not a hypothetical)
+    while building the brand-portal frontend: a freshly signed-up brand
+    could not reach PUT /brands/me at all, meaning no brand account
+    could ever progress past signup."""
+
+    async def _dependency(user: AuthenticatedUser = Depends(get_current_user)) -> AuthenticatedUser:
+        if user.role not in roles:
+            raise _forbidden(
+                "role_mismatch",
+                f"Requires role in {sorted(roles)}, caller has '{user.role}'.",
+            )
+        if user.account_status in ("suspended", "rejected"):
+            raise _forbidden(
+                "account_not_active",
+                f"Account status is '{user.account_status}', not usable.",
+            )
+        return user
+
+    return _dependency
+
+
 async def get_parent_session(
     credentials: HTTPAuthorizationCredentials | None = Depends(_parent_bearer),
     settings: Settings = Depends(get_settings),

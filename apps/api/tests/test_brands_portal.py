@@ -148,6 +148,29 @@ def test_get_me_requires_onboarding_first(client, brand_headers):
     assert response.json()["error"]["code"] == "brand_profile_not_found"
 
 
+def test_pending_brand_can_still_submit_profile_for_review(client, db, auth_headers_factory):
+    # Regression: every brand signup lands account_status='pending' (no
+    # admin-approval flow exists yet), and require_role("brand") used to
+    # gate GET/PUT /brands/me too -- meaning a freshly signed-up brand
+    # could never submit a profile for review at all. GET/PUT /brands/me
+    # must work pre-approval; other brand routes must not.
+    _seed_brand_user(db)
+    db.execute("UPDATE public.users SET account_status = 'pending' WHERE id = $1", BRAND_USER_ID)
+    pending_headers = auth_headers_factory("brand", account_status="pending")
+
+    put_response = client.put("/brands/me", json=_BASE_PROFILE_BODY, headers=pending_headers)
+    assert put_response.status_code == 200
+
+    get_response = client.get("/brands/me", headers=pending_headers)
+    assert get_response.status_code == 200
+    assert get_response.json()["company_name"] == "Acme Co"
+
+    # Campaign creation (money-moving territory) must still require 'active'.
+    campaign_response = client.post("/brands/campaigns", json=_BASE_CAMPAIGN_BODY, headers=pending_headers)
+    assert campaign_response.status_code == 403
+    assert campaign_response.json()["error"]["code"] == "account_not_active"
+
+
 # ---------------------------------------------------------------------
 # Campaign CRUD + fee split (deliverables 2-3)
 # ---------------------------------------------------------------------

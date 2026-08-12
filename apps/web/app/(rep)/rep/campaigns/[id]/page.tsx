@@ -1,13 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
-import { Badge } from "@/components/ui/badge";
+import { useParams } from "next/navigation";
+import { CampaignBrief } from "@/components/campaigns/campaign-brief";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { Countdown } from "@/components/rep/countdown";
+import { RepShell } from "@/components/rep/rep-shell";
 import { WithdrawButton } from "@/components/rep/withdraw-button";
 import { api, ApiError } from "@/lib/api";
 import type { CampaignParticipation, CampaignSummary } from "@/lib/types";
@@ -24,14 +26,8 @@ const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
 const STATUS_STEPS = ["submitted", "under_review", "confirmed", "paid"];
 
-function money(cents: number | null): string {
-  if (cents === null) return "—";
-  return `$${(cents / 100).toFixed(2)}`;
-}
-
 export default function CampaignDetailPage() {
   const params = useParams<{ id: string }>();
-  const router = useRouter();
   const campaignId = params.id;
 
   const [campaign, setCampaign] = useState<CampaignSummary | null>(null);
@@ -155,56 +151,36 @@ export default function CampaignDetailPage() {
 
   if (!campaign && !participation && !error) {
     return (
-      <main className="flex min-h-screen items-center justify-center p-6">
-        <p className="text-sm text-muted-foreground">Loading...</p>
-      </main>
+      <RepShell backHref="/rep">
+        <div className="flex flex-col gap-4">
+          <Skeleton className="h-8 w-2/3" />
+          <Skeleton className="h-48 w-full" />
+        </div>
+      </RepShell>
     );
   }
 
   const title = campaign?.title ?? "Campaign";
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-md flex-col gap-5 p-4 pb-16">
-      <button onClick={() => router.push("/rep")} className="text-left text-sm font-medium underline">
-        Back to dashboard
-      </button>
+    <RepShell backHref="/rep">
+      <div className="flex flex-col gap-5">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
+          {campaign ? <p className="text-sm text-muted-foreground">{campaign.product_name}</p> : null}
+        </div>
 
-      <div>
-        <h1 className="text-xl font-semibold">{title}</h1>
-        {campaign ? <p className="text-sm text-muted-foreground">{campaign.product_name}</p> : null}
-      </div>
+        {error ? (
+          <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>
+        ) : null}
 
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+        {campaign ? <CampaignBrief campaign={campaign} /> : null}
 
-      {campaign ? (
-        <section className="flex flex-col gap-2 rounded-lg border border-border p-3">
-          <div>
-            <p className="text-xs font-medium text-muted-foreground">Goal</p>
-            <p className="text-sm">{campaign.campaign_goal}</p>
-          </div>
-          <div>
-            <p className="text-xs font-medium text-muted-foreground">Deliverables</p>
-            <p className="text-sm">{campaign.deliverables_description}</p>
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {campaign.target_categories.map((c) => (
-              <Badge key={c} variant="outline">
-                {c}
-              </Badge>
-            ))}
-          </div>
-          <div className="flex items-center justify-between pt-1">
-            <p className="text-xs font-medium text-muted-foreground">Payout</p>
-            <p className="text-base font-semibold">{money(campaign.payout_per_rep_cents)}</p>
-          </div>
-        </section>
-      ) : null}
-
-      {!participation && campaign ? (
-        <Button onClick={handleApply} disabled={pending} className="h-11 w-full">
-          {pending ? "Applying..." : "Apply to this campaign"}
-        </Button>
-      ) : null}
+        {!participation && campaign ? (
+          <Button onClick={handleApply} disabled={pending} size="lg" className="w-full">
+            {pending ? "Applying..." : "Apply to this campaign"}
+          </Button>
+        ) : null}
 
       {participation ? (
         <ParticipationSection
@@ -218,59 +194,56 @@ export default function CampaignDetailPage() {
         />
       ) : null}
 
-      {participation && (participation.status === "accepted" || participation.status === "revision_requested") ? (
-        <section className="flex flex-col gap-3 rounded-lg border border-border p-3">
-          <h2 className="text-sm font-semibold">Submit your work</h2>
-          {participation.revision_note ? (
-            <p className="rounded-md bg-amber-500/10 p-2 text-sm text-amber-700 dark:text-amber-400">
-              Revision requested: {participation.revision_note}
-            </p>
-          ) : null}
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="submissionText">Description</Label>
-            <Textarea
-              id="submissionText"
-              rows={4}
-              value={submissionText}
-              onChange={(e) => setSubmissionText(e.target.value)}
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="files">Photo or video proof</Label>
-            <input
-              id="files"
-              type="file"
-              multiple
-              accept="image/jpeg,image/png,image/webp,image/heic,video/mp4,video/quicktime"
-              onChange={handleFileSelect}
-              className="min-h-11 text-sm"
-            />
-            <p className="text-xs text-muted-foreground">JPEG, PNG, WEBP, HEIC, MP4, or MOV. Up to 25MB each.</p>
-            {(fileUrls.length > 0 || files.length > 0) && (
-              <p className="text-xs text-muted-foreground">
-                {fileUrls.length + files.length} file(s) attached
+        {participation && (participation.status === "accepted" || participation.status === "revision_requested") ? (
+          <section className="flex flex-col gap-3 rounded-xl border border-border bg-card p-5">
+            <h2 className="text-sm font-semibold">Submit your work</h2>
+            {participation.revision_note ? (
+              <p className="rounded-md bg-warning/15 p-2.5 text-sm text-warning-foreground">
+                Revision requested: {participation.revision_note}
               </p>
-            )}
-          </div>
-          <Button
-            onClick={handleSubmit}
-            disabled={pending || !participation.ftc_disclosure_accepted}
-            className="h-11 w-full"
-          >
-            {pending ? "Submitting..." : "Submit"}
-          </Button>
-          {!participation.ftc_disclosure_accepted ? (
-            <p className="text-xs text-destructive">
-              You must accept the FTC sponsorship disclosure before submitting.
-            </p>
-          ) : null}
-        </section>
-      ) : null}
+            ) : null}
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="submissionText">Description</Label>
+              <Textarea
+                id="submissionText"
+                rows={4}
+                value={submissionText}
+                onChange={(e) => setSubmissionText(e.target.value)}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="files">Photo or video proof</Label>
+              <input
+                id="files"
+                type="file"
+                multiple
+                accept="image/jpeg,image/png,image/webp,image/heic,video/mp4,video/quicktime"
+                onChange={handleFileSelect}
+                className="min-h-11 text-sm"
+              />
+              <p className="text-xs text-muted-foreground">JPEG, PNG, WEBP, HEIC, MP4, or MOV. Up to 25MB each.</p>
+              {(fileUrls.length > 0 || files.length > 0) && (
+                <p className="text-xs text-muted-foreground">
+                  {fileUrls.length + files.length} file(s) attached
+                </p>
+              )}
+            </div>
+            <Button onClick={handleSubmit} disabled={pending || !participation.ftc_disclosure_accepted} size="lg" className="w-full">
+              {pending ? "Submitting..." : "Submit"}
+            </Button>
+            {!participation.ftc_disclosure_accepted ? (
+              <p className="text-xs text-destructive">
+                You must accept the FTC sponsorship disclosure before submitting.
+              </p>
+            ) : null}
+          </section>
+        ) : null}
 
-      {participation && ["submitted", "under_review", "confirmed", "paid"].includes(participation.status) ? (
-        <StatusTracker status={participation.status} />
-      ) : null}
-    </main>
+        {participation && ["submitted", "under_review", "confirmed", "paid"].includes(participation.status) ? (
+          <StatusTracker status={participation.status} />
+        ) : null}
+      </div>
+    </RepShell>
   );
 }
 
@@ -293,10 +266,8 @@ function ParticipationSection({
 }) {
   if (participation.parent_approval_status === "pending") {
     return (
-      <section className="flex flex-col gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
-        <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
-          Waiting on a parent&apos;s approval
-        </p>
+      <section className="flex flex-col gap-2 rounded-xl border border-warning/30 bg-warning/10 p-4">
+        <p className="text-sm font-medium text-warning-foreground">Waiting on a parent&apos;s approval</p>
         {participation.parent_approval_deadline ? (
           <Countdown deadline={participation.parent_approval_deadline} />
         ) : null}
@@ -306,7 +277,7 @@ function ParticipationSection({
 
   if (participation.parent_approval_status === "blocked") {
     return (
-      <section className="flex flex-col gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3">
+      <section className="flex flex-col gap-2 rounded-xl border border-destructive/30 bg-destructive/5 p-4">
         <p className="text-sm font-medium text-destructive">Your parent has blocked this campaign.</p>
       </section>
     );
@@ -314,7 +285,7 @@ function ParticipationSection({
 
   if (participation.status === "applied" || participation.status === "invited") {
     return (
-      <section className="flex flex-col gap-3 rounded-lg border border-border p-3">
+      <section className="flex flex-col gap-3 rounded-xl border border-border bg-card p-5">
         <div className="flex items-start gap-3">
           <Checkbox
             id="ftc"
@@ -332,10 +303,10 @@ function ParticipationSection({
           <Countdown deadline={participation.parent_approval_deadline} />
         ) : null}
         <div className="flex gap-2">
-          <Button onClick={onAccept} disabled={pending || !ftcAccepted} className="h-11 flex-1">
+          <Button onClick={onAccept} disabled={pending || !ftcAccepted} size="lg" className="flex-1">
             Accept
           </Button>
-          <Button onClick={onDecline} disabled={pending} variant="outline" className="h-11 flex-1">
+          <Button onClick={onDecline} disabled={pending} variant="outline" size="lg" className="flex-1">
             Decline
           </Button>
         </div>
@@ -344,7 +315,7 @@ function ParticipationSection({
   }
 
   return (
-    <section className="rounded-lg border border-border p-3">
+    <section className="rounded-xl border border-border bg-card p-5">
       <WithdrawButton campaignId={participation.campaign_id} onWithdrawn={onWithdrawn} />
     </section>
   );

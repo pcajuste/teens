@@ -13,7 +13,7 @@ function money(cents: number | null): string {
 export function AvailableCampaignCard({ campaign }: { campaign: CampaignSummary }) {
   return (
     <Link href={`/rep/campaigns/${campaign.id}`} className="block">
-      <Card className="min-h-11">
+      <Card className="min-h-11 hover:border-primary/30 hover:shadow-md">
         <CardHeader>
           <CardTitle>{campaign.title}</CardTitle>
         </CardHeader>
@@ -65,7 +65,7 @@ export function ActiveCampaignCard({
       </CardHeader>
       <CardContent>
         {participation.parent_approval_status === "pending" && participation.parent_approval_deadline ? (
-          <p className="text-sm text-amber-700 dark:text-amber-400">
+          <p className="rounded-md bg-warning/15 px-2.5 py-1.5 text-sm text-warning-foreground">
             Waiting on a parent&apos;s approval ·{" "}
             <Countdown deadline={participation.parent_approval_deadline} />
           </p>

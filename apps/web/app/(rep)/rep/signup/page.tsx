@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { AuthShell } from "@/components/auth/auth-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -67,23 +68,34 @@ export default function SignupPage() {
 
   if (pendingConsent) {
     return (
-      <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-3 p-6 text-center">
-        <h1 className="text-xl font-semibold">Almost there</h1>
-        <p className="text-sm text-muted-foreground">
-          Because you&apos;re under 16, we&apos;ve emailed your parent or guardian at {parentEmail} to ask
-          for consent. Once they approve, you can sign in and finish setting up your profile.
-        </p>
-      </main>
+      <AuthShell title="Almost there">
+        <div className="flex flex-col items-center gap-4 text-center">
+          <span className="flex size-12 items-center justify-center rounded-full bg-info/10 text-info">
+            <MailIcon />
+          </span>
+          <p className="text-sm text-muted-foreground">
+            Because you&apos;re under 16, we&apos;ve emailed your parent or guardian at{" "}
+            <span className="font-medium text-foreground">{parentEmail}</span> to ask for consent.
+            Once they approve, you can sign in and finish setting up your profile.
+          </p>
+        </div>
+      </AuthShell>
     );
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-6 p-6">
-      <div>
-        <h1 className="text-xl font-semibold">Create your Teenure account</h1>
-        <p className="text-sm text-muted-foreground">Build a verified record of what you do outside class.</p>
-      </div>
-
+    <AuthShell
+      title="Create your Teenure account"
+      subtitle="Build a verified record of what you do outside class."
+      footer={
+        <>
+          Already have an account?{" "}
+          <a href="/rep/login" className="font-medium text-primary hover:underline">
+            Sign in
+          </a>
+        </>
+      }
+    >
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="email">Email</Label>
@@ -117,7 +129,7 @@ export default function SignupPage() {
           />
         </div>
         {needsParentEmail ? (
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-1.5 rounded-lg bg-accent/60 p-3">
             <Label htmlFor="parentEmail">Parent or guardian email</Label>
             <Input
               id="parentEmail"
@@ -132,19 +144,23 @@ export default function SignupPage() {
           </div>
         ) : null}
 
-        {error ? <p className="text-sm text-destructive">{error}</p> : null}
+        {error ? (
+          <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>
+        ) : null}
 
-        <Button type="submit" disabled={pending} className="h-10 w-full">
+        <Button type="submit" disabled={pending} size="lg" className="mt-1 w-full">
           {pending ? "Creating account..." : "Sign up"}
         </Button>
       </form>
+    </AuthShell>
+  );
+}
 
-      <p className="text-center text-sm text-muted-foreground">
-        Already have an account?{" "}
-        <a href="/rep/login" className="font-medium underline">
-          Sign in
-        </a>
-      </p>
-    </main>
+function MailIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="4" width="20" height="16" rx="2" />
+      <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+    </svg>
   );
 }

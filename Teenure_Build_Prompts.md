@@ -679,14 +679,16 @@ Acceptance criteria:
 backend. Build deliverables 1–5 and 7 first; stub inbox or defer until
 Prompt 11 lands — state which you're doing.
 
-**Retrofit flagged:** as built, this portal predates
-[Section 0A](#0a-design-system--ux-standards) and uses unstyled
-shadcn/ui defaults throughout (no design tokens, no type scale, flat
-white-on-white cards). Functionally complete and passes its own
-acceptance criteria below, but does not meet 0A's acceptance criteria.
-Not yet scheduled as its own numbered prompt — do a design-tokens-first
-retrofit pass against 0A before or alongside Prompt 9, so the Rep and
-Brand portals don't visually diverge (0A's own acceptance criterion:
+**Retrofit: done (partial).** Auth pages (`/rep/login`, `/rep/signup`),
+the dashboard, and the campaign detail page were retrofitted against
+Section 0A alongside Prompt 9 — real design tokens, `RepShell`/
+`AuthShell`/`CampaignBrief` shared components, semantic colors
+replacing hardcoded `amber-*`/`emerald-*` classes, real button states.
+Not yet retrofitted: the onboarding wizard, profile-preview, and inbox
+screens — they inherit the new color/font tokens automatically (same
+CSS variables, same `Card`/`Button`/`Badge` primitives) but haven't had
+a layout pass with `RepShell`/`EmptyState`/`Skeleton`. Original note
+preserved below for context (0A's own acceptance criterion:
 "identify them as the same product from typography/color/spacing
 alone").
 
@@ -965,11 +967,61 @@ Acceptance criteria:
 
 ---
 
-## 9. Brand Portal — Frontend
+## 9. Brand Portal — Frontend — **implemented (core flow)**
 
 **Depends on:** Prompt 8, [Section 0A](#0a-design-system--ux-standards)
 (design tokens must exist — ideally shared with a Prompt 6 retrofit
 pass — before screens in this prompt are built).
+
+**Build-log note:** Section 0A's token system landed first (real
+color/type/spacing tokens in `app/globals.css` + `lib/design-tokens.ts`,
+Inter via `next/font/google`, `Skeleton`/`EmptyState` primitives), then
+Prompt 6's already-built Rep Portal screens (auth pages, dashboard,
+campaign detail) were retrofitted against it — shared `RepShell`/
+`AuthShell`/`CampaignBrief` components extracted so both portals read
+as one product, per 0A's own acceptance criterion. Then the Brand
+Portal core flow: signup, company-profile onboarding (EIN, categories),
+campaign dashboard, brief builder with a live preview (reusing
+`CampaignBrief`, satisfying deliverable 2's "reuse the rep-facing
+renderer" instruction literally), campaign detail with activate/retry-
+payment/pause/cancel, and rep browse + invite.
+
+**Not built in this pass** (scoped out, not silently skipped): actual
+Stripe Elements/Checkout card collection UI (deliverable 3 explicitly
+leaves "Elements or Checkout — pick one" as an open choice; a real
+`PaymentIntent` is created server-side and its `client_secret` returned,
+but no client-side card form consumes it yet — meaningful testing needs
+a real Stripe test-mode key, not the local placeholder), submission
+review UI (viewing/confirming/requesting revision on a rep's
+submission — the data and backend routes exist from Prompt 8, only the
+UI is missing), and the billing/receipt page.
+
+**A real, load-bearing bug was found and fixed while building this**,
+not a hypothetical: every brand signup lands `account_status='pending'`
+(no admin-approval flow exists yet — Prompt 13 builds it), and
+`require_role("brand")` gated *every* brand route, including
+`GET/PUT /brands/me`, behind `account_status='active'`. That meant a
+real brand could never reach the API call that submits their profile
+for review in the first place — Prompt 8's own tests never caught this
+because they seed brand users as `'active'` directly via SQL, bypassing
+the real signup flow entirely. Only surfaced because this prompt drove
+a real signup through the real UI. Fixed with a new
+`require_role_any_status` dependency (`app/core/security.py`), used
+only for `GET/PUT /brands/me`; every money-moving/campaign route still
+requires `'active'`. A matching frontend fix lets `/brand/onboarding`
+stay reachable while `pending_reason === "pending_admin_approval"`
+(`app/(brand)/brand-gate.tsx`), with every other authenticated route
+still gated behind the "under review" state. New regression tests at
+both layers (`test_brands_portal.py`, and the new
+`tests-e2e-auth/brand-portal.spec.ts`, which also demonstrates the
+current, real boundary: a real signup can complete onboarding but
+genuinely cannot create a campaign without an admin approving it first
+— that suite simulates the missing approval step directly, the same
+way pytest's own fixtures do, rather than pretending the gap isn't
+there).
+
+All existing Playwright suites (demo portal, rep auth pages, rep
+authenticated E2E) and all 140 backend tests still pass.
 
 ```
 Build the Brand Portal under apps/web/app/(brand)/.
