@@ -115,6 +115,12 @@ class LocalDevSupabaseAuthClient:
 
 
 def get_supabase_auth_client(settings: Settings, conn: asyncpg.Connection) -> SupabaseAuthClient:
-    if settings.environment in ("development", "test"):
+    # "test" (pytest, see tests/conftest.py) runs against a bare
+    # postgres:15-alpine container with no GoTrue -- the shim is
+    # required there. "development" now runs against the local
+    # Supabase CLI stack (`supabase start`), which has real GoTrue at
+    # next_public_supabase_url, so it uses the same Admin API path as
+    # production.
+    if settings.environment == "test":
         return LocalDevSupabaseAuthClient(conn)
     return HttpSupabaseAuthClient(settings)

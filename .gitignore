@@ -30,6 +30,7 @@ venv/
 # Playwright
 /apps/web/test-results/
 /apps/web/playwright-report/
+/apps/web/playwright-report-auth/
 /apps/web/blob-report/
 
 # Agent worktrees

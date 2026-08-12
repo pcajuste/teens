@@ -59,12 +59,38 @@ Copy `.env.example` at the repo root and fill in real values for each app's
 local `.env.local` (gitignored, never committed). See that file's comments
 for what each variable is for.
 
+## Local database + auth (real login)
+
+`./dev.sh` alone gets you running servers, but `apps/web`'s login/signup
+pages need a real Postgres + Supabase Auth (GoTrue) instance behind them.
+Use the [Supabase CLI](https://supabase.com/docs/guides/cli):
+
+```bash
+brew install supabase/tap/supabase   # one-time
+supabase start                       # starts local Postgres, GoTrue, Studio, etc.
+```
+
+This applies every migration in `supabase/migrations/` automatically and
+prints the local API URL, DB URL, anon key, and service-role key. Copy
+those into `apps/api/.env.local` and `apps/web/.env.local` (`NEXT_PUBLIC_SUPABASE_URL`,
+`NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `DATABASE_URL`,
+`SUPABASE_JWT_SECRET`) — then restart `./dev.sh` so both apps pick them up.
+Supabase Studio (`http://127.0.0.1:54323` by default) gives you a UI over
+the local DB and auth users. `supabase stop` shuts the stack down.
+
+This is a separate stack from `scripts/local-dev/docker-compose.yml`
+(bare Postgres on port 5434, no GoTrue) — that one exists only to give
+`pytest` a fast, isolated database that mirrors CI's ephemeral Postgres
+service; it's not meant for interactive use or real login flows.
+
 ## Tests
 
 ```bash
-# apps/api
+# apps/api — runs against scripts/local-dev/docker-compose.yml's bare
+# Postgres (see apps/api/tests/conftest.py), not the Supabase CLI stack.
 cd apps/api && source .venv/bin/activate && pytest
 
 # apps/web
-pnpm --filter web test   # once a test runner is wired up (later prompt)
+pnpm --filter web test       # unit tests, once wired up
+pnpm --filter web test:e2e   # Playwright E2E (apps/web/tests-e2e)
 ```

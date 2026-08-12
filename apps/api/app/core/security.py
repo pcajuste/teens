@@ -25,12 +25,14 @@ Two distinct token types flow through this module:
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from functools import lru_cache
 from typing import Literal
 
 import asyncpg
 import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from jwt import PyJWKClient
 from pydantic import BaseModel
 
 from app.core.config import Settings, get_settings
@@ -43,6 +45,18 @@ _supabase_bearer = HTTPBearer(auto_error=False)
 _parent_bearer = HTTPBearer(auto_error=False)
 
 PARENT_SESSION_ISSUER = "teenure-parent-portal"
+
+# Supabase now issues project JWTs signed with an asymmetric per-project
+# key (ES256/RS256, verified via GoTrue's JWKS endpoint) by default,
+# rather than the legacy HS256-with-shared-secret model. Both are still
+# valid in practice -- our own test fixtures (tests/conftest.py) sign
+# HS256 tokens directly with SUPABASE_JWT_SECRET, and a token with no
+# `kid` header is always the legacy HS256 case -- so we branch on
+# whether the token's header carries a `kid` rather than assuming one
+# algorithm project-wide.
+@lru_cache
+def _jwks_client(supabase_url: str) -> PyJWKClient:
+    return PyJWKClient(f"{supabase_url.rstrip('/')}/auth/v1/.well-known/jwks.json")
 
 
 class AuthenticatedUser(BaseModel):
@@ -79,12 +93,27 @@ async def get_current_user(
         raise _unauthorized("missing_credentials", "Authorization: Bearer token required.")
 
     try:
-        payload = jwt.decode(
-            credentials.credentials,
-            settings.supabase_jwt_secret,
-            algorithms=["HS256"],
-            audience="authenticated",
-        )
+        header = jwt.get_unverified_header(credentials.credentials)
+        if header.get("kid") is None:
+            # Legacy HS256 token, shared-secret verification.
+            payload = jwt.decode(
+                credentials.credentials,
+                settings.supabase_jwt_secret,
+                algorithms=["HS256"],
+                audience="authenticated",
+            )
+        else:
+            # Modern Supabase asymmetric-key token, verified against
+            # GoTrue's published JWKS.
+            signing_key = _jwks_client(settings.next_public_supabase_url).get_signing_key_from_jwt(
+                credentials.credentials
+            )
+            payload = jwt.decode(
+                credentials.credentials,
+                signing_key.key,
+                algorithms=["ES256", "RS256"],
+                audience="authenticated",
+            )
     except jwt.PyJWTError as exc:
         raise _unauthorized("invalid_token", "Supabase JWT is invalid or expired.") from exc
 

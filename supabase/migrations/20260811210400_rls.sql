@@ -242,7 +242,12 @@ CREATE POLICY "Recruiter manages own saved profiles"
 -- this exact GUC-based simulation.
 -- ──────────────────────────────────────────────────────────────────
 
-CREATE OR REPLACE FUNCTION auth.parent_record_id() RETURNS UUID
+-- Lives in `public`, not `auth`: on a real Supabase project the `auth`
+-- schema is owned by supabase_auth_admin and application migrations
+-- cannot create objects in it. This isn't a Supabase-provided helper
+-- (auth.uid()/auth.role() are) -- it's ours, so it belongs in a schema
+-- we own.
+CREATE OR REPLACE FUNCTION public.parent_record_id() RETURNS UUID
 LANGUAGE sql STABLE
 AS $$
   SELECT (NULLIF(current_setting('request.jwt.claims', true), '')::json->>'parent_record_id')::uuid;
@@ -250,7 +255,7 @@ $$;
 
 CREATE POLICY "Parent reads/updates only their own parent_records row"
   ON public.parent_records FOR ALL
-  USING (parent_id = auth.parent_record_id());
+  USING (parent_id = public.parent_record_id());
 -- The rep cannot read or write parent_records directly: there is no
 -- policy here matching rep_profiles.user_id = auth.uid(), so a rep's
 -- normal (Supabase-JWT) connection has no clause it can satisfy and

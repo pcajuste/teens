@@ -1240,6 +1240,103 @@ Acceptance criteria:
 
 ## Changelog
 
+**Build-log note (post-6A, pre-7)** — CI (Prompt 17) and part of the
+Testing Suite (Prompt 16) were pulled forward out of order, ahead of
+their documented dependencies (16 depends on Prompts 5–14 being
+complete; 17 depends on 16). Rationale: Prompts 5 and 6 had only ever
+been verified via `pytest` and `next build`/type-check — no route had
+been rendered in a real browser, and a stale-cache runtime error on
+`/rep` surfaced that gap. Rather than wait until Prompt 16/17's
+scheduled slot, a minimal early CI pipeline
+(`.github/workflows/ci.yml`) and a Playwright E2E suite
+(`apps/web/tests-e2e/`) were added immediately, scoped to what's
+buildable without a live Supabase project: the backend suite against a
+real ephemeral Postgres service (migrations applied fresh, matching
+Prompt 2's schema), a frontend build/type-check job, and browser-driven
+smoke coverage of the Prompt 6A demo portal (full click-through, zero
+backend network calls) plus the two public `/rep/*` auth pages.
+
+This is explicitly a partial stand-in, not a fulfillment of Prompt 16
+or 17 — still outstanding when those prompts are reached in sequence:
+lint step, frontend unit tests (Vitest/RTL), the full integration
+suites listed in Prompt 16 items 2–4 (campaign lifecycle, parental
+consent, parent-portal approval flow, parent-blocked-category
+exclusion), Vercel/Railway deploy config, staging environment, and
+documented rollback procedure. A local Supabase CLI stack
+(`supabase start`, replacing the bare-Postgres
+`scripts/local-dev/docker-compose.yml` container for auth-dependent
+work) is being wired up next specifically so authenticated E2E flows
+(real signup → parental consent → onboarding → accept → submit) can be
+exercised before Prompt 16 formally requires it — Prompt 16's own
+acceptance criteria already assume "local Supabase" as the integration
+target, so this isn't a deviation from that prompt's intent, just
+earlier setup of infrastructure it already calls for.
+
+**Build-log note (Supabase CLI follow-up)** — `supabase start` is now
+wired up and confirmed working: real signup (`POST /auth/signup`) →
+real GoTrue login (`POST /auth/v1/token?grant_type=password`) → an
+authenticated `GET /auth/me` call all succeed against the local stack.
+Two fixes were needed along the way, both now applied:
+
+1. `supabase/migrations/20260811210000_extensions_and_auth_shim.sql`
+   and the `auth.parent_record_id()` function in
+   `20260811210400_rls.sql` originally assumed they owned the `auth`
+   schema (true only for the bare-Postgres container). Against real
+   Supabase-managed Postgres, `auth` is owned by `supabase_auth_admin`
+   and these statements failed with `insufficient_privilege`. Fixed by
+   wrapping the shim objects in `DO` blocks that treat that error as
+   "already provided by the platform," and by moving the
+   parent-session helper function (which isn't a real Supabase
+   built-in) to `public.parent_record_id()`, a schema we actually own.
+2. `apps/api`'s JWT verification (`app/core/security.py`) assumed
+   Supabase always signs session JWTs with a single shared HS256
+   secret. The local Supabase CLI (and increasingly hosted Supabase
+   projects) defaults to per-project asymmetric signing keys (ES256),
+   verified via GoTrue's JWKS endpoint instead. `get_current_user` now
+   branches on whether the token header carries a `kid`: no `kid` is
+   treated as a legacy HS256 token (still how `tests/conftest.py`
+   signs its test fixtures, and how the bare-Postgres
+   `LocalDevSupabaseAuthClient` path would work if used), and a `kid`
+   present fetches and verifies against the matching JWKS key. `cryptography`
+   was added to `apps/api/requirements.txt` (PyJWT's ES256 support
+   requires it).
+
+Correction to the note above: the bare-Postgres
+`scripts/local-dev/docker-compose.yml` stack is not being replaced —
+`apps/api/tests/conftest.py` deliberately targets it (port 5434, no
+GoTrue) to give `pytest` a fast, isolated database that mirrors CI's
+ephemeral Postgres service. The two stacks now coexist for distinct
+purposes: bare Postgres for `pytest`/CI, the Supabase CLI stack for
+interactive local dev with real signup/login. See the README's "Local
+database + auth" section for setup steps.
+
+**Build-log note (authenticated E2E)** — a new `apps/web/tests-e2e-auth/`
+Playwright suite (its own config, `playwright.auth.config.ts`) now
+drives real signup and login through the browser against a live
+`apps/api` + local Supabase Auth stack — not just the backend-free demo
+portal. Writing it surfaced a real, previously-undetected bug: every
+4xx/5xx response from `apps/api` is shaped `{"error": {"code",
+"message"}}` (`apps/api/app/core/errors.py`), but
+`apps/web/lib/api.ts`'s `parseError` was reading `body.detail.code` —
+a shape that never matched, so every API error in the running app
+(age-gate messages, "email already registered", the parent-email-required
+branch on signup, resend-consent rate-limiting, etc.) silently fell
+back to a generic "Request failed with status NNN" and `err.code` was
+always `"unknown_error"`. This had been true since Prompt 4 and was
+invisible to `pytest` (which only asserts on the backend's own response
+shape) and to `next build`/type-check (both sides type-check fine
+independently; the mismatch is a runtime contract bug, not a type
+error) — it took an actual browser click-through to catch. Fixed in
+`apps/web/lib/api.ts`.
+
+CI gained a new `web-e2e-auth` job (`.github/workflows/ci.yml`) that
+installs the Supabase CLI (`supabase/setup-cli@v1`), runs
+`supabase start` (applying `supabase/migrations/` fresh, same as local
+dev), boots `apps/api` against it, and runs this suite — the existing
+`web-e2e` job is unchanged and still covers the demo portal with zero
+backend dependency, for fast, always-green baseline coverage even if
+the authenticated stack has trouble in CI.
+
 **v1.3** — companion to Teenure_MVP_Gameplan.md v1.3.
 Added Prompt 4A (Parent Portal) as a new build phase between Prompts 4
 and 5, establishing the parent campaign-approval gate, values filters,

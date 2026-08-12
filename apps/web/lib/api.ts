@@ -22,9 +22,11 @@ async function parseError(res: Response): Promise<never> {
   let message = `Request failed with status ${res.status}`;
   try {
     const body = await res.json();
-    if (body?.detail?.code) {
-      code = body.detail.code;
-      message = body.detail.message ?? message;
+    // Every 4xx/5xx from apps/api is shaped {"error": {"code", "message"}}
+    // -- see apps/api/app/core/errors.py's register_exception_handlers.
+    if (body?.error?.code) {
+      code = body.error.code;
+      message = body.error.message ?? message;
     }
   } catch {
     // response body wasn't JSON -- fall back to the generic message above

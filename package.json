@@ -6,6 +6,7 @@
     "dev:web": "pnpm --filter web dev",
     "build:web": "pnpm --filter web build",
     "test:e2e:web": "pnpm --filter web test:e2e",
+    "test:e2e:web:auth": "pnpm --filter web test:e2e:auth",
     "dev:api": "cd apps/api && uvicorn app.main:app --reload --port 8000"
   }
 }

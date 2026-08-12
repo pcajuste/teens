@@ -13,26 +13,57 @@
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
-CREATE SCHEMA IF NOT EXISTS auth;
+-- Everything below is wrapped in DO blocks that swallow
+-- insufficient_privilege: on a bare Postgres container (no Supabase CLI /
+-- GoTrue), our connecting role owns the database and these statements
+-- create the shim objects normally. On a real Supabase-managed Postgres
+-- (local `supabase start` or hosted), the `auth` schema, auth.users,
+-- auth.uid(), and auth.role() already exist and are owned by
+-- supabase_auth_admin, so every statement here fails with
+-- insufficient_privilege -- which we catch and treat as "already
+-- provided by the platform," making this file a no-op there.
 
-CREATE TABLE IF NOT EXISTS auth.users (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  email TEXT
-);
+DO $$
+BEGIN
+  CREATE SCHEMA IF NOT EXISTS auth;
+EXCEPTION WHEN insufficient_privilege THEN
+  RAISE NOTICE 'auth schema already managed by the platform; skipping';
+END $$;
+
+DO $$
+BEGIN
+  CREATE TABLE IF NOT EXISTS auth.users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email TEXT
+  );
+EXCEPTION WHEN insufficient_privilege THEN
+  RAISE NOTICE 'auth.users already managed by the platform; skipping';
+END $$;
 
 -- Mirrors Supabase's auth.uid() helper: reads the "sub" claim out of a
 -- JWT that PostgREST/Supabase would normally set via
--- `SET LOCAL request.jwt.claims`. For local testing we set the same
--- GUC by hand (see scripts/local-dev/test_rls.sql) with:
+-- `SET LOCAL request.jwt.claims`. For local testing against bare
+-- Postgres we set the same GUC by hand (see
+-- scripts/local-dev/test_rls.sql) with:
 --   SET LOCAL request.jwt.claims = '{"sub": "<uuid>", "role": "authenticated"}';
-CREATE OR REPLACE FUNCTION auth.uid() RETURNS UUID
-LANGUAGE sql STABLE
-AS $$
-  SELECT (NULLIF(current_setting('request.jwt.claims', true), '')::json->>'sub')::uuid;
-$$;
+DO $$
+BEGIN
+  CREATE OR REPLACE FUNCTION auth.uid() RETURNS UUID
+  LANGUAGE sql STABLE
+  AS $fn$
+    SELECT (NULLIF(current_setting('request.jwt.claims', true), '')::json->>'sub')::uuid;
+  $fn$;
+EXCEPTION WHEN insufficient_privilege THEN
+  RAISE NOTICE 'auth.uid() already managed by the platform; skipping';
+END $$;
 
-CREATE OR REPLACE FUNCTION auth.role() RETURNS TEXT
-LANGUAGE sql STABLE
-AS $$
-  SELECT NULLIF(current_setting('request.jwt.claims', true), '')::json->>'role';
-$$;
+DO $$
+BEGIN
+  CREATE OR REPLACE FUNCTION auth.role() RETURNS TEXT
+  LANGUAGE sql STABLE
+  AS $fn$
+    SELECT NULLIF(current_setting('request.jwt.claims', true), '')::json->>'role';
+  $fn$;
+EXCEPTION WHEN insufficient_privilege THEN
+  RAISE NOTICE 'auth.role() already managed by the platform; skipping';
+END $$;

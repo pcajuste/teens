@@ -6,7 +6,7 @@
 -- (or scripts/local-dev/test_rls.sh)
 --
 -- Simulates Supabase's request.jwt.claims GUC the way PostgREST does,
--- via SET LOCAL inside each transaction. auth.uid() / auth.parent_record_id()
+-- via SET LOCAL inside each transaction. auth.uid() / public.parent_record_id()
 -- (defined in the RLS migration) read this GUC exactly like Supabase's
 -- production auth.uid() reads the real JWT -- so this is a faithful
 -- local simulation of the same enforcement path, not a different one.
