@@ -27,6 +27,33 @@ export function EarningsPanel({ earnings }: { earnings: Earnings }) {
         <p className="text-xs text-muted-foreground">Lifetime paid</p>
         <p className="text-base font-semibold">{money(earnings.lifetime_paid_cents)}</p>
       </div>
+
+      {earnings.milestone_campaigns.length > 0 ? (
+        <div className="col-span-3 flex flex-col gap-2">
+          <p className="text-xs font-medium text-muted-foreground">Milestone campaigns</p>
+          {earnings.milestone_campaigns.map((mc) => {
+            const remaining = mc.milestones.filter(
+              (m) => m.status !== "confirmed" && m.status !== "paid"
+            ).length;
+            return (
+              <div key={mc.campaign_id} className="rounded-lg border border-border p-2.5">
+                <p className="text-sm font-medium">{mc.campaign_title}</p>
+                {/* Earned (confirmed/paid) vs. achievable (what remains through
+                    the rep's own further effort) is always shown as two
+                    numbers, never blended -- Build Prompt 8B's UX guidance:
+                    never "guaranteed base + bonus" language, since nothing
+                    here is contingent on anyone but the rep. */}
+                <p className="text-xs text-muted-foreground">
+                  You have earned {money(mc.total_milestone_payout_cents)}
+                  {mc.payout_per_rep_cents !== null ? ` of ${money(mc.payout_per_rep_cents)} available` : ""}
+                  {" in this campaign. "}
+                  {remaining} milestone{remaining === 1 ? "" : "s"} remaining.
+                </p>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
     </div>
   );
 }

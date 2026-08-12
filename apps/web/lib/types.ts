@@ -46,6 +46,87 @@ export interface RepProfileUpdateRequest {
   tiktok_handle: string | null;
 }
 
+// ── Milestone payments (Build Prompt 8B) ────────────────────────────
+
+export type VerificationMethod = "brand_confirmation" | "rep_submission";
+
+/** One row of the `milestones` array sent in POST /brands/campaigns
+ * when payment_type='milestone' -- matches
+ * apps/api/app/schemas/brands.py's MilestoneRequest field-for-field.
+ * Cross-milestone rules (percentages sum to 100, sequential numbering,
+ * at least one sequence_required, non-sequential trailing-only) are
+ * validated server-side; the milestone builder only enforces the
+ * percentage-sum check and the 2-5 count client-side as a UX guard. */
+export interface MilestoneRequest {
+  milestone_number: number;
+  title: string;
+  description: string | null;
+  verification_method: VerificationMethod;
+  payout_percentage: number;
+  sequence_required: boolean;
+}
+
+/** Per-milestone entry within GET /reps/campaigns/active for a
+ * milestone campaign -- matches
+ * apps/api/app/schemas/reps.py's MilestoneParticipationResponse.
+ * `actionable` is server-computed sequence awareness; the frontend
+ * never re-derives it. */
+export interface MilestoneParticipation {
+  id: string;
+  campaign_milestone_id: string;
+  milestone_number: number;
+  title: string;
+  description: string | null;
+  verification_method: VerificationMethod;
+  payout_percentage: number;
+  sequence_required: boolean;
+  status: string;
+  actionable: boolean;
+  payout_cents: number | null;
+  payout_status: string;
+  submitted_at: string | null;
+  confirmed_at: string | null;
+  paid_at: string | null;
+}
+
+/** Brand's per-rep milestone progress view -- GET
+ * /brands/campaigns/:id/reps/:rep_id/milestones, matches
+ * apps/api/app/schemas/brands.py's MilestoneProgressResponse. */
+export interface MilestoneProgress {
+  id: string;
+  campaign_milestone_id: string;
+  milestone_number: number;
+  title: string;
+  verification_method: VerificationMethod;
+  payout_percentage: number;
+  status: string;
+  rep_submission_text: string | null;
+  rep_submission_file_urls: string[];
+  payout_cents: number | null;
+  payout_status: string;
+  dispute_flag: boolean;
+  submitted_at: string | null;
+  confirmed_at: string | null;
+  paid_at: string | null;
+}
+
+export interface SubmitMilestoneRequest {
+  submission_text: string;
+  submission_file_urls: string[];
+}
+
+/** One campaign's milestone-level earnings detail within GET
+ * /reps/earnings -- matches
+ * apps/api/app/schemas/reps.py's MilestoneEarningsEntry. */
+export interface MilestoneEarningsEntry {
+  campaign_id: string;
+  campaign_title: string;
+  payout_per_rep_cents: number | null;
+  milestones_completed_count: number;
+  total_milestone_payout_cents: number;
+  milestones: MilestoneParticipation[];
+}
+
 export interface CampaignSummary {
   id: string;
   title: string;
@@ -77,6 +158,10 @@ export interface CampaignParticipation {
   submitted_at: string | null;
   confirmed_at: string | null;
   paid_at: string | null;
+  payment_type: PaymentType;
+  milestones: MilestoneParticipation[];
+  milestones_completed_count: number;
+  total_milestone_payout_cents: number;
 }
 
 export interface Earnings {
@@ -84,6 +169,7 @@ export interface Earnings {
   confirmed_cents: number;
   paid_cents: number;
   lifetime_paid_cents: number;
+  milestone_campaigns: MilestoneEarningsEntry[];
 }
 
 export interface MeResponse {
@@ -138,6 +224,8 @@ export type CampaignStatus =
   | "completed"
   | "cancelled";
 
+export type PaymentType = "flat" | "milestone";
+
 /** Structural shape shared by the rep-facing CampaignSummary and the
  * brand-facing Campaign -- components that only render the brief
  * itself (goal/deliverables/categories/payout) accept this instead of
@@ -165,6 +253,7 @@ export interface Campaign extends CampaignBriefLike {
   rep_pool_cents: number;
   start_date: string;
   end_date: string;
+  payment_type: PaymentType;
   created_at: string;
   updated_at: string;
 }
@@ -182,6 +271,8 @@ export interface CampaignBriefRequest {
   budget_cents: number;
   start_date: string;
   end_date: string;
+  payment_type?: PaymentType;
+  milestones?: MilestoneRequest[];
 }
 
 export interface ActivateCampaignResponse {
@@ -232,6 +323,8 @@ export interface CampaignRep {
   submitted_at: string | null;
   confirmed_at: string | null;
   paid_at: string | null;
+  milestones_completed_count: number;
+  total_milestone_payout_cents: number;
 }
 
 // ── Recruiter Portal ──────────────────────────────────────────────

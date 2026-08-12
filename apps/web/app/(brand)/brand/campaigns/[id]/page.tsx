@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BrandShell } from "@/components/brand/brand-shell";
+import { RepMilestoneProgress } from "@/components/brand/rep-milestone-progress";
 import { CampaignBrief } from "@/components/campaigns/campaign-brief";
 import { api, ApiError } from "@/lib/api";
 import { trackEvent } from "@/lib/analytics";
@@ -222,14 +223,24 @@ export default function BrandCampaignDetailPage() {
           ) : (
             <div className="flex flex-col gap-2">
               {campaignReps.map((cr) => (
-                <Card key={cr.id} className="flex-row items-center justify-between p-4">
-                  <div>
-                    <p className="text-sm font-medium">Rep {cr.rep_id.slice(0, 8)}</p>
-                    {cr.parent_approval_status === "pending" ? (
-                      <p className="text-xs text-warning-foreground">Awaiting parent approval</p>
-                    ) : null}
+                <Card key={cr.id} className="flex flex-col gap-3 p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium">Rep {cr.rep_id.slice(0, 8)}</p>
+                      {cr.parent_approval_status === "pending" ? (
+                        <p className="text-xs text-warning-foreground">Awaiting parent approval</p>
+                      ) : null}
+                    </div>
+                    <Badge variant="secondary">{REP_STATUS_LABEL[cr.status] ?? cr.status}</Badge>
                   </div>
-                  <Badge variant="secondary">{REP_STATUS_LABEL[cr.status] ?? cr.status}</Badge>
+
+                  {campaign.payment_type === "milestone" &&
+                  cr.status !== "invited" &&
+                  cr.status !== "declined" ? (
+                    <div className="border-t border-border pt-3">
+                      <RepMilestoneProgress campaignId={campaignId} repId={cr.rep_id} />
+                    </div>
+                  ) : null}
                 </Card>
               ))}
             </div>

@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { Countdown } from "@/components/rep/countdown";
+import { MilestoneList } from "@/components/rep/milestone-list";
 import { ParticipationSection } from "@/components/rep/participation-section";
 import { RepShell } from "@/components/rep/rep-shell";
 import { api, ApiError } from "@/lib/api";
@@ -201,7 +202,21 @@ export default function CampaignDetailPage() {
         />
       ) : null}
 
-        {participation && (participation.status === "accepted" || participation.status === "revision_requested") ? (
+        {participation && participation.payment_type === "milestone" && participation.milestones.length > 0 ? (
+          <section className="flex flex-col gap-3">
+            <h2 className="text-sm font-semibold text-muted-foreground">Milestones</h2>
+            <MilestoneList
+              campaignId={campaignId}
+              milestones={participation.milestones}
+              payoutPerRepCents={campaign?.payout_per_rep_cents ?? null}
+              onChanged={load}
+            />
+          </section>
+        ) : null}
+
+        {participation &&
+        participation.payment_type !== "milestone" &&
+        (participation.status === "accepted" || participation.status === "revision_requested") ? (
           <section className="flex flex-col gap-3 rounded-xl border border-border bg-card p-5">
             <h2 className="text-sm font-semibold">Submit your work</h2>
             {participation.revision_note ? (
@@ -246,7 +261,9 @@ export default function CampaignDetailPage() {
           </section>
         ) : null}
 
-        {participation && ["submitted", "under_review", "confirmed", "paid"].includes(participation.status) ? (
+        {participation &&
+        participation.payment_type !== "milestone" &&
+        ["submitted", "under_review", "confirmed", "paid"].includes(participation.status) ? (
           <StatusTracker status={participation.status} />
         ) : null}
       </div>

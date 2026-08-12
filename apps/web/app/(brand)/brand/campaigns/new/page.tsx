@@ -9,10 +9,17 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { BrandShell } from "@/components/brand/brand-shell";
 import { CampaignBrief } from "@/components/campaigns/campaign-brief";
+import {
+  MAX_MILESTONES,
+  MIN_MILESTONES,
+  MilestoneBuilder,
+  emptyMilestone,
+  milestonesPercentageTotal,
+} from "@/components/brand/milestone-builder";
 import { api, ApiError } from "@/lib/api";
 import { trackEvent } from "@/lib/analytics";
 import { BASE_CATEGORIES, CATEGORY_LABELS, type Category } from "@/lib/categories";
-import type { Campaign, CampaignBriefRequest } from "@/lib/types";
+import type { Campaign, CampaignBriefRequest, MilestoneRequest, PaymentType } from "@/lib/types";
 
 const todayPlusDays = (days: number) => {
   const d = new Date();
@@ -34,8 +41,28 @@ export default function NewCampaignPage() {
   const [budgetDollars, setBudgetDollars] = useState(1000);
   const [startDate, setStartDate] = useState(todayPlusDays(14));
   const [endDate, setEndDate] = useState(todayPlusDays(44));
+  const [paymentType, setPaymentType] = useState<PaymentType>("flat");
+  const [milestones, setMilestones] = useState<MilestoneRequest[]>([
+    emptyMilestone(1),
+    emptyMilestone(2),
+  ]);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  function handlePaymentTypeChange(type: PaymentType) {
+    setPaymentType(type);
+    if (type === "milestone" && milestones.length < MIN_MILESTONES) {
+      setMilestones([emptyMilestone(1), emptyMilestone(2)]);
+    }
+  }
+
+  const milestonesTotal = milestonesPercentageTotal(milestones);
+  const milestonesValid =
+    paymentType === "flat" ||
+    (milestones.length >= MIN_MILESTONES &&
+      milestones.length <= MAX_MILESTONES &&
+      milestonesTotal === 100 &&
+      milestones.every((m) => m.title.trim().length > 0));
 
   function toggleCategory(c: Category) {
     setCategories((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]));
@@ -79,6 +106,8 @@ export default function NewCampaignPage() {
         budget_cents: budgetCents,
         start_date: startDate,
         end_date: endDate,
+        payment_type: paymentType,
+        milestones: paymentType === "milestone" ? milestones : [],
       };
       const campaign = await api.post<Campaign>("/brands/campaigns", body);
       trackEvent("campaign_created", { campaign_id: campaign.id, categories });
@@ -196,11 +225,43 @@ export default function NewCampaignPage() {
             </div>
           </div>
 
+          <div className="flex flex-col gap-2">
+            <Label>Payment type</Label>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => handlePaymentTypeChange("flat")}>
+                <Badge variant={paymentType === "flat" ? "default" : "outline"} className="px-3 py-1.5">
+                  Flat payout
+                </Badge>
+              </button>
+              <button type="button" onClick={() => handlePaymentTypeChange("milestone")}>
+                <Badge variant={paymentType === "milestone" ? "default" : "outline"} className="px-3 py-1.5">
+                  Performance milestones
+                </Badge>
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {paymentType === "flat"
+                ? "Reps are paid in full when their submission is confirmed."
+                : "Reps are paid in staged releases as each milestone is completed and confirmed."}
+            </p>
+          </div>
+
+          {paymentType === "milestone" ? (
+            <MilestoneBuilder milestones={milestones} onChange={setMilestones} />
+          ) : null}
+
           {error ? (
             <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>
           ) : null}
 
-          <Button type="submit" disabled={pending} size="lg" className="w-full">
+          {paymentType === "milestone" && !milestonesValid ? (
+            <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              Add 2-5 milestones with titles, and make sure payout percentages sum to exactly 100%
+              before creating this campaign.
+            </p>
+          ) : null}
+
+          <Button type="submit" disabled={pending || !milestonesValid} size="lg" className="w-full">
             {pending ? "Creating..." : "Create campaign"}
           </Button>
         </form>

@@ -102,6 +102,10 @@ export const DEMO_CONFIRMED_PARTICIPATION: CampaignParticipation = {
   submitted_at: "2026-06-05T18:45:00.000Z",
   confirmed_at: "2026-06-09T10:15:00.000Z",
   paid_at: null,
+  payment_type: "flat",
+  milestones: [],
+  milestones_completed_count: 0,
+  total_milestone_payout_cents: 0,
 };
 
 export const DEMO_EARNINGS: Earnings = {
@@ -109,4 +113,5 @@ export const DEMO_EARNINGS: Earnings = {
   confirmed_cents: 12500,
   paid_cents: 30000,
   lifetime_paid_cents: 42500,
+  milestone_campaigns: [],
 };
