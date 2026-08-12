@@ -124,3 +124,27 @@ class CreditTopUpRequest(BaseModel):
 
 class CreditTopUpResponse(BaseModel):
     stripe_payment_intent_client_secret: str
+
+
+class SubscriptionCheckoutRequest(BaseModel):
+    """POST /recruiters/subscribe -- see stripe_service.create_subscription_checkout_session's
+    docstring for why this route exists despite Build Prompt 11 shipping
+    without one."""
+
+    plan: Literal["monthly", "annual"]
+
+
+class SubscriptionCheckoutResponse(BaseModel):
+    checkout_url: str
+
+
+class RecruiterMessageResponse(BaseModel):
+    """GET /recruiters/messages -- recruiter-facing list of sent
+    messages with read-receipt status (Build Prompt 12 deliverable 4)."""
+
+    id: str
+    rep_id: str
+    rep_display_name: str
+    message_text: str
+    read_at: datetime | None
+    messaged_at: datetime

@@ -75,6 +75,39 @@ async def list_for_rep(conn: asyncpg.Connection, rep_id: str) -> list[RecruiterC
     return [RecruiterContact.from_row(row) for row in rows]
 
 
+@dataclass(frozen=True, slots=True)
+class RecruiterContactWithRepName:
+    """list_for_recruiter's row shape: a RecruiterContact plus the rep's
+    display_name. Joining in the name here isn't a new PII disclosure --
+    the recruiter already paid the credit that revealed it when they sent
+    this message (get_rep_detail/contact_rep both require and charge for
+    that view first) -- it just saves the frontend a second per-row
+    credit-free lookup against a rep_profiles read path that doesn't
+    otherwise exist for recruiters outside the credit-gated routes."""
+
+    contact: RecruiterContact
+    rep_display_name: str
+
+
+async def list_for_recruiter(conn: asyncpg.Connection, recruiter_id: str) -> list[RecruiterContactWithRepName]:
+    """Build Prompt 12 deliverable 4 ("Messaging UI: ... read-receipt
+    display") -- the recruiter-facing counterpart to list_for_rep, newest
+    first, so a recruiter can see whether/when each message they sent
+    was read. No message content beyond what the recruiter themselves
+    wrote is exposed here (one-directional messaging, no reply)."""
+    rows = await conn.fetch(
+        f"""
+        SELECT c.id, c.recruiter_id, c.rep_id, c.message_text, c.read_at, c.messaged_at, r.display_name
+        FROM public.recruiter_contacts c
+        JOIN public.rep_profiles r ON r.id = c.rep_id
+        WHERE c.recruiter_id = $1
+        ORDER BY c.messaged_at DESC
+        """,
+        recruiter_id,
+    )
+    return [RecruiterContactWithRepName(contact=RecruiterContact.from_row(row), rep_display_name=row["display_name"]) for row in rows]
+
+
 async def get_by_id_and_rep(conn: asyncpg.Connection, contact_id: str, rep_id: str) -> RecruiterContact | None:
     row = await conn.fetchrow(
         f"SELECT {_COLUMNS} FROM public.recruiter_contacts WHERE id = $1 AND rep_id = $2",

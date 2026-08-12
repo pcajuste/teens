@@ -219,6 +219,33 @@ async def create_credit_topup_payment_intent(
     )
 
 
+async def create_subscription_checkout_session(
+    settings: Settings, *, customer_id: str, price_id: str, success_url: str, cancel_url: str, metadata: dict
+) -> str:
+    """Build Prompt 12 deliverable 5 ("Subscription & credits panel:
+    Stripe checkout (monthly/annual)"). Prompt 11's backend deliberately
+    shipped without a subscribe route since subscribing was assumed to
+    happen entirely on Stripe-hosted billing outside this API -- but the
+    frontend acceptance criterion ("signup -> ... -> subscribe (test
+    mode)") needs an actual checkout to send the recruiter to, so this
+    thin wrapper creates a Checkout Session in subscription mode against
+    one of the two recruiter Prices (monthly/annual). Subscription
+    activation itself still happens only via the
+    customer.subscription.created webhook (app/routers/webhooks.py) --
+    this function has no side effect on recruiter_profiles."""
+    _configure(settings)
+    session = await asyncio.to_thread(
+        stripe.checkout.Session.create,
+        mode="subscription",
+        customer=customer_id,
+        line_items=[{"price": price_id, "quantity": 1}],
+        success_url=success_url,
+        cancel_url=cancel_url,
+        metadata=metadata,
+    )
+    return session.url
+
+
 def verify_webhook_signature(settings: Settings, *, payload: bytes, signature_header: str) -> stripe.Event:
     """Verify a Stripe webhook payload against STRIPE_WEBHOOK_SECRET and
     return the parsed event. Raises stripe.error.SignatureVerificationError

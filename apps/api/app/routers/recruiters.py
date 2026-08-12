@@ -42,12 +42,15 @@ from app.schemas.recruiters import (
     CreditsResponse,
     CreditTopUpRequest,
     CreditTopUpResponse,
+    RecruiterMessageResponse,
     RecruiterProfileResponse,
     RecruiterProfileUpdateRequest,
     RecruiterRepDetailResponse,
     RecruiterSearchCardResponse,
     SavedProfileResponse,
     SaveRequest,
+    SubscriptionCheckoutRequest,
+    SubscriptionCheckoutResponse,
 )
 from app.services import stripe_service
 
@@ -184,6 +187,49 @@ async def top_up_credits(
         settings, amount_cents=amount_cents, credits=body.credits, recruiter_id=recruiter.id, customer_id=customer_id
     )
     return CreditTopUpResponse(stripe_payment_intent_client_secret=client_secret)
+
+
+@recruiters_router.post("/subscribe", response_model=SubscriptionCheckoutResponse)
+async def subscribe(
+    body: SubscriptionCheckoutRequest,
+    user: AuthenticatedUser = Depends(require_role_any_status("recruiter")),
+    settings: Settings = Depends(get_settings),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> SubscriptionCheckoutResponse:
+    """Starts a Stripe Checkout Session for the recruiter subscription
+    plan (Build Prompt 12 deliverable 5). require_role_any_status
+    because a recruiter must be able to subscribe while still 'pending'
+    -- subscription creation is one half of the dual activation gate
+    (see webhooks.py's _handle_subscription_created), so gating this
+    route on 'active' would make it unreachable for anyone who needs
+    it. Actual activation happens only on the subsequent webhook, never
+    here."""
+    recruiter = await _get_own_recruiter_profile(conn, user)
+
+    price_id = settings.recruiter_price_id_monthly if body.plan == "monthly" else settings.recruiter_price_id_annual
+    if not price_id:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"code": "plan_not_configured", "message": f"The {body.plan} plan is not configured on this environment."},
+        )
+
+    customer_id = recruiter.stripe_customer_id
+    if customer_id is None:
+        user_record = await users_repository.get_user_by_id(conn, user.id)
+        customer_id = await stripe_service.create_customer(
+            settings, email=user_record.email, metadata={"role": "recruiter", "recruiter_id": recruiter.id}
+        )
+        await recruiter_profiles_repository.set_stripe_customer_id(conn, recruiter.id, customer_id)
+
+    checkout_url = await stripe_service.create_subscription_checkout_session(
+        settings,
+        customer_id=customer_id,
+        price_id=price_id,
+        success_url=f"{settings.next_public_app_url}/recruiter/subscription?checkout=success",
+        cancel_url=f"{settings.next_public_app_url}/recruiter/subscription?checkout=cancelled",
+        metadata={"recruiter_id": recruiter.id, "plan": body.plan},
+    )
+    return SubscriptionCheckoutResponse(checkout_url=checkout_url)
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -333,6 +379,28 @@ async def contact_rep(
         )
 
     return ContactResponse(id=contact.id, rep_id=contact.rep_id, message_text=contact.message_text, messaged_at=contact.messaged_at)
+
+
+@recruiters_router.get("/messages", response_model=list[RecruiterMessageResponse])
+async def list_messages(
+    user: AuthenticatedUser = Depends(require_role("recruiter")),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> list[RecruiterMessageResponse]:
+    """Build Prompt 12 deliverable 4: read-receipt display for every
+    message this recruiter has sent."""
+    recruiter = await _get_own_recruiter_profile(conn, user)
+    rows = await recruiter_contacts_repository.list_for_recruiter(conn, recruiter.id)
+    return [
+        RecruiterMessageResponse(
+            id=r.contact.id,
+            rep_id=r.contact.rep_id,
+            rep_display_name=r.rep_display_name,
+            message_text=r.contact.message_text,
+            read_at=r.contact.read_at,
+            messaged_at=r.contact.messaged_at,
+        )
+        for r in rows
+    ]
 
 
 # ══════════════════════════════════════════════════════════════════

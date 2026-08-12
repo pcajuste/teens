@@ -73,6 +73,13 @@ class Settings(BaseSettings):
     # server-side only, never trusted from the client (Section 9).
     recruiter_plan_credits_allotment: int = 25
     recruiter_credit_topup_price_cents: int = 500
+    # Stripe Price ids for the recruiter subscription plan (Build Prompt 12
+    # deliverable 5: "Stripe checkout (monthly/annual)"). Optional with no
+    # default -- an environment that hasn't created these Prices yet simply
+    # can't offer that plan cadence; POST /recruiters/subscribe returns a
+    # clear 500 rather than silently charging the wrong price.
+    recruiter_price_id_monthly: str | None = None
+    recruiter_price_id_annual: str | None = None
 
     @property
     def allowed_origins(self) -> list[str]:

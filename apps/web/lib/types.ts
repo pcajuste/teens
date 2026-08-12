@@ -225,6 +225,125 @@ export interface CampaignRep {
   paid_at: string | null;
 }
 
+// ── Recruiter Portal ──────────────────────────────────────────────
+
+export type InstitutionType = "college" | "employer";
+
+export interface RecruiterProfile {
+  id: string;
+  institution_name: string;
+  institution_type: InstitutionType;
+  website: string | null;
+  verified: boolean;
+}
+
+export interface RecruiterProfileUpdateRequest {
+  institution_name: string;
+  institution_type: InstitutionType;
+  website: string | null;
+}
+
+export interface RecruiterCredits {
+  contact_credits_remaining: number;
+  credits_reset_date: string | null;
+  low_credit_warning: boolean;
+}
+
+/** GET /recruiters/reps/search -- no PII, no credit cost. */
+export interface RecruiterSearchCard {
+  rep_id: string;
+  city: string;
+  state: string;
+  graduation_year: number;
+  school_type: SchoolType | null;
+  categories: string[];
+  profile_completeness_score: number;
+  average_rating: number | null;
+  total_campaigns_completed: number;
+}
+
+/** GET /recruiters/reps/:id -- full identifying profile, costs 1 credit
+ * (deducted server-side before this is ever returned -- lib/api.ts's
+ * response is the only source of truth for the new credit balance,
+ * never a locally-decremented counter). */
+export interface RecruiterRepDetail {
+  rep_id: string;
+  display_name: string;
+  school_name: string;
+  school_type: SchoolType | null;
+  city: string;
+  state: string;
+  graduation_year: number;
+  bio: string | null;
+  categories: string[];
+  instagram_handle: string | null;
+  tiktok_handle: string | null;
+  total_campaigns_completed: number;
+  average_rating: number | null;
+  profile_completeness_score: number;
+}
+
+export interface RecruiterContactRequest {
+  message_text: string;
+}
+
+export interface RecruiterContactResponse {
+  id: string;
+  rep_id: string;
+  message_text: string;
+  messaged_at: string;
+}
+
+export interface RecruiterSaveRequest {
+  list_name?: string | null;
+}
+
+export interface RecruiterSavedProfile {
+  rep_id: string;
+  list_name: string | null;
+  saved_at: string;
+}
+
+export interface RecruiterCreditTopUpResponse {
+  stripe_payment_intent_client_secret: string;
+}
+
+export interface RecruiterSearchFilters {
+  graduation_year?: number;
+  city?: string;
+  state?: string;
+  categories?: string[];
+  min_campaigns?: number;
+  min_rating?: number;
+  limit?: number;
+  offset?: number;
+}
+
+export interface RecruiterCreditTopUpRequest {
+  credits: number;
+}
+
+export type SubscriptionPlan = "monthly" | "annual";
+
+export interface SubscriptionCheckoutRequest {
+  plan: SubscriptionPlan;
+}
+
+export interface SubscriptionCheckoutResponse {
+  checkout_url: string;
+}
+
+/** GET /recruiters/messages -- recruiter-facing list of sent messages
+ * with read-receipt status (Build Prompt 12 deliverable 4). */
+export interface RecruiterMessage {
+  id: string;
+  rep_id: string;
+  rep_display_name: string;
+  message_text: string;
+  read_at: string | null;
+  messaged_at: string;
+}
+
 // Matches apps/api/app/core/errors.py's response shape exactly --
 // lib/api.ts's parseError reads this shape directly (not this type,
 // which exists for callers that want to type a raw error body).
