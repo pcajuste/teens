@@ -27,7 +27,7 @@ from datetime import datetime, timedelta, timezone
 
 from app.core.config import get_settings
 from app.db.pool import get_pool
-from app.repositories import campaign_milestones_repository, campaign_reps_repository, exclusivity_repository
+from app.repositories import campaign_milestones_repository, campaign_reps_repository, challenges_repository, exclusivity_repository
 from app.repositories.campaign_reps_repository import auto_decline_expired_parent_approvals
 from app.repositories.intelligence_repository import insert_events, list_pending_events, mark_written
 from app.repositories.parent_records_repository import list_digest_enabled
@@ -188,6 +188,31 @@ async def exclusivity_auto_expire_job() -> None:
                 agreement.category,
                 agreement.city,
                 agreement.ends_at,
+            )
+
+
+@register_job("challenge_auto_close")
+async def challenge_auto_close_job() -> None:
+    """Runs hourly (Build Prompt 8G deliverable 7). Finds challenges
+    with closes_at < now() and status = 'active', transitions them to
+    'closed'. Idempotent by construction: challenges_repository.auto_close_due's
+    own WHERE status = 'active' guard means a challenge already closed
+    by an earlier run of this job (or a brand's own manual close) simply
+    doesn't match a second time, so running the job twice against the
+    same expired challenge produces one log entry, not two. Logs every
+    auto-close with challenge_id, closes_at, and the timestamp of
+    closure -- same "every release is logged for admin audit" convention
+    as milestone_auto_release_job/exclusivity_auto_expire_job above."""
+    pool = get_pool()
+    now = datetime.now(timezone.utc)
+    async with pool.acquire() as conn:
+        closed = await challenges_repository.auto_close_due(conn, now=now)
+        for challenge in closed:
+            _logger.info(
+                "challenge_auto_close: challenge_id=%s closes_at=%s closed_at=%s",
+                challenge.id,
+                challenge.closes_at,
+                now,
             )
 
 

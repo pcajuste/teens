@@ -131,6 +131,9 @@ def _to_profile_response(p: rep_profiles_repository.RepProfile) -> RepProfileRes
         average_rating=p.average_rating,
         profile_completeness_score=p.profile_completeness_score,
         stripe_onboarding_complete=p.stripe_onboarding_complete,
+        challenges_submitted_count=p.challenges_submitted_count,
+        challenges_converted_count=p.challenges_converted_count,
+        challenge_conversion_rate=p.challenge_conversion_rate,
     )
 
 
@@ -153,6 +156,9 @@ def _to_preview_response(p: rep_profiles_repository.RepProfile) -> RepProfilePre
         total_campaigns_completed=p.total_campaigns_completed,
         average_rating=p.average_rating,
         profile_completeness_score=p.profile_completeness_score,
+        challenges_submitted_count=p.challenges_submitted_count,
+        challenges_converted_count=p.challenges_converted_count,
+        challenge_conversion_rate=p.challenge_conversion_rate,
     )
 
 

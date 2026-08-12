@@ -203,6 +203,21 @@ async def send_milestone_dispute_resolved_email(
     await client.send_email(to=to, subject=f"Milestone dispute resolved: {milestone_title}", html=html)
 
 
+async def send_challenge_converted_email(rep_email: str, *, campaign_title: str, bonus_cents: int, client: ResendClient) -> None:
+    """Build Prompt 8G deliverable 3k: sent when a brand converts a
+    challenge submission into a campaign invitation. Bonus amount is
+    always formatted from the caller-supplied cents value (which itself
+    always comes from settings.challenge_conversion_bonus_cents) --
+    never hardcoded here."""
+    html = f"""
+    <p>A brand loved your challenge submission and has invited you to a
+    paid campaign: <strong>{campaign_title}</strong>.</p>
+    <p>You've also earned a ${bonus_cents / 100:.2f} discovery bonus
+    from Teenure.</p>
+    """
+    await client.send_email(to=rep_email, subject=f"You've been invited to {campaign_title}", html=html)
+
+
 async def send_digest_email(
     parent_email: str,
     client: ResendClient,

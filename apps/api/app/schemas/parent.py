@@ -21,6 +21,20 @@ class VerifyResponse(BaseModel):
     expires_at: datetime
 
 
+class ChallengeActivitySubmissionEntry(BaseModel):
+    challenge_title: str
+    submitted_at: datetime
+    status: Literal["submitted", "converted"]
+    bonus_earned_cents: int | None = None
+
+
+class ChallengeActivityResponse(BaseModel):
+    total_submitted: int
+    total_converted: int
+    total_bonus_earned_cents: int
+    recent_submissions: list[ChallengeActivitySubmissionEntry]
+
+
 class DashboardResponse(BaseModel):
     display_name: str
     school_name: str
@@ -29,6 +43,7 @@ class DashboardResponse(BaseModel):
     profile_completeness_score: int
     total_earnings_cents: int
     total_campaigns_completed: int
+    challenge_activity: ChallengeActivityResponse
 
 
 class PendingCampaignResponse(BaseModel):

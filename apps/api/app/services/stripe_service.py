@@ -186,6 +186,33 @@ async def create_milestone_payout_transfer(
     return transfer.id
 
 
+async def create_challenge_conversion_bonus_transfer(
+    settings: Settings, *, stripe_account_id: str, amount_cents: int, challenge_submission_id: str, rep_id: str
+) -> str:
+    """Build Prompt 8G deliverable 5: platform-funded bonus paid when a
+    challenge submission converts to a campaign invitation -- routed
+    through the same Stripe Connect payout path as create_payout_transfer/
+    create_milestone_payout_transfer above, no new payment
+    infrastructure. metadata.payment_type='challenge_conversion_bonus'
+    is what app/routers/webhooks.py's transfer.paid/transfer.failed
+    handlers key off of to route to the challenge-aware update path,
+    kept fully isolated from the flat/milestone branches the same way
+    those two are isolated from each other."""
+    _configure(settings)
+    transfer = await asyncio.to_thread(
+        stripe.Transfer.create,
+        amount=amount_cents,
+        currency="usd",
+        destination=stripe_account_id,
+        metadata={
+            "payment_type": "challenge_conversion_bonus",
+            "challenge_submission_id": challenge_submission_id,
+            "rep_id": rep_id,
+        },
+    )
+    return transfer.id
+
+
 async def refund_campaign(
     settings: Settings, *, payment_intent_id: str, amount_cents: int, campaign_id: str
 ) -> str:

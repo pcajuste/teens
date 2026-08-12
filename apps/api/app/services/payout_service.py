@@ -24,7 +24,7 @@ from datetime import datetime
 import asyncpg
 
 from app.core.config import Settings
-from app.repositories import campaign_milestones_repository, campaign_reps_repository, rep_profiles_repository
+from app.repositories import campaign_milestones_repository, campaign_reps_repository, challenges_repository, rep_profiles_repository
 from app.services import stripe_service
 
 
@@ -219,6 +219,77 @@ async def handle_transfer_failed_milestone(
     if crm is None:
         return None
     return await campaign_milestones_repository.set_payout_failed(conn, crm.id)
+
+
+async def release_challenge_conversion_bonus(
+    conn: asyncpg.Connection, settings: Settings, challenge_submission_id: str
+) -> PayoutResult:
+    """Build Prompt 8G deliverable 5. Same idempotency shape as
+    release_payout/release_milestone_payout above: payout_status must
+    be 'pending' to proceed, and the stripe_transfer_id UPDATE...WHERE
+    guard is the second, race-proof line of defense -- a lost race
+    (two concurrent calls for the same submission_id) is reported as
+    "already_processed" rather than creating a second Transfer, exactly
+    mirroring release_milestone_payout's own race-guard comment.
+    `campaign_rep` on the returned PayoutResult is always None here --
+    a challenge conversion bonus has no campaign_reps row of its own to
+    report; callers that need the submission row use the return value
+    of challenges_repository.get_by_id directly."""
+    submission = await challenges_repository.get_submission_by_id(conn, challenge_submission_id)
+    if submission is None or submission.status != "converted" or not submission.payout_cents:
+        return PayoutResult(outcome="not_confirmed", campaign_rep=None)
+    if submission.payout_status != "pending":
+        return PayoutResult(outcome="already_processed", campaign_rep=None, stripe_transfer_id=submission.stripe_transfer_id)
+
+    rep = await rep_profiles_repository.get_by_id(conn, submission.rep_id)
+    if rep is None or not rep.stripe_onboarding_complete or not rep.stripe_account_id:
+        return PayoutResult(outcome="rep_not_onboarded", campaign_rep=None)
+
+    transfer_id = await stripe_service.create_challenge_conversion_bonus_transfer(
+        settings,
+        stripe_account_id=rep.stripe_account_id,
+        amount_cents=submission.payout_cents,
+        challenge_submission_id=submission.id,
+        rep_id=submission.rep_id,
+    )
+    updated = await challenges_repository.set_payout_processing(conn, challenge_submission_id, stripe_transfer_id=transfer_id)
+    if updated is None:
+        # Lost a race with another release_challenge_conversion_bonus
+        # call between the payout_status check above and this UPDATE --
+        # same "treat as already processed" logic as
+        # release_payout/release_milestone_payout's own race guards.
+        return PayoutResult(outcome="already_processed", campaign_rep=None, stripe_transfer_id=transfer_id)
+    return PayoutResult(outcome="transferred", campaign_rep=None, stripe_transfer_id=transfer_id)
+
+
+async def handle_transfer_paid_challenge(conn: asyncpg.Connection, stripe_transfer_id: str, *, at: datetime) -> None:
+    """transfer.paid webhook, metadata.payment_type ==
+    'challenge_conversion_bonus' branch (Build Prompt 8G deliverable 6).
+    Touches ONLY challenge_submissions and rep_profiles.total_earnings_cents
+    -- never campaign_reps or any campaign payout row, mirroring how
+    handle_transfer_paid_milestone above stays fully isolated from the
+    flat-campaign path. Unknown transfer id or an already-'paid' row is
+    a silent no-op, same rationale as every other handler in this
+    module."""
+    submission = await challenges_repository.get_by_stripe_transfer_id(conn, stripe_transfer_id)
+    if submission is None:
+        return
+    updated = await challenges_repository.set_payout_paid(conn, submission.id, at=at)
+    if updated is None:
+        return
+    await rep_profiles_repository.recompute_cached_totals(conn, updated.rep_id)
+
+
+async def handle_transfer_failed_challenge(conn: asyncpg.Connection, stripe_transfer_id: str) -> challenges_repository.ChallengeSubmission | None:
+    """transfer.failed webhook, metadata.payment_type ==
+    'challenge_conversion_bonus' branch. No dedicated admin queue table
+    exists for this either -- `WHERE payout_status = 'failed'` on
+    challenge_submissions is the interim queue, same convention as
+    handle_transfer_failed/handle_transfer_failed_milestone above."""
+    submission = await challenges_repository.get_by_stripe_transfer_id(conn, stripe_transfer_id)
+    if submission is None:
+        return None
+    return await challenges_repository.set_payout_failed(conn, submission.id)
 
 
 async def handle_transfer_failed(conn: asyncpg.Connection, stripe_transfer_id: str) -> campaign_reps_repository.CampaignRep | None:

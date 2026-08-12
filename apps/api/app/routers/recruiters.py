@@ -278,6 +278,8 @@ async def search_reps(
             profile_completeness_score=c.profile_completeness_score,
             average_rating=c.average_rating,
             total_campaigns_completed=c.total_campaigns_completed,
+            challenges_converted_count=c.challenges_converted_count,
+            challenge_conversion_rate=c.challenge_conversion_rate,
         )
         for c in cards
     ]

@@ -448,6 +448,8 @@ def test_browse_returns_no_pii(client, db, brand_headers, onboarded_brand):
         "profile_completeness_score",
         "average_rating",
         "total_campaigns_completed",
+        "challenges_converted_count",
+        "challenge_conversion_rate",
     }
 
 

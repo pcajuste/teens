@@ -13,12 +13,13 @@ from app.core.age import compute_age
 from app.core.config import Settings, get_settings
 from app.core.security import ParentSession, get_active_parent_session
 from app.db.pool import get_connection
-from app.repositories import campaign_reps_repository, parent_records_repository
+from app.repositories import campaign_reps_repository, challenges_repository, parent_records_repository
 from app.repositories.users_repository import set_account_status
 from app.schemas.parent import (
     AccountControlResponse,
     ApprovalRequiredRequest,
     CampaignDecisionResponse,
+    ChallengeActivityResponse,
     DashboardResponse,
     DigestPreviewResponse,
     DigestSettingRequest,
@@ -49,6 +50,7 @@ async def dashboard(
     rep = await parent_records_repository.get_rep_context(conn, session.rep_id)
     if rep is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"code": "rep_not_found", "message": "Linked rep profile not found."})
+    activity = await challenges_repository.parent_dashboard_activity(conn, session.rep_id)
     return DashboardResponse(
         display_name=rep.display_name,
         school_name=rep.school_name,
@@ -57,6 +59,7 @@ async def dashboard(
         profile_completeness_score=rep.profile_completeness_score,
         total_earnings_cents=rep.total_earnings_cents,
         total_campaigns_completed=rep.total_campaigns_completed,
+        challenge_activity=ChallengeActivityResponse(**activity),
     )
 
 

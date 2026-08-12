@@ -89,6 +89,12 @@ class Settings(BaseSettings):
     exclusivity_base_rate_cents_per_day: int = 5000
     exclusivity_max_days: int = 90
 
+    # ── Skill Challenges (Build Prompt 8G) ──────────────────────────
+    # Platform-funded bonus paid to a rep when their challenge
+    # submission converts to a campaign invitation. Funded from
+    # platform margin, not charged to brand.
+    challenge_conversion_bonus_cents: int = 750
+
     @property
     def allowed_origins(self) -> list[str]:
         return [origin.strip() for origin in self.allowed_origins_raw.split(",") if origin.strip()]

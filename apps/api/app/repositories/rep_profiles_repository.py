@@ -19,6 +19,7 @@ _COLUMNS = (
     "bio, categories, instagram_handle, tiktok_handle, recruiter_visible, "
     "total_campaigns_completed, total_earnings_cents, average_rating, "
     "profile_completeness_score, stripe_account_id, stripe_onboarding_complete, "
+    "challenges_submitted_count, challenges_converted_count, "
     "created_at, updated_at"
 )
 
@@ -44,8 +45,19 @@ class RepProfile:
     profile_completeness_score: int
     stripe_account_id: str | None
     stripe_onboarding_complete: bool
+    challenges_submitted_count: int
+    challenges_converted_count: int
     created_at: datetime
     updated_at: datetime
+
+    @property
+    def challenge_conversion_rate(self) -> float | None:
+        """Build Prompt 8G deliverable 8: derived, never stored --
+        null-guarded against divide-by-zero when no submissions exist
+        yet."""
+        if not self.challenges_submitted_count:
+            return None
+        return round(self.challenges_converted_count / self.challenges_submitted_count, 2)
 
     @classmethod
     def from_row(cls, row: asyncpg.Record) -> "RepProfile":
@@ -69,6 +81,8 @@ class RepProfile:
             profile_completeness_score=row["profile_completeness_score"],
             stripe_account_id=row["stripe_account_id"],
             stripe_onboarding_complete=row["stripe_onboarding_complete"],
+            challenges_submitted_count=row["challenges_submitted_count"],
+            challenges_converted_count=row["challenges_converted_count"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )
@@ -211,11 +225,20 @@ async def recompute_cached_totals(conn: asyncpg.Connection, rep_id: str) -> None
             SELECT COALESCE(SUM(crm.payout_cents), 0) AS total
             FROM public.campaign_rep_milestones crm
             WHERE crm.campaign_rep_id IN (SELECT id FROM reps) AND crm.payout_status = 'paid'
+        ), paid_challenge_bonuses AS (
+            -- Build Prompt 8G: challenge conversion bonuses count toward
+            -- lifetime earnings the same as flat/milestone campaign
+            -- payouts (spec deliverable 6: "update
+            -- rep_profiles.total_earnings_cents").
+            SELECT COALESCE(SUM(cs.payout_cents), 0) AS total
+            FROM public.challenge_submissions cs
+            WHERE cs.rep_id = $1 AND cs.payout_status = 'paid'
         )
         SELECT
             (SELECT COUNT(*) FROM reps WHERE status = 'paid') AS total_campaigns_completed,
             (SELECT COALESCE(SUM(payout_cents), 0) FROM reps WHERE status = 'paid')
-              + (SELECT total FROM paid_milestones) AS total_earnings_cents,
+              + (SELECT total FROM paid_milestones)
+              + (SELECT total FROM paid_challenge_bonuses) AS total_earnings_cents,
             (SELECT AVG(brand_rating) FROM reps WHERE brand_rating IS NOT NULL) AS average_rating
         """,
         rep_id,
@@ -230,6 +253,20 @@ async def recompute_cached_totals(conn: asyncpg.Connection, rep_id: str) -> None
         row["total_campaigns_completed"],
         row["total_earnings_cents"],
         row["average_rating"],
+    )
+
+
+async def increment_challenges_submitted_count(conn: asyncpg.Connection, rep_id: str) -> None:
+    await conn.execute(
+        "UPDATE public.rep_profiles SET challenges_submitted_count = challenges_submitted_count + 1, updated_at = now() WHERE id = $1",
+        rep_id,
+    )
+
+
+async def increment_challenges_converted_count(conn: asyncpg.Connection, rep_id: str) -> None:
+    await conn.execute(
+        "UPDATE public.rep_profiles SET challenges_converted_count = challenges_converted_count + 1, updated_at = now() WHERE id = $1",
+        rep_id,
     )
 
 
@@ -284,6 +321,8 @@ class RepBrowseCard:
     profile_completeness_score: int
     average_rating: float | None
     total_campaigns_completed: int
+    challenges_converted_count: int = 0
+    challenge_conversion_rate: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -307,6 +346,8 @@ class RecruiterSearchCard:
     profile_completeness_score: int
     average_rating: float | None
     total_campaigns_completed: int
+    challenges_converted_count: int = 0
+    challenge_conversion_rate: float | None = None
 
 
 async def search_for_recruiter(
@@ -324,7 +365,8 @@ async def search_for_recruiter(
     rows = await conn.fetch(
         """
         SELECT id, city, state, graduation_year, school_type, categories,
-               profile_completeness_score, average_rating, total_campaigns_completed
+               profile_completeness_score, average_rating, total_campaigns_completed,
+               challenges_submitted_count, challenges_converted_count
         FROM public.rep_profiles
         WHERE recruiter_visible = TRUE
           AND ($1::int IS NULL OR graduation_year = $1)
@@ -356,6 +398,12 @@ async def search_for_recruiter(
             profile_completeness_score=row["profile_completeness_score"],
             average_rating=float(row["average_rating"]) if row["average_rating"] is not None else None,
             total_campaigns_completed=row["total_campaigns_completed"],
+            challenges_converted_count=row["challenges_converted_count"],
+            challenge_conversion_rate=(
+                round(row["challenges_converted_count"] / row["challenges_submitted_count"], 2)
+                if row["challenges_submitted_count"]
+                else None
+            ),
         )
         for row in rows
     ]
@@ -372,7 +420,8 @@ async def browse_for_brand(
     rows = await conn.fetch(
         """
         SELECT id, city, state, graduation_year, school_type, categories,
-               profile_completeness_score, average_rating, total_campaigns_completed
+               profile_completeness_score, average_rating, total_campaigns_completed,
+               challenges_submitted_count, challenges_converted_count
         FROM public.rep_profiles
         WHERE recruiter_visible = TRUE
           AND ($1::text[] IS NULL OR categories && $1::text[])
@@ -393,6 +442,12 @@ async def browse_for_brand(
             profile_completeness_score=row["profile_completeness_score"],
             average_rating=float(row["average_rating"]) if row["average_rating"] is not None else None,
             total_campaigns_completed=row["total_campaigns_completed"],
+            challenges_converted_count=row["challenges_converted_count"],
+            challenge_conversion_rate=(
+                round(row["challenges_converted_count"] / row["challenges_submitted_count"], 2)
+                if row["challenges_submitted_count"]
+                else None
+            ),
         )
         for row in rows
     ]

@@ -28,6 +28,7 @@ from app.repositories import (
     campaign_milestones_repository,
     campaign_reps_repository,
     campaigns_repository,
+    challenges_repository,
     exclusivity_repository,
     intelligence_repository,
     rep_profiles_repository,
@@ -63,6 +64,7 @@ from app.schemas.exclusivity import (
     AdminExclusivityCancelResponse,
     AdminExclusivityListResponse,
 )
+from app.schemas.challenges import AdminChallengeAnalyticsResponse
 from app.schemas.intelligence import TrendBucketResponse
 from app.services import payout_service, stripe_service
 from app.services.email_service import (
@@ -506,6 +508,17 @@ async def resolve_milestone_dispute(
         )
 
     return MilestoneDisputeResponse(**asdict(resolved))
+
+
+# ══════════════════════════════════════════════════════════════════
+# Build Prompt 8G deliverable 9: Skill Challenges analytics.
+# ══════════════════════════════════════════════════════════════════
+
+
+@admin_router.get("/analytics/challenges", response_model=AdminChallengeAnalyticsResponse)
+async def analytics_challenges(conn: asyncpg.Connection = Depends(get_connection)) -> AdminChallengeAnalyticsResponse:
+    data = await challenges_repository.admin_analytics(conn)
+    return AdminChallengeAnalyticsResponse(**data)
 
 
 # ══════════════════════════════════════════════════════════════════

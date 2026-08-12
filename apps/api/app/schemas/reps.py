@@ -68,6 +68,9 @@ class RepProfileResponse(BaseModel):
     average_rating: float | None
     profile_completeness_score: int
     stripe_onboarding_complete: bool
+    challenges_submitted_count: int = 0
+    challenges_converted_count: int = 0
+    challenge_conversion_rate: float | None = None
 
 
 class RepProfilePreviewResponse(BaseModel):
@@ -91,6 +94,9 @@ class RepProfilePreviewResponse(BaseModel):
     total_campaigns_completed: int
     average_rating: float | None
     profile_completeness_score: int
+    challenges_submitted_count: int = 0
+    challenges_converted_count: int = 0
+    challenge_conversion_rate: float | None = None
 
 
 class AchievementRecordResponse(BaseModel):

@@ -45,6 +45,8 @@ class RecruiterSearchCardResponse(BaseModel):
     profile_completeness_score: int
     average_rating: float | None
     total_campaigns_completed: int
+    challenges_converted_count: int = 0
+    challenge_conversion_rate: float | None = None
 
 
 class RecruiterRepDetailResponse(BaseModel):
