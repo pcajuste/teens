@@ -1097,7 +1097,14 @@ Deliverables:
 4. Frontend tests (Vitest/RTL or Next.js equivalent): FTC checkbox gate,
    credit-spend confirmation prompts, age-gate/pending-consent screen
    states, parent-approval-pending state in rep campaign view,
-   parent portal approve/block actions.
+   parent portal approve/block actions, and the rep dashboard's
+   available-campaigns panel excluding a parent-blocked-category
+   campaign for a rep whose parent has that category in values_filters
+   (mock the API response with a category the seeded rep's parent has
+   blocked and assert it never renders — this is a safety-enforcement
+   surface, not just a display concern, so it needs the same test-backed
+   guarantee as the FTC checkbox rather than resting on manual
+   verification alone).
 5. CI-runnable command running backend and frontend suites together,
    failing build on any failure.
 
@@ -1106,6 +1113,9 @@ Acceptance criteria:
   - Integration flows pass end-to-end against local Supabase and Stripe
     test mode.
   - Parent portal approval flow integration test passes.
+  - Frontend test proves (not just visually confirms) that a
+    parent-blocked-category campaign is absent from the rendered
+    available-campaigns panel.
   - CI command returns non-zero on any failure.
 ```
 
@@ -1244,6 +1254,12 @@ parent portal approval flow integration test. Updated Prompt 19 to
 instrument parent portal events. Updated Master Context Prompt to
 reflect parent role and safety-by-design rule. Updated Prompt 18 to
 include a real parents page and a schools/counselors page.
+
+v1.3 note: Prompts 5 and 6 are written as if 4A always came first —
+their parent-approval gate, values-filter exclusion, withdraw
+endpoint, and pending-approval UI state are native deliverables of
+those prompts, not a later patch. Build in order (4A before 5, 5
+before 6) and no retrofit step is needed.
 
 **v1.2** — added retry-payment endpoint (Prompt 8), subscription
 lifecycle webhooks (Prompt 11), school_type to schema and onboarding
