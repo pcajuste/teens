@@ -1,0 +1,10 @@
+services:
+  teenure_postgres:
+    image: postgres:15-alpine
+    container_name: teenure_postgres
+    environment:
+      POSTGRES_USER: teenure
+      POSTGRES_PASSWORD: teenure_dev_only
+      POSTGRES_DB: teenure
+    ports:
+      - "5434:5432"
