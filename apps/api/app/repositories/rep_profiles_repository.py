@@ -187,15 +187,36 @@ async def recompute_cached_totals(conn: asyncpg.Connection, rep_id: str) -> None
     style of computing cached fields at the call site rather than in
     SQL (see update_profile_completeness_score above).
     profile_completeness_score is untouched here -- payout completion
-    doesn't change what's filled in on the profile."""
+    doesn't change what's filled in on the profile.
+
+    Build Prompt 8B addition: total_earnings_cents also folds in paid
+    milestone payouts (SUM of campaign_rep_milestones.payout_cents
+    where payout_status='paid', across every campaign_reps row for
+    this rep) -- a milestone campaign's campaign_reps.payout_cents
+    itself is never set (each milestone is paid individually via
+    campaign_rep_milestones, not one lump transfer), so leaving this
+    query as flat-only would silently under-report a milestone-earning
+    rep's lifetime total. total_campaigns_completed is left as
+    flat-status-'paid'-only for now (a milestone campaign's
+    campaign_reps.status reaches 'confirmed', not 'paid', after its
+    final milestone -- see app/routers/brands.py's confirm_milestone --
+    so counting "campaigns completed" for milestone campaigns needs a
+    product decision on what "completed" means there that's out of
+    this recompute's scope; flagged, not silently guessed)."""
     row = await conn.fetchrow(
         """
+        WITH reps AS (
+            SELECT id, status, payout_cents, brand_rating FROM public.campaign_reps WHERE rep_id = $1
+        ), paid_milestones AS (
+            SELECT COALESCE(SUM(crm.payout_cents), 0) AS total
+            FROM public.campaign_rep_milestones crm
+            WHERE crm.campaign_rep_id IN (SELECT id FROM reps) AND crm.payout_status = 'paid'
+        )
         SELECT
-            COUNT(*) FILTER (WHERE status = 'paid') AS total_campaigns_completed,
-            COALESCE(SUM(payout_cents) FILTER (WHERE status = 'paid'), 0) AS total_earnings_cents,
-            AVG(brand_rating) FILTER (WHERE brand_rating IS NOT NULL) AS average_rating
-        FROM public.campaign_reps
-        WHERE rep_id = $1
+            (SELECT COUNT(*) FROM reps WHERE status = 'paid') AS total_campaigns_completed,
+            (SELECT COALESCE(SUM(payout_cents), 0) FROM reps WHERE status = 'paid')
+              + (SELECT total FROM paid_milestones) AS total_earnings_cents,
+            (SELECT AVG(brand_rating) FROM reps WHERE brand_rating IS NOT NULL) AS average_rating
         """,
         rep_id,
     )

@@ -661,3 +661,122 @@ async def resolve_safety_report(
     if row is None:
         return None
     return await get_safety_report(conn, report_id)
+
+
+# ══════════════════════════════════════════════════════════════════
+# Build Prompt 8B deliverable 7: milestone dispute queue -- its own
+# category, distinct from campaign-wide disputes (campaigns.flagged_*
+# above) and stuck-payment-transfer disputes (payout_status='failed'/
+# 'processing'). Modeled as its own table (public.milestone_disputes),
+# following the safety_reports precedent above rather than a new
+# QueueEntry.pending_reason literal -- see
+# supabase/migrations/20260812120000_milestone_payments.sql's own note
+# for the full rationale.
+# ══════════════════════════════════════════════════════════════════
+
+
+@dataclass(frozen=True, slots=True)
+class MilestoneDispute:
+    id: str
+    campaign_rep_milestone_id: str
+    campaign_id: str
+    campaign_title: str
+    milestone_title: str
+    rep_id: str
+    rep_display_name: str
+    raised_by: str
+    reason: str | None
+    status: str
+    created_at: datetime
+    resolved_at: datetime | None
+    resolved_by: str | None
+    resolution_note: str | None
+
+
+_MILESTONE_DISPUTE_COLUMNS = """
+    md.id, md.campaign_rep_milestone_id, c.id AS campaign_id, c.title AS campaign_title,
+    cm.title AS milestone_title, cr.rep_id, rp.display_name AS rep_display_name,
+    md.raised_by, md.reason, md.status, md.created_at, md.resolved_at, md.resolved_by, md.resolution_note
+"""
+
+_MILESTONE_DISPUTE_JOIN = """
+    FROM public.milestone_disputes md
+    JOIN public.campaign_rep_milestones crm ON crm.id = md.campaign_rep_milestone_id
+    JOIN public.campaign_milestones cm ON cm.id = crm.campaign_milestone_id
+    JOIN public.campaign_reps cr ON cr.id = crm.campaign_rep_id
+    JOIN public.campaigns c ON c.id = cr.campaign_id
+    JOIN public.rep_profiles rp ON rp.id = cr.rep_id
+"""
+
+
+def _milestone_dispute_from_row(row: asyncpg.Record) -> MilestoneDispute:
+    return MilestoneDispute(
+        id=str(row["id"]),
+        campaign_rep_milestone_id=str(row["campaign_rep_milestone_id"]),
+        campaign_id=str(row["campaign_id"]),
+        campaign_title=row["campaign_title"],
+        milestone_title=row["milestone_title"],
+        rep_id=str(row["rep_id"]),
+        rep_display_name=row["rep_display_name"],
+        raised_by=str(row["raised_by"]),
+        reason=row["reason"],
+        status=row["status"],
+        created_at=row["created_at"],
+        resolved_at=row["resolved_at"],
+        resolved_by=str(row["resolved_by"]) if row["resolved_by"] else None,
+        resolution_note=row["resolution_note"],
+    )
+
+
+async def create_milestone_dispute(
+    conn: asyncpg.Connection, *, campaign_rep_milestone_id: str, raised_by: str, reason: str | None
+) -> MilestoneDispute:
+    row = await conn.fetchrow(
+        """
+        INSERT INTO public.milestone_disputes (campaign_rep_milestone_id, raised_by, reason)
+        VALUES ($1, $2, $3)
+        RETURNING id
+        """,
+        campaign_rep_milestone_id,
+        raised_by,
+        reason,
+    )
+    return await get_milestone_dispute(conn, str(row["id"]))
+
+
+async def get_milestone_dispute(conn: asyncpg.Connection, dispute_id: str) -> MilestoneDispute | None:
+    row = await conn.fetchrow(
+        f"SELECT {_MILESTONE_DISPUTE_COLUMNS} {_MILESTONE_DISPUTE_JOIN} WHERE md.id = $1", dispute_id
+    )
+    return _milestone_dispute_from_row(row) if row else None
+
+
+async def list_milestone_disputes(conn: asyncpg.Connection, *, open_only: bool = True) -> list[MilestoneDispute]:
+    where = "WHERE md.status = 'open'" if open_only else ""
+    rows = await conn.fetch(f"SELECT {_MILESTONE_DISPUTE_COLUMNS} {_MILESTONE_DISPUTE_JOIN} {where} ORDER BY md.created_at ASC")
+    return [_milestone_dispute_from_row(r) for r in rows]
+
+
+async def resolve_milestone_dispute(
+    conn: asyncpg.Connection, dispute_id: str, *, admin_id: str, confirmed: bool, resolution_note: str | None
+) -> MilestoneDispute | None:
+    """`confirmed` maps to status 'resolved_confirmed' (triggers payout
+    via the caller, app/routers/admin.py) or 'resolved_declined' (resets
+    the milestone to 'submitted'). Legal only from 'open' -- a dispute
+    can only be resolved once."""
+    new_status = "resolved_confirmed" if confirmed else "resolved_declined"
+    row = await conn.fetchrow(
+        """
+        UPDATE public.milestone_disputes
+        SET status = $2, resolved_at = now(), resolved_by = $3, resolution_note = $4
+        WHERE id = $1 AND status = 'open'
+        RETURNING id
+        """,
+        dispute_id,
+        new_status,
+        admin_id,
+        resolution_note,
+    )
+    if row is None:
+        return None
+    return await get_milestone_dispute(conn, dispute_id)

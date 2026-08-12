@@ -133,3 +133,36 @@ class SafetyReportCreateRequest(BaseModel):
     reason: str = Field(min_length=1)
     campaign_id: str | None = None
     description: str | None = None
+
+
+# ══════════════════════════════════════════════════════════════════
+# Build Prompt 8B: milestone dispute queue -- distinct admin-queue
+# category from campaign-level disputes (AdminCampaignResponse's
+# flagged_*/resolved_* fields) and stuck-payment disputes
+# (StuckPaymentResponse), per the prompt's own explicit instruction.
+# ══════════════════════════════════════════════════════════════════
+
+MilestoneDisputeStatus = Literal["open", "resolved_confirmed", "resolved_declined"]
+MilestoneDisputeResolution = Literal["confirm", "decline"]
+
+
+class MilestoneDisputeResponse(BaseModel):
+    id: str
+    campaign_rep_milestone_id: str
+    campaign_id: str
+    campaign_title: str
+    milestone_title: str
+    rep_id: str
+    rep_display_name: str
+    raised_by: str
+    reason: str | None
+    status: MilestoneDisputeStatus
+    created_at: datetime
+    resolved_at: datetime | None
+    resolved_by: str | None
+    resolution_note: str | None
+
+
+class ResolveMilestoneDisputeRequest(BaseModel):
+    resolution: MilestoneDisputeResolution
+    resolution_note: str | None = None

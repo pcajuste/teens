@@ -28,6 +28,8 @@ from app.core.security import AuthenticatedUser, require_role
 from app.db.pool import get_connection
 from app.repositories import admin_repository
 from app.repositories import (
+    brand_profiles_repository,
+    campaign_milestones_repository,
     campaign_reps_repository,
     campaigns_repository,
     parent_records_repository,
@@ -43,13 +45,17 @@ from app.schemas.reps import (
     CampaignParticipationResponse,
     CampaignSummaryResponse,
     EarningsResponse,
+    MilestoneEarningsEntry,
+    MilestoneParticipationResponse,
     RepProfilePreviewResponse,
     RepProfileResponse,
     RepProfileUpdateRequest,
     StripeOnboardingResponse,
     SubmitCampaignRequest,
+    SubmitMilestoneRequest,
 )
 from app.services import stripe_service
+from app.services.email_service import send_milestone_submitted_email
 from app.services.parent_service import apply_values_filter, determine_parent_approval, send_campaign_approval_request
 from app.services.resend_client import ResendClient, resend_client_dependency
 from app.services.storage_service import SubmissionUploadError, get_storage_client
@@ -167,6 +173,80 @@ def _to_participation_response(cr: campaign_reps_repository.CampaignRep) -> Camp
         submitted_at=cr.submitted_at,
         confirmed_at=cr.confirmed_at,
         paid_at=cr.paid_at,
+        milestones_completed_count=cr.milestones_completed_count,
+        total_milestone_payout_cents=cr.total_milestone_payout_cents,
+    )
+
+
+def _compute_milestone_participation(
+    milestone_defs: list[campaign_milestones_repository.CampaignMilestone],
+    progress: list[campaign_milestones_repository.CampaignRepMilestone],
+) -> list[MilestoneParticipationResponse]:
+    """Build Prompt 8B deliverable 3's actionability rule: a
+    sequence_required milestone is actionable once every PRIOR
+    sequence_required milestone is confirmed-or-paid; a non-sequential
+    milestone is actionable once every sequence_required milestone on
+    the campaign is confirmed-or-paid (validate_milestones guarantees
+    non-sequential milestones always trail every sequence_required one,
+    so "all sequence_required milestones done" is exactly
+    "all_prior_sequence_done" by the time we reach the first
+    non-sequential entry in milestone_number order). Only a 'pending'
+    milestone can ever be actionable -- one already submitted/confirmed/
+    paid has nothing left for the rep to do."""
+    progress_by_milestone_id = {p.campaign_milestone_id: p for p in progress}
+    ordered = sorted(milestone_defs, key=lambda m: m.milestone_number)
+    result: list[MilestoneParticipationResponse] = []
+    all_prior_sequence_done = True
+    for m in ordered:
+        crm = progress_by_milestone_id.get(m.id)
+        if crm is None:
+            continue
+        actionable = all_prior_sequence_done and crm.status == "pending"
+        result.append(
+            MilestoneParticipationResponse(
+                id=crm.id,
+                campaign_milestone_id=m.id,
+                milestone_number=m.milestone_number,
+                title=m.title,
+                description=m.description,
+                verification_method=m.verification_method,
+                payout_percentage=m.payout_percentage,
+                sequence_required=m.sequence_required,
+                status=crm.status,
+                actionable=actionable,
+                payout_cents=crm.payout_cents,
+                payout_status=crm.payout_status,
+                submitted_at=crm.submitted_at,
+                confirmed_at=crm.confirmed_at,
+                paid_at=crm.paid_at,
+            )
+        )
+        if m.sequence_required and crm.status not in ("confirmed", "paid"):
+            all_prior_sequence_done = False
+    return result
+
+
+async def _to_participation_response_with_milestones(
+    conn: asyncpg.Connection, cr: campaign_reps_repository.CampaignRep, campaign: campaigns_repository.Campaign
+) -> CampaignParticipationResponse:
+    """GET /reps/campaigns/active's per-row shape (Build Prompt 8B
+    deliverable 3): every other participation-returning route
+    (apply/accept/decline/submit/withdraw/history) uses the plain
+    _to_participation_response above, which is fine there -- a rep
+    already knows the milestone list for a campaign they just took an
+    action on, and history is post-hoc. /active is the one place a rep
+    is deciding what to do *next*, which is exactly what the milestone
+    list + actionability flag exists to answer."""
+    base = _to_participation_response(cr)
+    if campaign.payment_type != "milestone":
+        return base
+    milestone_defs = await campaign_milestones_repository.list_for_campaign(conn, campaign.id)
+    progress = await campaign_milestones_repository.list_for_campaign_rep(conn, cr.id)
+    return base.model_copy(
+        update={
+            "payment_type": campaign.payment_type,
+            "milestones": _compute_milestone_participation(milestone_defs, progress),
+        }
     )
 
 
@@ -340,9 +420,24 @@ async def campaigns_active(
     user: AuthenticatedUser = Depends(require_role("rep")),
     conn: asyncpg.Connection = Depends(get_connection),
 ) -> list[CampaignParticipationResponse]:
+    """Build Prompt 8B deliverable 3: for milestone campaigns, each
+    entry includes the milestone list (title/description/percentage/
+    status/actionable) so a rep is never confused about what to work on
+    next. campaigns_repository.get_by_id is looked up per row rather
+    than batched -- list_active_for_rep is typically a handful of rows
+    per rep, and this keeps the milestone-augmentation logic isolated
+    to _to_participation_response_with_milestones rather than needing a
+    second bulk-fetch path."""
     profile = await _get_own_profile(conn, user)
     rows = await campaign_reps_repository.list_active_for_rep(conn, profile.id)
-    return [_to_participation_response(r) for r in rows]
+    result: list[CampaignParticipationResponse] = []
+    for r in rows:
+        campaign = await campaigns_repository.get_by_id(conn, r.campaign_id)
+        if campaign is None:
+            result.append(_to_participation_response(r))
+            continue
+        result.append(await _to_participation_response_with_milestones(conn, r, campaign))
+    return result
 
 
 @reps_router.get("/campaigns/history", response_model=list[CampaignParticipationResponse])
@@ -360,13 +455,46 @@ async def earnings(
     user: AuthenticatedUser = Depends(require_role("rep")),
     conn: asyncpg.Connection = Depends(get_connection),
 ) -> EarningsResponse:
+    """Build Prompt 8B deliverable 10: pending/confirmed/paid totals
+    stay flat-campaign-only (earnings_breakdown sums campaign_reps.
+    payout_cents, which a milestone campaign never sets at the
+    campaign_reps level -- see rep_profiles_repository.recompute_cached_totals's
+    own note on why milestone earnings live on a separate column).
+    milestone_campaigns adds the milestone-level detail the spec asks
+    for ("which milestones are pending, which are paid, what amount
+    each released") without changing what the flat totals above mean --
+    the aggregate summary totals are deliberately left flat-only per the
+    deliverable's own text ("Aggregate to the campaign level for the
+    summary totals but expose milestone-level detail in the campaign
+    earnings breakdown"); milestone_campaigns *is* that breakdown."""
     profile = await _get_own_profile(conn, user)
     breakdown = await campaign_reps_repository.earnings_breakdown(conn, profile.id)
+
+    milestone_campaigns: list[MilestoneEarningsEntry] = []
+    all_reps = await campaign_reps_repository.list_active_for_rep(conn, profile.id) + await campaign_reps_repository.list_history_for_rep(conn, profile.id)
+    for cr in all_reps:
+        campaign = await campaigns_repository.get_by_id(conn, cr.campaign_id)
+        if campaign is None or campaign.payment_type != "milestone":
+            continue
+        milestone_defs = await campaign_milestones_repository.list_for_campaign(conn, campaign.id)
+        progress = await campaign_milestones_repository.list_for_campaign_rep(conn, cr.id)
+        milestone_campaigns.append(
+            MilestoneEarningsEntry(
+                campaign_id=campaign.id,
+                campaign_title=campaign.title,
+                payout_per_rep_cents=campaign.payout_per_rep_cents,
+                milestones_completed_count=cr.milestones_completed_count,
+                total_milestone_payout_cents=cr.total_milestone_payout_cents,
+                milestones=_compute_milestone_participation(milestone_defs, progress),
+            )
+        )
+
     return EarningsResponse(
         pending_cents=breakdown["pending_cents"],
         confirmed_cents=breakdown["confirmed_cents"],
         paid_cents=breakdown["paid_cents"],
         lifetime_paid_cents=profile.total_earnings_cents,
+        milestone_campaigns=milestone_campaigns,
     )
 
 
@@ -525,18 +653,30 @@ async def accept_campaign(
             detail={"code": "parent_blocked", "message": "Your parent has blocked this campaign."},
         )
 
-    updated = await campaign_reps_repository.accept(
-        conn,
-        profile.id,
-        campaign_id,
-        at=datetime.now(timezone.utc),
-        ftc_disclosure_accepted=body.ftc_disclosure_accepted,
-    )
-    if updated is None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={"code": "illegal_transition", "message": f"Cannot accept from status '{cr.status}'."},
+    campaign = await _require_campaign(conn, campaign_id)
+
+    # Build Prompt 8B deliverable 2: campaign_rep_milestones rows are
+    # created atomically with the accept itself -- "If any milestone row
+    # fails to create, roll back the accept." A flat campaign has no
+    # campaign_milestones rows, so initialize_for_accept is a no-op
+    # ([]) for it; wrapping every accept in a transaction (not just
+    # milestone ones) keeps this one code path uniform rather than
+    # branching the whole function on payment_type.
+    async with conn.transaction():
+        updated = await campaign_reps_repository.accept(
+            conn,
+            profile.id,
+            campaign_id,
+            at=datetime.now(timezone.utc),
+            ftc_disclosure_accepted=body.ftc_disclosure_accepted,
         )
+        if updated is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"code": "illegal_transition", "message": f"Cannot accept from status '{cr.status}'."},
+            )
+        if campaign.payment_type == "milestone":
+            await campaign_milestones_repository.initialize_for_accept(conn, updated.id, campaign_id)
     return _to_participation_response(updated)
 
 
@@ -603,6 +743,86 @@ async def submit_campaign(
             detail={"code": "illegal_transition", "message": f"Cannot submit from status '{cr.status}'."},
         )
     return _to_participation_response(updated)
+
+
+@campaigns_router.post(
+    "/{campaign_id}/milestones/{milestone_id}/submit", response_model=MilestoneParticipationResponse
+)
+async def submit_milestone(
+    campaign_id: str,
+    milestone_id: str,
+    body: SubmitMilestoneRequest,
+    user: AuthenticatedUser = Depends(require_role("rep")),
+    conn: asyncpg.Connection = Depends(get_connection),
+    resend_client: ResendClient = Depends(resend_client_dependency),
+) -> MilestoneParticipationResponse:
+    """POST /campaigns/:campaign_id/milestones/:milestone_id/submit
+    (Build Prompt 8B deliverable 4). Validates the campaign_rep exists
+    and is 'accepted' (a milestone campaign's campaign_reps row stays
+    'accepted' throughout -- see campaign_reps_repository.
+    mark_confirmed_via_final_milestone's own note), and that the
+    specific milestone is actionable for this rep right now (sequence
+    gating -- the same rule GET /reps/campaigns/active surfaces via
+    `actionable`, recomputed here server-side rather than trusted from
+    a client that might be looking at a stale list). 'rep_submission'
+    milestones rely on the milestone_auto_release job (every 30 min) to
+    release payout after the 24h review window; 'brand_confirmation'
+    milestones notify the brand immediately that a submission is
+    waiting on them."""
+    profile = await _get_own_profile(conn, user)
+    cr = await campaign_reps_repository.get_for_rep_and_campaign(conn, profile.id, campaign_id)
+    if cr is None or cr.status != "accepted":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "campaign_invitation_not_found", "message": "No active milestone campaign participation found."},
+        )
+    milestone = await campaign_milestones_repository.get_by_id_and_campaign(conn, milestone_id, campaign_id)
+    if milestone is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "milestone_not_found", "message": "No milestone found for that id on this campaign."},
+        )
+
+    milestone_defs = await campaign_milestones_repository.list_for_campaign(conn, campaign_id)
+    progress = await campaign_milestones_repository.list_for_campaign_rep(conn, cr.id)
+    actionable_by_id = {p.campaign_milestone_id: p.actionable for p in _compute_milestone_participation(milestone_defs, progress)}
+    if not actionable_by_id.get(milestone_id, False):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "milestone_not_actionable",
+                "message": "This milestone isn't actionable yet -- prior sequence_required milestones must be confirmed first.",
+            },
+        )
+
+    updated = await campaign_milestones_repository.submit(
+        conn,
+        next(p.id for p in progress if p.campaign_milestone_id == milestone_id),
+        submission_text=body.submission_text,
+        submission_file_urls=body.submission_file_urls,
+        at=datetime.now(timezone.utc),
+    )
+    if updated is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "illegal_transition", "message": "This milestone has already been submitted."},
+        )
+
+    if milestone.verification_method == "brand_confirmation":
+        campaign = await campaigns_repository.get_by_id(conn, campaign_id)
+        brand = await brand_profiles_repository.get_by_id(conn, campaign.brand_id) if campaign else None
+        brand_user = await users_repository.get_user_by_id(conn, brand.user_id) if brand else None
+        if brand_user is not None and campaign is not None:
+            await send_milestone_submitted_email(
+                brand_user.email, campaign_title=campaign.title, milestone_title=milestone.title, client=resend_client
+            )
+    # 'rep_submission' milestones need no immediate notification --
+    # the 24h auto-release window is the brand's review period, and the
+    # milestone_auto_release job (app/jobs/runner.py) is what acts on
+    # it, not an email.
+
+    refreshed = [_p for _p in _compute_milestone_participation(milestone_defs, [updated] + [p for p in progress if p.id != updated.id])]
+    return next(p for p in refreshed if p.campaign_milestone_id == milestone_id)
 
 
 @campaigns_router.post("/{campaign_id}/withdraw", response_model=CampaignParticipationResponse)

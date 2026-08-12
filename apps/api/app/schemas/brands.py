@@ -8,8 +8,51 @@ from pydantic import BaseModel, field_validator
 from app.core.categories import BASE_CATEGORIES
 
 CampaignStatus = Literal["draft", "pending_payment", "payment_failed", "active", "paused", "completed", "cancelled"]
+PaymentType = Literal["flat", "milestone"]
+VerificationMethod = Literal["brand_confirmation", "rep_submission"]
 
 _MIN_MAX_REPS = 1
+
+
+class MilestoneRequest(BaseModel):
+    """One entry of POST /brands/campaigns's `milestones` array when
+    payment_type='milestone' (Build Prompt 8B deliverable 1). Field-
+    level shape only -- the cross-milestone business rules (percentages
+    sum to 100, sequential numbering, at least one sequence_required,
+    non-sequential only trailing) are checked by
+    app/services/campaign_service.validate_milestones against the whole
+    list, not per-field here."""
+
+    milestone_number: int
+    title: str
+    description: str | None = None
+    verification_method: VerificationMethod
+    payout_percentage: int
+    sequence_required: bool = True
+
+    @field_validator("payout_percentage")
+    @classmethod
+    def _in_range(cls, value: int) -> int:
+        if not (1 <= value <= 100):
+            raise ValueError("payout_percentage must be between 1 and 100")
+        return value
+
+    @field_validator("milestone_number")
+    @classmethod
+    def _positive(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError("milestone_number must be >= 1")
+        return value
+
+
+class MilestoneResponse(BaseModel):
+    id: str
+    milestone_number: int
+    title: str
+    description: str | None
+    verification_method: VerificationMethod
+    payout_percentage: int
+    sequence_required: bool
 
 
 class BrandProfileUpdateRequest(BaseModel):
@@ -62,6 +105,8 @@ class CampaignBriefRequest(BaseModel):
     budget_cents: int
     start_date: date
     end_date: date
+    payment_type: PaymentType = "flat"
+    milestones: list[MilestoneRequest] = []
 
     @field_validator("target_categories")
     @classmethod
@@ -105,8 +150,36 @@ class CampaignResponse(BaseModel):
     payout_per_rep_cents: int | None
     start_date: date
     end_date: date
+    payment_type: PaymentType
     created_at: datetime
     updated_at: datetime
+
+
+class MilestoneProgressResponse(BaseModel):
+    """GET /brands/campaigns/:id/reps/:rep_id/milestones -- brand's
+    per-rep milestone progress view (Build Prompt 8B frontend note:
+    "milestone progress view -- which milestones are pending, submitted,
+    or confirmed per rep")."""
+
+    id: str
+    campaign_milestone_id: str
+    milestone_number: int
+    title: str
+    verification_method: VerificationMethod
+    payout_percentage: int
+    status: str
+    rep_submission_text: str | None
+    rep_submission_file_urls: list[str]
+    payout_cents: int | None
+    payout_status: str
+    dispute_flag: bool
+    submitted_at: datetime | None
+    confirmed_at: datetime | None
+    paid_at: datetime | None
+
+
+class MilestoneDisputeRequest(BaseModel):
+    reason: str | None = None
 
 
 class ActivateCampaignResponse(BaseModel):
@@ -177,6 +250,8 @@ class CampaignRepResponse(BaseModel):
     submitted_at: datetime | None
     confirmed_at: datetime | None
     paid_at: datetime | None
+    milestones_completed_count: int = 0
+    total_milestone_payout_cents: int = 0
 
 
 class SubmissionResponse(BaseModel):

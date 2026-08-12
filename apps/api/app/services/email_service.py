@@ -97,6 +97,32 @@ async def send_campaign_payment_failed_email(brand_email: str, campaign_title: s
     await client.send_email(to=brand_email, subject=f"Payment failed for {campaign_title}", html=html)
 
 
+async def send_milestone_submitted_email(brand_email: str, *, campaign_title: str, milestone_title: str, client: ResendClient) -> None:
+    """Build Prompt 8B deliverable 4: 'brand_confirmation' milestones
+    notify the brand a submission is awaiting review (the
+    'rep_submission' path skips this -- no brand action is required
+    before its 24h auto-release, per the same deliverable)."""
+    html = f"""
+    <p>A rep has submitted evidence for the milestone
+    <strong>{milestone_title}</strong> on your campaign
+    <strong>{campaign_title}</strong>. Review it from your Teenure
+    dashboard to confirm and release payout.</p>
+    """
+    await client.send_email(to=brand_email, subject=f"Milestone submitted: {campaign_title}", html=html)
+
+
+async def send_milestone_disputed_email(rep_email: str, *, campaign_title: str, milestone_title: str, client: ResendClient) -> None:
+    """Build Prompt 8B deliverable 7: the rep is notified when a brand
+    flags their milestone submission for admin review."""
+    html = f"""
+    <p>The brand behind <strong>{campaign_title}</strong> has flagged
+    your submission for the milestone <strong>{milestone_title}</strong>
+    for review. An admin will review the evidence and follow up -- no
+    action is needed from you right now.</p>
+    """
+    await client.send_email(to=rep_email, subject=f"Milestone under review: {campaign_title}", html=html)
+
+
 async def send_account_suspended_email(rep_email: str, client: ResendClient) -> None:
     html = """
     <p>Your Teenure account has been suspended by your parent/guardian.
@@ -124,6 +150,17 @@ async def send_account_rejected_email(to: str, *, account_type: str, reason: str
     we'll take another look.</p>
     """
     await client.send_email(to=to, subject="Update on your Teenure application", html=html)
+
+
+async def send_milestone_dispute_resolved_email(
+    to: str, milestone_title: str, *, confirmed: bool, client: ResendClient
+) -> None:
+    outcome = "confirmed and payout released" if confirmed else "sent back for the brand to review again"
+    html = f"""
+    <p>An admin has resolved the dispute for the milestone
+    <strong>{milestone_title}</strong>. It was {outcome}.</p>
+    """
+    await client.send_email(to=to, subject=f"Milestone dispute resolved: {milestone_title}", html=html)
 
 
 async def send_digest_email(

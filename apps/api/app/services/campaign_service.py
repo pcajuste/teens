@@ -66,3 +66,63 @@ def compute_campaign_fee_split(*, budget_cents: int, max_reps: int, platform_fee
     rep_pool_cents = budget_cents - platform_fee_cents
     payout_per_rep_cents = rep_pool_cents // max_reps
     return platform_fee_cents, rep_pool_cents, payout_per_rep_cents
+
+
+class MilestoneValidationError(ValueError):
+    """Raised by validate_milestones below; the router catches this and
+    turns it into a 400 with `str(exc)` as the message (Build Prompt 8B:
+    "reject if the brand submits percentages that sum to 99 or 101 --
+    do not silently adjust; return a clear validation error")."""
+
+
+_MIN_MILESTONES = 2
+_MAX_MILESTONES = 5
+
+
+def validate_milestones(milestones: list[dict]) -> None:
+    """Server-side validation for POST /brands/campaigns when
+    payment_type='milestone' (Build Prompt 8B deliverable 1). Every
+    rule below is drawn directly from the prompt's own bullet list --
+    raises MilestoneValidationError with a specific message on the
+    first rule violated, never silently coerces/adjusts the brand's
+    input.
+
+    `milestones` is the already-pydantic-validated list of dicts (each
+    with milestone_number/title/description/verification_method/
+    payout_percentage/sequence_required) -- field-level shape (e.g.
+    payout_percentage being an int) is enforced by the pydantic schema
+    before this ever runs; this function only checks the cross-field/
+    cross-milestone business rules pydantic's per-field validators
+    can't express."""
+    if not (_MIN_MILESTONES <= len(milestones) <= _MAX_MILESTONES):
+        raise MilestoneValidationError(
+            f"milestone campaigns require between {_MIN_MILESTONES} and {_MAX_MILESTONES} milestones, got {len(milestones)}"
+        )
+
+    numbers = [m["milestone_number"] for m in milestones]
+    if numbers != list(range(1, len(milestones) + 1)):
+        raise MilestoneValidationError("milestone_number values must be sequential starting from 1")
+
+    total_percentage = sum(m["payout_percentage"] for m in milestones)
+    if total_percentage != 100:
+        raise MilestoneValidationError(
+            f"milestone payout_percentage values must sum to exactly 100, got {total_percentage}"
+        )
+
+    ordered = sorted(milestones, key=lambda m: m["milestone_number"])
+    if not any(m["sequence_required"] for m in ordered):
+        raise MilestoneValidationError("at least one milestone must have sequence_required = true")
+
+    # "milestones with sequence_required = false may only appear after
+    # all sequence_required milestones (i.e., non-sequential milestones
+    # are always the final milestone(s) in a campaign)": once we've
+    # seen a non-sequential milestone, every milestone after it (in
+    # milestone_number order) must also be non-sequential.
+    seen_non_sequential = False
+    for m in ordered:
+        if not m["sequence_required"]:
+            seen_non_sequential = True
+        elif seen_non_sequential:
+            raise MilestoneValidationError(
+                "sequence_required milestones must all come before any non-sequential milestone"
+            )

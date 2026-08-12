@@ -163,6 +163,29 @@ async def create_payout_transfer(
     return transfer.id
 
 
+async def create_milestone_payout_transfer(
+    settings: Settings, *, stripe_account_id: str, amount_cents: int, campaign_rep_id: str, milestone_id: str
+) -> str:
+    """Per-milestone equivalent of create_payout_transfer above (Build
+    Prompt 8B deliverable 8). Metadata carries payment_type='milestone'
+    plus milestone_id -- app/routers/webhooks.py's transfer.paid/
+    transfer.failed handlers key off metadata.payment_type to route a
+    Transfer to the milestone-aware update path instead of the flat
+    campaign_reps path, and metadata.payment_type being entirely absent
+    on a flat Transfer (create_payout_transfer above never sets it) is
+    what keeps that dispatch backward compatible with every Transfer
+    created before this prompt."""
+    _configure(settings)
+    transfer = await asyncio.to_thread(
+        stripe.Transfer.create,
+        amount=amount_cents,
+        currency="usd",
+        destination=stripe_account_id,
+        metadata={"payment_type": "milestone", "milestone_id": milestone_id, "campaign_rep_id": campaign_rep_id},
+    )
+    return transfer.id
+
+
 async def refund_campaign(
     settings: Settings, *, payment_intent_id: str, amount_cents: int, campaign_id: str
 ) -> str:

@@ -24,7 +24,7 @@ from datetime import datetime
 import asyncpg
 
 from app.core.config import Settings
-from app.repositories import campaign_reps_repository, rep_profiles_repository
+from app.repositories import campaign_milestones_repository, campaign_reps_repository, rep_profiles_repository
 from app.services import stripe_service
 
 
@@ -143,6 +143,82 @@ async def handle_transfer_paid(conn: asyncpg.Connection, stripe_transfer_id: str
     if updated is None:
         return
     await rep_profiles_repository.recompute_cached_totals(conn, updated.rep_id)
+
+
+async def release_milestone_payout(
+    conn: asyncpg.Connection, settings: Settings, campaign_rep_milestone_id: str
+) -> PayoutResult:
+    """Per-milestone equivalent of release_payout above (Build Prompt 8B
+    deliverable 8). Called right after
+    campaign_milestones_repository.confirm succeeds -- from POST
+    .../milestones/:milestone_id/confirm (brand-initiated) and from the
+    milestone_auto_release job (rep_submission auto-confirm path).
+    `campaign_rep` on the returned PayoutResult is deliberately still
+    the campaign_reps.CampaignRep dataclass (the rep-identifying row),
+    not a CampaignRepMilestone -- callers that only need to know
+    "which rep got paid" (e.g. logging) don't need a second type; the
+    milestone-specific row is available separately via
+    campaign_milestones_repository.get_by_id if a caller needs it."""
+    crm = await campaign_milestones_repository.get_by_id(conn, campaign_rep_milestone_id)
+    if crm is None or crm.status != "confirmed" or not crm.payout_cents:
+        return PayoutResult(outcome="not_confirmed", campaign_rep=None)
+    if crm.payout_status != "pending":
+        return PayoutResult(outcome="already_processed", campaign_rep=None, stripe_transfer_id=crm.stripe_transfer_id)
+
+    cr = await campaign_reps_repository.get_by_id(conn, crm.campaign_rep_id)
+    if cr is None:
+        return PayoutResult(outcome="not_confirmed", campaign_rep=None)
+
+    rep = await rep_profiles_repository.get_by_id(conn, cr.rep_id)
+    if rep is None or not rep.stripe_onboarding_complete or not rep.stripe_account_id:
+        return PayoutResult(outcome="rep_not_onboarded", campaign_rep=cr)
+
+    transfer_id = await stripe_service.create_milestone_payout_transfer(
+        settings,
+        stripe_account_id=rep.stripe_account_id,
+        amount_cents=crm.payout_cents,
+        campaign_rep_id=cr.id,
+        milestone_id=crm.campaign_milestone_id,
+    )
+    updated = await campaign_milestones_repository.set_payout_processing(
+        conn, campaign_rep_milestone_id, stripe_transfer_id=transfer_id
+    )
+    if updated is None:
+        # Lost a race with another release_milestone_payout call --
+        # same "treat as already processed" logic as release_payout's
+        # own race guard above.
+        return PayoutResult(outcome="already_processed", campaign_rep=cr, stripe_transfer_id=transfer_id)
+    return PayoutResult(outcome="transferred", campaign_rep=cr, stripe_transfer_id=transfer_id)
+
+
+async def handle_transfer_paid_milestone(conn: asyncpg.Connection, stripe_transfer_id: str, *, at: datetime) -> None:
+    """transfer.paid webhook, metadata.payment_type == 'milestone'
+    branch (Build Prompt 8B deliverable 9). Unknown transfer id or an
+    already-'paid' row is a silent no-op, same rationale as
+    handle_transfer_paid above."""
+    crm = await campaign_milestones_repository.get_by_stripe_transfer_id(conn, stripe_transfer_id)
+    if crm is None:
+        return
+    updated = await campaign_milestones_repository.set_payout_paid(conn, crm.id, at=at)
+    if updated is None:
+        return
+    await campaign_milestones_repository.bump_campaign_rep_milestone_totals(conn, crm.campaign_rep_id)
+    cr = await campaign_reps_repository.get_by_id(conn, crm.campaign_rep_id)
+    if cr is not None:
+        await rep_profiles_repository.recompute_cached_totals(conn, cr.rep_id)
+
+
+async def handle_transfer_failed_milestone(
+    conn: asyncpg.Connection, stripe_transfer_id: str
+) -> campaign_milestones_repository.CampaignRepMilestone | None:
+    """transfer.failed webhook, metadata.payment_type == 'milestone'
+    branch. No dedicated milestone-payment-failure admin queue exists
+    beyond `WHERE payout_status = 'failed'` on campaign_rep_milestones
+    -- same interim-queue rationale as handle_transfer_failed above."""
+    crm = await campaign_milestones_repository.get_by_stripe_transfer_id(conn, stripe_transfer_id)
+    if crm is None:
+        return None
+    return await campaign_milestones_repository.set_payout_failed(conn, crm.id)
 
 
 async def handle_transfer_failed(conn: asyncpg.Connection, stripe_transfer_id: str) -> campaign_reps_repository.CampaignRep | None:

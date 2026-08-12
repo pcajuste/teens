@@ -23,16 +23,24 @@ from typing import Final
 
 from fastapi import APIRouter, Header, HTTPException, status
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from app.core.config import get_settings
 from app.db.pool import get_pool
+from app.repositories import campaign_milestones_repository, campaign_reps_repository
 from app.repositories.campaign_reps_repository import auto_decline_expired_parent_approvals
 from app.repositories.intelligence_repository import insert_events, list_pending_events, mark_written
 from app.repositories.parent_records_repository import list_digest_enabled
+from app.services import payout_service
 from app.services.intelligence_service import anonymize
 from app.services.parent_service import send_digest_email
 from app.services.resend_client import get_resend_client
+
+import logging
+
+_logger = logging.getLogger("teenure.jobs.milestone_auto_release")
+
+MILESTONE_AUTO_RELEASE_WINDOW_HOURS = 24
 
 JobFn = Callable[[], Awaitable[None]]
 
@@ -107,6 +115,52 @@ async def write_intelligence_events_job() -> None:
         events = [event for source in pending for event in anonymize(source)]
         await insert_events(conn, events)
         await mark_written(conn, [source.campaign_rep_id for source in pending], at=datetime.now(timezone.utc))
+
+
+@register_job("milestone_auto_release")
+async def milestone_auto_release_job() -> None:
+    """Runs every 30 minutes (Build Prompt 8B deliverable 6). Finds
+    campaign_rep_milestones rows with verification_method='rep_submission',
+    status='submitted', submitted_at older than the 24h review window,
+    and dispute_flag=false, then releases payout for each via
+    payout_service.release_milestone_payout and advances the row to
+    'confirmed' -- the same confirm-then-release sequencing
+    POST .../milestones/:milestone_id/confirm uses for the
+    brand-initiated path, just triggered by the clock instead of a
+    brand click. Idempotent by construction: release_milestone_payout
+    is a no-op ("already_processed") for a row that already has a
+    stripe_transfer_id, and campaign_milestones_repository.confirm's own
+    WHERE status = 'submitted' guard means a row already moved past
+    'submitted' (by a second run, or a brand's own manual confirm
+    racing this job) is simply skipped rather than double-confirmed.
+    Every release is logged for admin audit (acceptance criterion)."""
+    settings = get_settings()
+    pool = get_pool()
+    older_than = datetime.now(timezone.utc) - timedelta(hours=MILESTONE_AUTO_RELEASE_WINDOW_HOURS)
+    async with pool.acquire() as conn:
+        eligible = await campaign_milestones_repository.list_eligible_for_auto_release(conn, older_than=older_than)
+        for crm in eligible:
+            payout_cents = await campaign_milestones_repository.compute_payout_cents(conn, crm.id)
+            confirmed = await campaign_milestones_repository.confirm(
+                conn, crm.id, payout_cents=payout_cents or 0, at=datetime.now(timezone.utc)
+            )
+            if confirmed is None:
+                # Already moved past 'submitted' since list_eligible_for_auto_release
+                # was read -- a second run of this job, or a brand's
+                # manual confirm/dispute, got there first.
+                continue
+            result = await payout_service.release_milestone_payout(conn, settings, crm.id)
+            agg = await campaign_milestones_repository.bump_campaign_rep_milestone_totals(conn, confirmed.campaign_rep_id)
+            if agg["completed_count"] >= agg["total_milestones"]:
+                await campaign_reps_repository.mark_confirmed_via_final_milestone(
+                    conn, confirmed.campaign_rep_id, at=datetime.now(timezone.utc)
+                )
+            _logger.info(
+                "milestone_auto_release: campaign_rep_milestone_id=%s outcome=%s stripe_transfer_id=%s",
+                crm.id,
+                result.outcome,
+                result.stripe_transfer_id,
+            )
 
 
 router = APIRouter(prefix="/internal/jobs", tags=["jobs"])

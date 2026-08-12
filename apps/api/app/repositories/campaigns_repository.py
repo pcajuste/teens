@@ -16,7 +16,7 @@ _COLUMNS = (
     "id, brand_id, title, status, product_name, campaign_goal, key_messaging, "
     "prohibited_content, deliverables_description, target_categories, target_cities, "
     "max_reps, reps_accepted_count, budget_cents, platform_fee_cents, rep_pool_cents, "
-    "payout_per_rep_cents, start_date, end_date, stripe_payment_intent_id, created_at, updated_at"
+    "payout_per_rep_cents, start_date, end_date, stripe_payment_intent_id, payment_type, created_at, updated_at"
 )
 
 # Statuses from which a brand may still cancel (Build Prompt 8
@@ -55,6 +55,7 @@ class Campaign:
     start_date: date
     end_date: date
     stripe_payment_intent_id: str | None
+    payment_type: str
     created_at: datetime
     updated_at: datetime
 
@@ -81,6 +82,7 @@ class Campaign:
             start_date=row["start_date"],
             end_date=row["end_date"],
             stripe_payment_intent_id=row["stripe_payment_intent_id"],
+            payment_type=row["payment_type"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )
@@ -124,6 +126,7 @@ async def create_campaign(
     payout_per_rep_cents: int,
     start_date: date,
     end_date: date,
+    payment_type: str = "flat",
 ) -> Campaign:
     row = await conn.fetchrow(
         f"""
@@ -131,8 +134,8 @@ async def create_campaign(
             (brand_id, title, product_name, campaign_goal, key_messaging, prohibited_content,
              deliverables_description, target_categories, target_cities, max_reps,
              budget_cents, platform_fee_cents, rep_pool_cents, payout_per_rep_cents,
-             start_date, end_date)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+             start_date, end_date, payment_type)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
         RETURNING {_COLUMNS}
         """,
         brand_id,
@@ -151,6 +154,7 @@ async def create_campaign(
         payout_per_rep_cents,
         start_date,
         end_date,
+        payment_type,
     )
     return Campaign.from_row(row)
 

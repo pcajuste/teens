@@ -121,16 +121,40 @@ async def _handle_payment_intent_failed(conn: asyncpg.Connection, event: "stripe
     await send_campaign_payment_failed_email(user.email, updated.title, resend_client)
 
 
+def _is_milestone_transfer(transfer: "stripe.StripeObject") -> bool:
+    """Build Prompt 8B deliverable 9: distinguish a milestone Transfer
+    from a flat one by metadata.payment_type == 'milestone'. Absent
+    metadata.payment_type (every Transfer created before this prompt,
+    plus every flat-campaign Transfer created after it via
+    stripe_service.create_payout_transfer, which never sets this key)
+    is treated as flat -- backward compatible by construction. Metadata
+    is a stripe.StripeObject, not a plain dict, on a real signed
+    webhook -- `"payment_type" in metadata` / item access only, never
+    `.get()` (see _handle_account_updated's own note above)."""
+    if "metadata" not in transfer:
+        return False
+    metadata = transfer["metadata"]
+    return "payment_type" in metadata and metadata["payment_type"] == "milestone"
+
+
 async def _handle_transfer_paid(conn: asyncpg.Connection, event: "stripe.Event", settings: Settings, resend_client: ResendClient) -> None:
     transfer = event["data"]["object"]
+    if _is_milestone_transfer(transfer):
+        await payout_service.handle_transfer_paid_milestone(conn, transfer["id"], at=datetime.now(timezone.utc))
+        return
     await payout_service.handle_transfer_paid(conn, transfer["id"], at=datetime.now(timezone.utc))
 
 
 async def _handle_transfer_failed(conn: asyncpg.Connection, event: "stripe.Event", settings: Settings, resend_client: ResendClient) -> None:
     """No admin queue table exists yet (Prompt 13) -- see
     payout_service.handle_transfer_failed's docstring for the interim
-    'payout_status = failed' queue."""
+    'payout_status = failed' queue. Build Prompt 8B: the milestone
+    branch below flags the campaign_rep_milestones row the same way,
+    via campaign_rep_milestones.payout_status = 'failed'."""
     transfer = event["data"]["object"]
+    if _is_milestone_transfer(transfer):
+        await payout_service.handle_transfer_failed_milestone(conn, transfer["id"])
+        return
     await payout_service.handle_transfer_failed(conn, transfer["id"])
 
 

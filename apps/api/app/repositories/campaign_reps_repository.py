@@ -156,7 +156,8 @@ _CR_COLUMNS = """
     parent_approval_status, parent_approval_deadline, parent_decided_at,
     submission_text, submission_file_urls, revision_note,
     brand_rating, brand_rating_note, payout_cents, payout_status,
-    invited_at, accepted_at, submitted_at, confirmed_at, paid_at
+    invited_at, accepted_at, submitted_at, confirmed_at, paid_at,
+    milestones_completed_count, total_milestone_payout_cents
 """
 
 # Legal rep-initiated transitions out of each current status. Declining
@@ -195,6 +196,8 @@ class CampaignRep:
     submitted_at: datetime | None
     confirmed_at: datetime | None
     paid_at: datetime | None
+    milestones_completed_count: int
+    total_milestone_payout_cents: int
 
     @classmethod
     def from_row(cls, row: asyncpg.Record) -> "CampaignRep":
@@ -220,6 +223,8 @@ class CampaignRep:
             submitted_at=row["submitted_at"],
             confirmed_at=row["confirmed_at"],
             paid_at=row["paid_at"],
+            milestones_completed_count=row["milestones_completed_count"],
+            total_milestone_payout_cents=row["total_milestone_payout_cents"],
         )
 
 
@@ -563,6 +568,36 @@ async def confirm(
         campaign_rep_id,
         campaign_id,
         payout_cents,
+        at,
+    )
+    return CampaignRep.from_row(row) if row else None
+
+
+async def mark_confirmed_via_final_milestone(conn: asyncpg.Connection, campaign_rep_id: str, *, at: datetime) -> CampaignRep | None:
+    """Build Prompt 8B deliverable 5: "After the final milestone is
+    confirmed: update campaign_reps.status to 'confirmed' (matching flat
+    campaign behavior) so the rating flow and overall campaign status
+    logic from Prompt 10 still work without modification." A milestone
+    campaign's campaign_reps row never goes through the flat submit/
+    confirm state machine (there is no single campaign-wide submission
+    for a milestone campaign -- each milestone has its own), so this is
+    legal from 'accepted' directly, not 'submitted' like confirm()
+    above. Idempotent: legal only from 'accepted', so calling this
+    again after the row is already 'confirmed'/'paid' is a no-op
+    (returns None) rather than re-stamping confirmed_at -- matters
+    because bump_campaign_rep_milestone_totals-driven callers (both the
+    brand-confirm route and the auto-release job) recompute "is this
+    the final milestone" from scratch on every call, so a milestone
+    landing exactly on 100% twice (a defensive scenario, not a normal
+    one) must not overwrite an already-set confirmed_at."""
+    row = await conn.fetchrow(
+        f"""
+        UPDATE public.campaign_reps
+        SET status = 'confirmed', confirmed_at = $2
+        WHERE id = $1 AND status = 'accepted'
+        RETURNING {_CR_COLUMNS}
+        """,
+        campaign_rep_id,
         at,
     )
     return CampaignRep.from_row(row) if row else None

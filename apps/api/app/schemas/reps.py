@@ -119,6 +119,32 @@ class CampaignSummaryResponse(BaseModel):
     end_date: date
 
 
+class MilestoneParticipationResponse(BaseModel):
+    """Per-milestone entry within GET /reps/campaigns/active for a
+    milestone campaign (Build Prompt 8B deliverable 3). `actionable`
+    is server-computed sequence awareness -- true for a sequence_required
+    milestone once every prior sequence_required milestone is
+    confirmed-or-later, or for any non-sequential milestone once all
+    sequence_required milestones are confirmed-or-later -- so a rep is
+    never confused about which milestone to work on next."""
+
+    id: str
+    campaign_milestone_id: str
+    milestone_number: int
+    title: str
+    description: str | None
+    verification_method: str
+    payout_percentage: int
+    sequence_required: bool
+    status: str
+    actionable: bool
+    payout_cents: int | None
+    payout_status: str
+    submitted_at: datetime | None
+    confirmed_at: datetime | None
+    paid_at: datetime | None
+
+
 class CampaignParticipationResponse(BaseModel):
     campaign_id: str
     status: str
@@ -135,6 +161,10 @@ class CampaignParticipationResponse(BaseModel):
     submitted_at: datetime | None
     confirmed_at: datetime | None
     paid_at: datetime | None
+    payment_type: str = "flat"
+    milestones: list[MilestoneParticipationResponse] = []
+    milestones_completed_count: int = 0
+    total_milestone_payout_cents: int = 0
 
 
 class AcceptCampaignRequest(BaseModel):
@@ -146,11 +176,30 @@ class SubmitCampaignRequest(BaseModel):
     submission_file_urls: list[str] = []
 
 
+class SubmitMilestoneRequest(BaseModel):
+    submission_text: str
+    submission_file_urls: list[str] = []
+
+
+class MilestoneEarningsEntry(BaseModel):
+    """One campaign's milestone-level earnings detail within GET
+    /reps/earnings (Build Prompt 8B deliverable 10): "which milestones
+    are pending, which are paid, what amount each released." """
+
+    campaign_id: str
+    campaign_title: str
+    payout_per_rep_cents: int | None
+    milestones_completed_count: int
+    total_milestone_payout_cents: int
+    milestones: list[MilestoneParticipationResponse]
+
+
 class EarningsResponse(BaseModel):
     pending_cents: int
     confirmed_cents: int
     paid_cents: int
     lifetime_paid_cents: int
+    milestone_campaigns: list[MilestoneEarningsEntry] = []
 
 
 class StripeOnboardingResponse(BaseModel):

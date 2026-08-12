@@ -22,7 +22,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from app.core.config import Settings, get_settings
 from app.core.security import AuthenticatedUser, require_role
 from app.db.pool import get_connection
-from app.repositories import admin_repository, campaign_reps_repository, campaigns_repository, intelligence_repository, rep_profiles_repository, users_repository
+from app.repositories import (
+    admin_repository,
+    campaign_milestones_repository,
+    campaign_reps_repository,
+    campaigns_repository,
+    intelligence_repository,
+    rep_profiles_repository,
+    users_repository,
+)
 from app.schemas.admin import (
     AccountType,
     ApprovalActionResponse,
@@ -30,6 +38,7 @@ from app.schemas.admin import (
     CampaignsByStatusCategoryResponse,
     ConsentStatusEntry,
     FlagCampaignRequest,
+    MilestoneDisputeResponse,
     OutlierBrandResponse,
     ParentSuspendedRepResponse,
     QueueEntryResponse,
@@ -37,6 +46,7 @@ from app.schemas.admin import (
     ReleasePayoutResponse,
     RepsByCityCategoryResponse,
     ResolveCampaignRequest,
+    ResolveMilestoneDisputeRequest,
     ResolveSafetyReportRequest,
     ReverseSuspensionResponse,
     RevenuePeriodResponse,
@@ -45,7 +55,7 @@ from app.schemas.admin import (
 )
 from app.schemas.intelligence import TrendBucketResponse
 from app.services import payout_service
-from app.services.email_service import send_account_approved_email, send_account_rejected_email
+from app.services.email_service import send_account_approved_email, send_account_rejected_email, send_milestone_dispute_resolved_email
 from app.services.resend_client import ResendClient
 from app.services.resend_client import resend_client_dependency as _resend_client_dependency
 from app.services.supabase_auth_client import get_supabase_auth_client
@@ -400,6 +410,87 @@ async def resolve_safety_report(
     if updated is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"code": "not_found_or_not_open", "message": "No open safety report with that id."})
     return SafetyReportResponse(**asdict(updated))
+
+
+# ══════════════════════════════════════════════════════════════════
+# Build Prompt 8B deliverable 7: milestone dispute queue.
+# ══════════════════════════════════════════════════════════════════
+
+
+@admin_router.get("/milestone-disputes", response_model=list[MilestoneDisputeResponse])
+async def milestone_disputes(
+    open_only: bool = Query(default=True),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> list[MilestoneDisputeResponse]:
+    rows = await admin_repository.list_milestone_disputes(conn, open_only=open_only)
+    return [MilestoneDisputeResponse(**asdict(r)) for r in rows]
+
+
+@admin_router.post("/milestone-disputes/{dispute_id}/resolve", response_model=MilestoneDisputeResponse)
+async def resolve_milestone_dispute(
+    dispute_id: str,
+    body: ResolveMilestoneDisputeRequest,
+    admin: AuthenticatedUser = Depends(require_role("admin")),
+    settings: Settings = Depends(get_settings),
+    conn: asyncpg.Connection = Depends(get_connection),
+    resend_client: ResendClient = Depends(_resend_client_dependency),
+) -> MilestoneDisputeResponse:
+    """Build Prompt 8B deliverable 7's resolution step: admin reviews
+    the rep's submission evidence and either confirms (triggering
+    payout the same way the brand-initiated confirm route does) or
+    declines (resets the milestone to 'submitted', notifying both
+    parties -- never a silent decline). No self-serve brand/rep
+    resolution exists anywhere in this codebase for milestone disputes;
+    this route is the only way one is ever closed."""
+    dispute = await admin_repository.get_milestone_dispute(conn, dispute_id)
+    if dispute is None or dispute.status != "open":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "not_found_or_not_open", "message": "No open milestone dispute with that id."},
+        )
+
+    crm = await campaign_milestones_repository.get_by_id(conn, dispute.campaign_rep_milestone_id)
+    if crm is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"code": "milestone_not_found", "message": "Underlying milestone row no longer exists."})
+
+    confirmed = body.resolution == "confirm"
+    if confirmed:
+        payout_cents = await campaign_milestones_repository.compute_payout_cents(conn, crm.id)
+        confirmed_row = await campaign_milestones_repository.confirm(
+            conn, crm.id, payout_cents=payout_cents or 0, at=datetime.now(timezone.utc)
+        )
+        if confirmed_row is not None:
+            await payout_service.release_milestone_payout(conn, settings, confirmed_row.id)
+            cr = await campaign_reps_repository.get_by_id(conn, confirmed_row.campaign_rep_id)
+            if cr is not None:
+                agg = await campaign_milestones_repository.bump_campaign_rep_milestone_totals(conn, cr.id)
+                if agg["completed_count"] >= agg["total_milestones"]:
+                    await campaign_reps_repository.mark_confirmed_via_final_milestone(conn, cr.id, at=datetime.now(timezone.utc))
+    else:
+        await campaign_milestones_repository.reset_to_submitted(conn, crm.id)
+
+    resolved = await admin_repository.resolve_milestone_dispute(
+        conn, dispute_id, admin_id=admin.id, confirmed=confirmed, resolution_note=body.resolution_note
+    )
+    if resolved is None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"code": "already_resolved", "message": "This dispute was already resolved."})
+
+    # Notify both parties -- brand (who raised the dispute) and the
+    # rep (whose milestone was disputed) -- regardless of outcome.
+    rep = await rep_profiles_repository.get_by_id(conn, dispute.rep_id)
+    brand_user = await users_repository.get_user_by_id(conn, dispute.raised_by)
+    if rep is not None:
+        rep_user = await users_repository.get_user_by_id(conn, rep.user_id)
+        if rep_user is not None:
+            await send_milestone_dispute_resolved_email(
+                rep_user.email, dispute.milestone_title, confirmed=confirmed, client=resend_client
+            )
+    if brand_user is not None:
+        await send_milestone_dispute_resolved_email(
+            brand_user.email, dispute.milestone_title, confirmed=confirmed, client=resend_client
+        )
+
+    return MilestoneDisputeResponse(**asdict(resolved))
 
 
 # ══════════════════════════════════════════════════════════════════
