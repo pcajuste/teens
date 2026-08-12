@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,14 @@ import {
 import { api, ApiError } from "@/lib/api";
 import { trackEvent } from "@/lib/analytics";
 import { BASE_CATEGORIES, CATEGORY_LABELS, type Category } from "@/lib/categories";
-import type { Campaign, CampaignBriefRequest, MilestoneRequest, PaymentType } from "@/lib/types";
+import type {
+  Campaign,
+  CampaignBriefRequest,
+  ExclusivityAgreement,
+  ExclusivityCheckResponse,
+  MilestoneRequest,
+  PaymentType,
+} from "@/lib/types";
 
 const todayPlusDays = (days: number) => {
   const d = new Date();
@@ -48,6 +55,80 @@ export default function NewCampaignPage() {
   ]);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Category exclusivity (Build Prompt 8C frontend addition): the
+  // brand's own held-exclusivity agreements, used to show a "you hold
+  // exclusivity" badge, plus a live conflict check against competitors'
+  // agreements so a 409 surfaces before submission, not after.
+  const [ownAgreements, setOwnAgreements] = useState<ExclusivityAgreement[]>([]);
+  const [exclusivityConflicts, setExclusivityConflicts] = useState<Category[]>([]);
+  const [checkingExclusivity, setCheckingExclusivity] = useState(false);
+
+  useEffect(() => {
+    api
+      .get<ExclusivityAgreement[]>("/brands/exclusivity")
+      .then(setOwnAgreements)
+      .catch(() => {
+        // Non-fatal: the exclusivity badge/conflict UI is a courtesy,
+        // not a hard dependency for creating a campaign.
+      });
+  }, []);
+
+  const targetCitiesForCheck = targetCitiesRaw
+    .split(",")
+    .map((c) => c.trim())
+    .filter(Boolean);
+
+  useEffect(() => {
+    if (categories.length === 0) {
+      setExclusivityConflicts([]);
+      return;
+    }
+    let cancelled = false;
+    setCheckingExclusivity(true);
+    const startsAt = new Date(`${startDate}T00:00:00Z`).toISOString();
+    const endsAt = new Date(`${endDate}T00:00:00Z`).toISOString();
+    const cities = targetCitiesForCheck.length > 0 ? targetCitiesForCheck : [null];
+
+    Promise.all(
+      categories.flatMap((cat) =>
+        cities.map((city) => {
+          const params = new URLSearchParams({ category: cat, starts_at: startsAt, ends_at: endsAt });
+          if (city) params.set("city", city);
+          return api
+            .get<ExclusivityCheckResponse>(`/brands/exclusivity/check?${params.toString()}`)
+            .then((res) => (res.available ? null : cat))
+            .catch(() => null);
+        })
+      )
+    )
+      .then((results) => {
+        if (cancelled) return;
+        const conflicted = Array.from(new Set(results.filter((c): c is Category => c !== null)));
+        setExclusivityConflicts(conflicted);
+      })
+      .finally(() => {
+        if (!cancelled) setCheckingExclusivity(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categories, targetCitiesRaw, startDate, endDate]);
+
+  function heldExclusivityFor(cat: Category): ExclusivityAgreement | null {
+    const cities: (string | null)[] = targetCitiesForCheck.length > 0 ? targetCitiesForCheck : [null];
+    return (
+      ownAgreements.find(
+        (a) =>
+          a.category === cat &&
+          a.status === "active" &&
+          a.payment_status === "paid" &&
+          (a.city === null || cities.includes(a.city))
+      ) ?? null
+    );
+  }
 
   function handlePaymentTypeChange(type: PaymentType) {
     setPaymentType(type);
@@ -113,11 +194,22 @@ export default function NewCampaignPage() {
       trackEvent("campaign_created", { campaign_id: campaign.id, categories });
       router.push(`/brand/campaigns/${campaign.id}`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not create this campaign.");
+      if (err instanceof ApiError && err.code === "exclusivity_conflict") {
+        setError(
+          "Another brand holds exclusivity in this category and market during your requested campaign " +
+            "period. Consider a different category, city, or time window."
+        );
+      } else {
+        setError(err instanceof ApiError ? err.message : "Could not create this campaign.");
+      }
     } finally {
       setPending(false);
     }
   }
+
+  const unresolvedExclusivityConflict = categories.some(
+    (c) => exclusivityConflicts.includes(c) && !heldExclusivityFor(c)
+  );
 
   return (
     <BrandShell title="New campaign" backHref="/brand">
@@ -175,6 +267,30 @@ export default function NewCampaignPage() {
                 </button>
               ))}
             </div>
+            {checkingExclusivity ? (
+              <p className="text-xs text-muted-foreground">Checking category exclusivity...</p>
+            ) : null}
+            {categories.map((c) => {
+              const held = heldExclusivityFor(c);
+              if (held) {
+                return (
+                  <p key={c} className="rounded-lg bg-success/10 px-3 py-2 text-xs font-medium text-success">
+                    You hold exclusivity in {CATEGORY_LABELS[c]} through{" "}
+                    {new Date(held.ends_at).toLocaleDateString()}.
+                  </p>
+                );
+              }
+              if (exclusivityConflicts.includes(c)) {
+                return (
+                  <p key={c} className="rounded-lg bg-destructive/10 px-3 py-2 text-xs font-medium text-destructive">
+                    Another brand holds exclusivity in {CATEGORY_LABELS[c]} for part or all of this window and
+                    city selection. Creating a campaign in this category will be rejected — try a different
+                    category, city, or date range.
+                  </p>
+                );
+              }
+              return null;
+            })}
           </div>
 
           <div className="flex flex-col gap-1.5">
@@ -261,7 +377,12 @@ export default function NewCampaignPage() {
             </p>
           ) : null}
 
-          <Button type="submit" disabled={pending || !milestonesValid} size="lg" className="w-full">
+          <Button
+            type="submit"
+            disabled={pending || !milestonesValid || unresolvedExclusivityConflict}
+            size="lg"
+            className="w-full"
+          >
             {pending ? "Creating..." : "Create campaign"}
           </Button>
         </form>

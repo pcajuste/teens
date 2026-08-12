@@ -30,6 +30,9 @@ export function BrandShell({ title, backHref, action, children }: BrandShellProp
             </span>
           </Link>
           <div className="flex items-center gap-4">
+            <Link href="/brand/exclusivity" className="text-sm font-medium text-muted-foreground hover:text-foreground">
+              Market tools
+            </Link>
             <Link href="/brand/onboarding" className="text-sm font-medium text-muted-foreground hover:text-foreground">
               Company profile
             </Link>

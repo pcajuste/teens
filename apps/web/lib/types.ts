@@ -554,3 +554,91 @@ export interface AdminSafetyReport {
   resolved_at: string | null;
   resolution_note: string | null;
 }
+
+// ── Category Exclusivity (Build Prompt 8C) ──────────────────────────
+// Matches apps/api/app/schemas/exclusivity.py field-for-field.
+
+export interface ExclusivityCheckResponse {
+  available: boolean;
+  conflict: { exists: boolean };
+}
+
+export interface ExclusivityPricingResponse {
+  days: number;
+  rate_per_day_cents: number;
+  total_cents: number;
+  starts_at: string;
+  ends_at: string;
+}
+
+export interface ExclusivityPurchaseRequest {
+  category: string;
+  city: string | null;
+  starts_at: string;
+  ends_at: string;
+}
+
+export interface ExclusivityPurchaseResponse {
+  agreement_id: string;
+  client_secret: string;
+  fee_cents: number;
+  starts_at: string;
+  ends_at: string;
+}
+
+export type ExclusivityAgreementStatus = "active" | "expired" | "cancelled";
+export type ExclusivityPaymentStatus = "pending" | "paid" | "refunded" | "partially_refunded" | "failed";
+
+export interface ExclusivityAgreement {
+  id: string;
+  category: string;
+  city: string | null;
+  starts_at: string;
+  ends_at: string;
+  status: ExclusivityAgreementStatus;
+  payment_status: ExclusivityPaymentStatus;
+  fee_cents: number;
+  refund_cents: number | null;
+}
+
+export interface AdminExclusivityAgreement extends ExclusivityAgreement {
+  brand_id: string;
+  stripe_payment_intent_id: string;
+  cancelled_at: string | null;
+  cancellation_reason: string | null;
+  created_at: string;
+}
+
+export interface AdminExclusivityActiveAgreement extends AdminExclusivityAgreement {
+  days_remaining: number;
+}
+
+export interface AdminExclusivityListResponse {
+  agreements: AdminExclusivityAgreement[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface AdminExclusivityCancelRequest {
+  cancellation_reason: string;
+}
+
+export interface AdminExclusivityCancelResponse {
+  id: string;
+  status: ExclusivityAgreementStatus;
+  cancelled_at: string;
+  refund_cents: number;
+}
+
+export interface ExclusivityCategoryFrequency {
+  category: string;
+  purchase_count: number;
+}
+
+export interface AdminExclusivityAnalyticsResponse {
+  total_revenue_cents: number;
+  active_count: number;
+  categories_by_purchase_frequency: ExclusivityCategoryFrequency[];
+  average_agreement_length_days: number;
+}
