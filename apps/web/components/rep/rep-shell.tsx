@@ -26,6 +26,9 @@ export function RepShell({ title, backHref, children }: RepShellProps) {
             <span className="text-base font-semibold tracking-tight">Teenure</span>
           </Link>
           <div className="flex items-center gap-4">
+            <Link href="/rep/learning" className="text-sm font-medium text-muted-foreground hover:text-foreground">
+              Learning Hub
+            </Link>
             <Link href="/rep/profile-preview" className="text-sm font-medium text-muted-foreground hover:text-foreground">
               Preview profile
             </Link>

@@ -136,10 +136,23 @@ export default function RepDashboardPage() {
             <section className="flex flex-col gap-3">
               <h2 className="text-sm font-semibold text-muted-foreground">Available campaigns</h2>
               {available.length === 0 ? (
-                <EmptyState
-                  title="No campaigns match your profile right now"
-                  description="Check back soon, or improve your profile completeness to widen your matches."
-                />
+                <div className="flex flex-col gap-3">
+                  <EmptyState
+                    title="No campaigns match your profile right now"
+                    description="Check back soon, or improve your profile completeness to widen your matches."
+                  />
+                  {active.length === 0 ? (
+                    // Build Prompt 8H purpose #1: a rep with zero
+                    // campaigns lands somewhere useful, not a blank
+                    // screen -- the Learning Hub builds profile depth
+                    // in the meantime.
+                    <Link href="/rep/learning">
+                      <Button size="lg" className="w-full">
+                        Visit the Learning Hub
+                      </Button>
+                    </Link>
+                  ) : null}
+                </div>
               ) : (
                 <div className="flex flex-col gap-3">
                   {available.map((c) => (

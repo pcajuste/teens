@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import { CampaignBrief } from "@/components/campaigns/campaign-brief";
 import { Button } from "@/components/ui/button";
@@ -39,6 +40,7 @@ export default function CampaignDetailPage() {
   const [fileUrls, setFileUrls] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [ftcGateModuleId, setFtcGateModuleId] = useState<string | null>(null);
 
   async function load() {
     try {
@@ -91,6 +93,14 @@ export default function CampaignDetailPage() {
       trackEvent("campaign_accepted", { campaign_id: campaignId, categories: campaign?.target_categories });
       await load();
     } catch (err) {
+      if (err instanceof ApiError && err.code === "ftc_module_required") {
+        // Shown as a modal, not a redirect and not a silent rejection
+        // (Build Prompt 8H frontend spec) -- the module_id lets the
+        // "Go to Learning Hub" CTA deep-link straight to the module.
+        trackEvent("ftc_gate_triggered", { module_id: (err.detail?.module_id as string) ?? null });
+        setFtcGateModuleId((err.detail?.module_id as string) ?? "");
+        return;
+      }
       setError(err instanceof ApiError ? err.message : "Could not accept.");
     } finally {
       setPending(false);
@@ -267,6 +277,32 @@ export default function CampaignDetailPage() {
           <StatusTracker status={participation.status} />
         ) : null}
       </div>
+
+      {ftcGateModuleId !== null ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-sm rounded-xl bg-card p-6 shadow-lg">
+            <p className="text-lg font-semibold">Complete the FTC module first</p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Before accepting campaigns, complete the FTC Disclosure Essentials module. It takes about 5 minutes
+              and ensures you understand the sponsored content disclosure rules that protect you and your
+              followers.
+            </p>
+            <div className="mt-4 flex flex-col gap-2">
+              <Link
+                href={ftcGateModuleId ? `/rep/learning/${ftcGateModuleId}` : "/rep/learning"}
+                className="w-full"
+              >
+                <Button size="lg" className="w-full">
+                  Go to Learning Hub
+                </Button>
+              </Link>
+              <Button variant="ghost" size="sm" onClick={() => setFtcGateModuleId(null)}>
+                Not now
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </RepShell>
   );
 }

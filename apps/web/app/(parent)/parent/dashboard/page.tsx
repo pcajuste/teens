@@ -118,6 +118,43 @@ export default function ParentDashboardPage() {
             ) : null}
           </Card>
 
+          <Card className="p-5">
+            <p className="text-sm font-semibold">Learning modules</p>
+            <p className="mb-4 text-sm text-muted-foreground">
+              Short, platform-curated modules your teen can complete to earn verified badges. You&apos;ll see
+              completion status and badges earned here -- not quiz scores or which questions they missed.
+            </p>
+            <div className="grid grid-cols-3 gap-3 text-center">
+              <div>
+                <p className="text-xl font-semibold">{dashboard.module_activity.total_started}</p>
+                <p className="text-xs text-muted-foreground">Started</p>
+              </div>
+              <div>
+                <p className="text-xl font-semibold">{dashboard.module_activity.total_passed}</p>
+                <p className="text-xs text-muted-foreground">Passed</p>
+              </div>
+              <div>
+                <p className="text-xl font-semibold">{dashboard.module_activity.total_failed}</p>
+                <p className="text-xs text-muted-foreground">Retrying</p>
+              </div>
+            </div>
+            <div className="mt-4 flex items-center justify-between border-t border-border pt-4 text-sm">
+              <span>FTC Disclosure Essentials</span>
+              <Badge variant={dashboard.module_activity.ftc_module_passed ? "success" : "secondary"}>
+                {dashboard.module_activity.ftc_module_passed ? "Passed" : "Not yet completed"}
+              </Badge>
+            </div>
+            {dashboard.module_activity.badges_earned.length > 0 ? (
+              <ul className="mt-3 flex flex-wrap gap-2">
+                {dashboard.module_activity.badges_earned.map((b, i) => (
+                  <Badge key={i} variant="outline">
+                    {b.badge_title}
+                  </Badge>
+                ))}
+              </ul>
+            ) : null}
+          </Card>
+
           <ExplainerPanel />
         </div>
       ) : null}

@@ -42,6 +42,17 @@ export const DEMO_REP_PROFILE: RepProfile = {
   total_earnings_cents: 42500,
   average_rating: 4.8,
   profile_completeness_score: 100,
+  badges: [
+    {
+      module_id: "demo-module-ftc",
+      badge_title: "FTC Verified",
+      badge_description: "Demonstrated understanding of sponsored content disclosure rules.",
+      badge_color: "#6C3FC5",
+      badge_icon: null,
+      earned_at: "2026-07-02T00:00:00Z",
+    },
+  ],
+  badges_earned_count: 1,
 };
 
 export const DEMO_AVAILABLE_CAMPAIGN_ID = "demo-campaign-summit-trail";

@@ -20,12 +20,135 @@ export interface RepProfile {
   challenges_submitted_count?: number;
   challenges_converted_count?: number;
   challenge_conversion_rate?: number | null;
+  badges: Badge[];
+  badges_earned_count: number;
 }
 
 export type RepProfilePreview = Omit<
   RepProfile,
   "id" | "recruiter_visible" | "total_earnings_cents"
 >;
+
+// ── Learning Modules and Verified Badges (Build Prompt 8H) ──────────
+
+export interface Badge {
+  module_id: string;
+  badge_title: string;
+  badge_description: string;
+  badge_color: string;
+  badge_icon: string | null;
+  earned_at: string;
+}
+
+export type ContentBlockType = "text" | "video_url" | "image_url" | "quiz";
+
+export interface QuizQuestionPublic {
+  question: string;
+  options: string[];
+  // correct_index intentionally absent -- never sent by the server.
+}
+
+export interface ContentBlockPublic {
+  type: ContentBlockType;
+  content: string | QuizQuestionPublic[];
+}
+
+export type ModuleStatus = "draft" | "active" | "archived";
+export type CompletionStatus = "in_progress" | "passed" | "failed";
+
+export interface RepProgress {
+  status: CompletionStatus;
+  attempts: number;
+  quiz_score: number | null;
+  last_attempt_at: string | null;
+}
+
+export interface ModuleAvailable {
+  id: string;
+  title: string;
+  description: string;
+  category: string | null;
+  badge_title: string;
+  badge_description: string;
+  badge_color: string;
+  badge_icon: string | null;
+  estimated_minutes: number;
+  passing_score: number | null;
+  rep_progress: RepProgress | null;
+}
+
+export interface ModuleCompleted {
+  module_id: string;
+  title: string;
+  category: string | null;
+  badge_title: string;
+  badge_description: string;
+  badge_color: string;
+  badge_icon: string | null;
+  passed_at: string | null;
+  quiz_score: number | null;
+}
+
+export interface ModuleContent {
+  id: string;
+  title: string;
+  description: string;
+  category: string | null;
+  content_blocks: ContentBlockPublic[];
+  passing_score: number | null;
+  badge_title: string;
+  badge_description: string;
+  badge_color: string;
+  badge_icon: string | null;
+  estimated_minutes: number;
+  status: ModuleStatus;
+}
+
+export interface ModuleStartResponse {
+  module: ModuleContent;
+  completion: RepProgress;
+}
+
+export interface WrongAnswerEntry {
+  question_index: number;
+  correct_index: number;
+  rep_answer_index: number;
+}
+
+export interface ModuleCompleteResponse {
+  passed: boolean;
+  quiz_score: number | null;
+  passing_score?: number | null;
+  badge?: {
+    badge_title: string;
+    badge_description: string;
+    badge_color: string;
+    badge_icon: string | null;
+  } | null;
+  profile_completeness_score?: number | null;
+  correct_answers?: WrongAnswerEntry[] | null;
+}
+
+export interface AdminModule {
+  id: string;
+  title: string;
+  description: string;
+  category: string | null;
+  content_blocks: ContentBlockPublic[];
+  passing_score: number | null;
+  badge_title: string;
+  badge_description: string;
+  badge_color: string;
+  badge_icon: string | null;
+  estimated_minutes: number;
+  status: ModuleStatus;
+  created_at: string;
+  updated_at: string;
+  completion_count: number;
+  pass_rate: number | null;
+  average_attempts: number | null;
+  in_progress_count: number;
+}
 
 // GET /reps/me/achievement-record -- wraps RepProfilePreview rather
 // than repeating its fields, matching the backend's
@@ -529,6 +652,36 @@ export interface AdminConsentStatusEntry {
   count: number;
 }
 
+export interface AdminModuleAnalyticsPerModuleEntry {
+  module_id: string;
+  title: string;
+  category: string | null;
+  completion_count: number;
+  pass_rate: number | null;
+  average_attempts: number | null;
+}
+
+export interface AdminModuleAnalyticsBadgeEntry {
+  badge_title: string;
+  category: string | null;
+  earned_count: number;
+}
+
+export interface AdminModuleAnalytics {
+  total_modules: number;
+  draft_modules: number;
+  active_modules: number;
+  archived_modules: number;
+  completions_in_progress: number;
+  completions_passed: number;
+  completions_failed: number;
+  per_module: AdminModuleAnalyticsPerModuleEntry[];
+  modules_flagged_low_pass_rate: string[];
+  modules_flagged_high_attempts: string[];
+  badge_distribution: AdminModuleAnalyticsBadgeEntry[];
+  ftc_module_readiness: { attempted_reps: number; passed_reps: number; pass_percentage: number | null } | null;
+}
+
 export interface AdminOutlierBrand {
   brand_id: string;
   company_name: string;
@@ -738,3 +891,10 @@ export interface SubmitChallengeRequest {
 }
 
 export const CHALLENGE_CONVERSION_BONUS_DOLLARS = "$7.50";
+
+export interface RepChallengeSubmissionResponse {
+  id: string;
+  challenge_id: string;
+  status: "submitted";
+  submitted_at: string;
+}

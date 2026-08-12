@@ -4,10 +4,16 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 export class ApiError extends Error {
   code: string;
+  // Present on a handful of error bodies that need to pass a bit of
+  // structured context to the UI beyond the human-readable message --
+  // e.g. ftc_module_required's module_id, used to deep-link to the
+  // Learning Hub without a separate lookup (Build Prompt 8H).
+  detail?: Record<string, unknown>;
 
-  constructor(code: string, message: string) {
+  constructor(code: string, message: string, detail?: Record<string, unknown>) {
     super(message);
     this.code = code;
+    this.detail = detail;
   }
 }
 
@@ -20,6 +26,7 @@ async function authHeader(): Promise<Record<string, string>> {
 async function parseError(res: Response): Promise<never> {
   let code = "unknown_error";
   let message = `Request failed with status ${res.status}`;
+  let detail: Record<string, unknown> | undefined;
   try {
     const body = await res.json();
     // Every 4xx/5xx from apps/api is shaped {"error": {"code", "message"}}
@@ -27,11 +34,12 @@ async function parseError(res: Response): Promise<never> {
     if (body?.error?.code) {
       code = body.error.code;
       message = body.error.message ?? message;
+      detail = body.error;
     }
   } catch {
     // response body wasn't JSON -- fall back to the generic message above
   }
-  throw new ApiError(code, message);
+  throw new ApiError(code, message, detail);
 }
 
 async function request<T>(

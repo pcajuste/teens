@@ -12,6 +12,22 @@ export interface ParentChallengeActivity {
   recent_submissions: ParentChallengeActivitySubmission[];
 }
 
+export interface ParentModuleActivityBadge {
+  badge_title: string;
+  earned_at: string;
+}
+
+// Deliberately no quiz_score or wrong-answer fields anywhere in this
+// type -- the backend never sends them to /parent/dashboard (Build
+// Prompt 8H: "the outcome, not the struggle").
+export interface ParentModuleActivity {
+  total_started: number;
+  total_passed: number;
+  total_failed: number;
+  badges_earned: ParentModuleActivityBadge[];
+  ftc_module_passed: boolean;
+}
+
 export interface ParentDashboard {
   display_name: string;
   school_name: string;
@@ -21,6 +37,7 @@ export interface ParentDashboard {
   total_earnings_cents: number;
   total_campaigns_completed: number;
   challenge_activity: ParentChallengeActivity;
+  module_activity: ParentModuleActivity;
 }
 
 export interface ParentPendingCampaign {

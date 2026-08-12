@@ -10,6 +10,7 @@ import { api } from "@/lib/api";
 import type {
   AdminConsentStatusEntry,
   AdminCountBreakdown,
+  AdminModuleAnalytics,
   AdminOutlierBrand,
   AdminRevenuePeriod,
 } from "@/lib/types";
@@ -47,6 +48,7 @@ export default function AdminAnalyticsPage() {
   const [campaigns, setCampaigns] = useState<AdminCountBreakdown | null>(null);
   const [consent, setConsent] = useState<AdminConsentStatusEntry[] | null>(null);
   const [outliers, setOutliers] = useState<AdminOutlierBrand[] | null>(null);
+  const [modules, setModules] = useState<AdminModuleAnalytics | null>(null);
 
   useEffect(() => {
     api.get<AdminRevenuePeriod[]>("/admin/analytics/revenue").then(setRevenue);
@@ -54,6 +56,7 @@ export default function AdminAnalyticsPage() {
     api.get<AdminCountBreakdown>("/admin/analytics/campaigns").then(setCampaigns);
     api.get<AdminConsentStatusEntry[]>("/admin/analytics/consent-status").then(setConsent);
     api.get<AdminOutlierBrand[]>("/admin/analytics/outlier-brands").then(setOutliers);
+    api.get<AdminModuleAnalytics>("/admin/analytics/modules").then(setModules);
   }, []);
 
   return (
@@ -146,6 +149,87 @@ export default function AdminAnalyticsPage() {
                 </li>
               ))}
             </ul>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Learning modules</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {modules === null ? (
+            <Skeleton className="h-24 w-full" />
+          ) : (
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-wrap gap-3 text-sm">
+                <Badge variant="outline">{modules.active_modules} active</Badge>
+                <Badge variant="outline">{modules.draft_modules} draft</Badge>
+                <Badge variant="outline">{modules.archived_modules} archived</Badge>
+                <Badge variant="outline">{modules.completions_passed} passed</Badge>
+                <Badge variant="outline">{modules.completions_failed} failed</Badge>
+                <Badge variant="outline">{modules.completions_in_progress} in progress</Badge>
+              </div>
+              {modules.ftc_module_readiness ? (
+                <p className="text-sm text-muted-foreground">
+                  FTC launch readiness: {modules.ftc_module_readiness.pass_percentage ?? 0}% of reps who have
+                  touched a campaign have passed the FTC module ({modules.ftc_module_readiness.passed_reps}/
+                  {modules.ftc_module_readiness.attempted_reps}).
+                </p>
+              ) : (
+                <p className="text-sm text-muted-foreground">FTC_MODULE_ID not configured yet.</p>
+              )}
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border text-left text-muted-foreground">
+                      <th className="py-2 pr-4">Module</th>
+                      <th className="py-2 pr-4">Completions</th>
+                      <th className="py-2 pr-4">Pass rate</th>
+                      <th className="py-2 pr-4">Avg attempts</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {modules.per_module.map((m) => {
+                      const lowPassRate = modules.modules_flagged_low_pass_rate.includes(m.module_id);
+                      const highAttempts = modules.modules_flagged_high_attempts.includes(m.module_id);
+                      return (
+                        <tr key={m.module_id} className="border-b border-border/60">
+                          <td className="py-2 pr-4">{m.title}</td>
+                          <td className="py-2 pr-4">{m.completion_count}</td>
+                          <td className="py-2 pr-4">
+                            {m.pass_rate !== null ? `${Math.round(m.pass_rate * 100)}%` : "—"}
+                            {lowPassRate ? (
+                              <Badge variant="destructive" className="ml-2">
+                                Review content
+                              </Badge>
+                            ) : null}
+                          </td>
+                          <td className="py-2 pr-4">
+                            {m.average_attempts ?? "—"}
+                            {highAttempts ? (
+                              <Badge variant="destructive" className="ml-2">
+                                Confusing?
+                              </Badge>
+                            ) : null}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <div>
+                <p className="mb-1 text-sm font-medium">Badge distribution</p>
+                <div className="flex flex-wrap gap-2">
+                  {modules.badge_distribution.map((b) => (
+                    <Badge key={b.badge_title} variant="outline">
+                      {b.badge_title}: {b.earned_count}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            </div>
           )}
         </CardContent>
       </Card>

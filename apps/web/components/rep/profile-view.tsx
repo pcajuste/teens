@@ -1,4 +1,5 @@
 import { Badge } from "@/components/ui/badge";
+import { BadgeChipRow } from "@/components/rep/badge-chip";
 import { CATEGORY_LABELS, type Category } from "@/lib/categories";
 import type { RepProfile, RepProfilePreview } from "@/lib/types";
 
@@ -27,6 +28,13 @@ export function ProfileView({ profile }: { profile: RepProfile | RepProfilePrevi
       </div>
 
       {profile.bio ? <p className="text-sm">{profile.bio}</p> : null}
+
+      {/* Verified badges (Build Prompt 8H) -- rendered identically here
+         whether this is the rep's own /reps/me view or the
+         profile-preview view brands/recruiters see, per the spec's
+         "same rendering ... so reps see exactly what brands and
+         recruiters see" requirement. */}
+      {profile.badges && profile.badges.length > 0 ? <BadgeChipRow badges={profile.badges} /> : null}
 
       {profile.categories.length > 0 ? (
         <div className="flex flex-wrap gap-1.5">
