@@ -39,6 +39,7 @@ from app.schemas.admin import SafetyReportCreateRequest, SafetyReportResponse
 from app.schemas.recruiters import InboxMessageResponse
 from app.schemas.reps import (
     AcceptCampaignRequest,
+    AchievementRecordResponse,
     CampaignParticipationResponse,
     CampaignSummaryResponse,
     EarningsResponse,
@@ -263,6 +264,32 @@ async def profile_preview(
 ) -> RepProfilePreviewResponse:
     profile = await _get_own_profile(conn, user)
     return _to_preview_response(profile)
+
+
+@reps_router.get("/me/achievement-record", response_model=AchievementRecordResponse)
+async def achievement_record(
+    user: AuthenticatedUser = Depends(require_role("rep")),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> AchievementRecordResponse:
+    """Teenure Achievement Record export (Prompt 5 deliverable 9 gap
+    fill, see Teenure_Build_Prompts.md section 18). Deliberately just
+    wraps _to_preview_response's output -- exactly the same confirmed
+    campaigns/categories/ratings a brand or recruiter already sees via
+    GET /reps/me/profile-preview -- rather than assembling a second,
+    driftable field list. No PDF library is added server-side for
+    this: apps/api has no PDF dependency today (checked pyproject.toml)
+    and this is a small MVP feature, so the frontend renders this JSON
+    into a dedicated printable page and reps use the browser's native
+    print-to-PDF instead of standing up a heavyweight rendering stack.
+    Same auth pattern as every other /reps/me/* route: the rep is
+    resolved from the authenticated user's own id, never from a
+    client-supplied rep id, so a rep can never fetch another rep's
+    record."""
+    profile = await _get_own_profile(conn, user)
+    return AchievementRecordResponse(
+        generated_at=datetime.now(timezone.utc),
+        record=_to_preview_response(profile),
+    )
 
 
 @reps_router.get("/campaigns/available", response_model=list[CampaignSummaryResponse])

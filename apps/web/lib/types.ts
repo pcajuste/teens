@@ -24,6 +24,15 @@ export type RepProfilePreview = Omit<
   "id" | "recruiter_visible" | "total_earnings_cents"
 >;
 
+// GET /reps/me/achievement-record -- wraps RepProfilePreview rather
+// than repeating its fields, matching the backend's
+// AchievementRecordResponse shape (see apps/api/app/schemas/reps.py)
+// so this can never drift from the profile-preview data.
+export interface AchievementRecord {
+  generated_at: string;
+  record: RepProfilePreview;
+}
+
 export interface RepProfileUpdateRequest {
   display_name: string;
   school_name: string;

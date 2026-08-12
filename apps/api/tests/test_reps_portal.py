@@ -514,6 +514,59 @@ def test_profile_preview_reflects_completeness(client, db, rep_headers):
     assert response.json()["display_name"] == "Test Rep"
 
 
+def test_achievement_record_matches_profile_preview(client, db, rep_headers):
+    """The achievement record must never drift from GET
+    /reps/me/profile-preview -- both are built from the same
+    _to_preview_response serializer, so their field values should be
+    identical for the same rep."""
+    _seed_rep_user(db, age=20)
+    client.put("/reps/me", json=_BASE_PROFILE_BODY, headers=rep_headers)
+
+    preview = client.get("/reps/me/profile-preview", headers=rep_headers)
+    record = client.get("/reps/me/achievement-record", headers=rep_headers)
+
+    assert preview.status_code == 200
+    assert record.status_code == 200
+    body = record.json()
+    assert "generated_at" in body
+    assert body["record"] == preview.json()
+
+
+def test_achievement_record_reflects_only_confirmed_totals(client, db, rep_headers):
+    """total_campaigns_completed/average_rating are cached fields that
+    recompute_cached_totals only updates from confirmed campaign_reps
+    rows -- an unconfirmed/in-progress campaign must not move them."""
+    _seed_rep_user(db, age=20)
+    client.put("/reps/me", json=_BASE_PROFILE_BODY, headers=rep_headers)
+    campaign_id = _seed_campaign(db)
+    client.post(f"/campaigns/{campaign_id}/apply", headers=rep_headers)
+    client.post(f"/campaigns/{campaign_id}/accept", json={"ftc_disclosure_accepted": True}, headers=rep_headers)
+
+    response = client.get("/reps/me/achievement-record", headers=rep_headers)
+    assert response.status_code == 200
+    assert response.json()["record"]["total_campaigns_completed"] == 0
+
+
+def test_achievement_record_role_enforcement_rejects_non_rep(client, db, auth_headers_factory):
+    response = client.get("/reps/me/achievement-record", headers=auth_headers_factory("brand"))
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "role_mismatch"
+
+
+def test_achievement_record_requires_own_onboarded_profile(client, db, rep_headers):
+    """Every /reps/me/* route resolves the rep from the authenticated
+    user's own id -- there is no rep_id parameter anywhere in the URL
+    or body, so a rep can never request another rep's record. A rep
+    who hasn't onboarded (no rep_profiles row tied to their user id --
+    the same situation a would-be cross-rep request would land in,
+    since a mismatched id also resolves to no row) gets 404, never
+    someone else's data."""
+    _seed_rep_user(db, age=20)
+    response = client.get("/reps/me/achievement-record", headers=rep_headers)
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "rep_profile_not_found"
+
+
 def test_campaigns_active_lists_accepted_campaign(client, db, rep_headers):
     _seed_rep_user(db, age=20)
     client.put("/reps/me", json=_BASE_PROFILE_BODY, headers=rep_headers)

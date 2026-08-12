@@ -93,6 +93,19 @@ class RepProfilePreviewResponse(BaseModel):
     profile_completeness_score: int
 
 
+class AchievementRecordResponse(BaseModel):
+    """GET /reps/me/achievement-record -- a downloadable "Teenure
+    Achievement Record" document. Wraps RepProfilePreviewResponse
+    rather than repeating its fields, so the record can never drift
+    from what a brand/recruiter already sees via GET
+    /reps/me/profile-preview (same rule as that endpoint's own
+    docstring). generated_at is the only field added on top, purely
+    for display on the printable page -- it is not persisted."""
+
+    generated_at: datetime
+    record: RepProfilePreviewResponse
+
+
 class CampaignSummaryResponse(BaseModel):
     id: str
     title: str

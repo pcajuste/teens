@@ -34,6 +34,14 @@ export default function ProfilePreviewPage() {
       </p>
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
       {preview ? <ProfileView profile={preview} /> : null}
+      {preview ? (
+        <Link
+          href="/rep/achievement-record"
+          className="text-center text-sm font-medium underline underline-offset-2"
+        >
+          Download Achievement Record
+        </Link>
+      ) : null}
     </main>
   );
 }

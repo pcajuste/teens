@@ -32,7 +32,9 @@ export default function SchoolsPage() {
           recruitment. Nothing on it is self-graded: every completed campaign carries the brand&apos;s
           confirmation, which is what makes it useful to a college admissions office or an employer evaluating a
           candidate. The profile a college or employer reviews is exactly this record — never a public post, a
-          photo, or anything a student wrote about themselves without third-party confirmation.
+          photo, or anything a student wrote about themselves without third-party confirmation. Students can also
+          generate a printable Teenure Achievement Record — the same confirmed data, formatted as a document they
+          can save as a PDF and attach to an application or share directly with a counselor.
         </p>
       </Section>
 
