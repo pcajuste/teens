@@ -16,7 +16,7 @@ from app.core.config import get_settings
 from app.core.errors import register_exception_handlers
 from app.db.pool import close_pool, init_pool
 from app.jobs.runner import router as jobs_router
-from app.routers import auth, brands, health, parent, parent_auth, recruiters, reps, webhooks
+from app.routers import admin, auth, brands, health, parent, parent_auth, recruiters, reps, webhooks
 
 
 def create_app() -> FastAPI:
@@ -51,6 +51,7 @@ def create_app() -> FastAPI:
     app.include_router(reps.campaigns_router)
     app.include_router(brands.brands_router)
     app.include_router(recruiters.recruiters_router)
+    app.include_router(admin.admin_router)
     app.include_router(webhooks.router)
 
     return app

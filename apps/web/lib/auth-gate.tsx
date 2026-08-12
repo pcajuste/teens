@@ -13,6 +13,11 @@ export interface AuthGateProps {
   publicPaths: string[];
   /** Render a blocking screen for a given `me`/pathname (e.g. "waiting on parent", "under review"). Return null to fall through to `children`. */
   pendingState?: (me: MeResponse, pathname: string) => React.ReactNode | null;
+  /** Where to send an unauthenticated visitor. Defaults to the shared
+   * /login page; the admin portal overrides this to /admin-login, since
+   * admin sign-in is a deliberately separate surface (Build Prompt 13
+   * auth note) that shared /login never routes into. */
+  signInPath?: string;
 }
 
 /**
@@ -22,7 +27,7 @@ export interface AuthGateProps {
  * session/loading/role/suspension control flow itself is not duplicated
  * per portal.
  */
-export function AuthGate({ children, role, publicPaths, pendingState }: AuthGateProps) {
+export function AuthGate({ children, role, publicPaths, pendingState, signInPath = "/login" }: AuthGateProps) {
   const { session, me, loading } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
@@ -31,9 +36,9 @@ export function AuthGate({ children, role, publicPaths, pendingState }: AuthGate
   useEffect(() => {
     if (loading) return;
     if (!session && !isPublic) {
-      router.replace("/login");
+      router.replace(signInPath);
     }
-  }, [loading, session, isPublic, router]);
+  }, [loading, session, isPublic, router, signInPath]);
 
   if (isPublic) {
     return <>{children}</>;
@@ -53,7 +58,7 @@ export function AuthGate({ children, role, publicPaths, pendingState }: AuthGate
         <p className="max-w-sm text-sm text-muted-foreground">
           This account isn&apos;t a {role} account.
         </p>
-        <a href="/login" className="text-sm font-medium text-primary hover:underline">
+        <a href={signInPath} className="text-sm font-medium text-primary hover:underline">
           Back to sign in
         </a>
       </CenteredMessage>

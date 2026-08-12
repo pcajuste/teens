@@ -124,7 +124,8 @@ def db(settings):
 def _clean_database(db):
     yield
     db.execute(
-        "TRUNCATE public.stripe_events, public.parent_auth_tokens, public.parent_records, public.campaign_reps, "
+        "TRUNCATE public.stripe_events, public.safety_reports, public.parent_auth_tokens, public.parent_records, "
+        "public.campaign_reps, "
         "public.campaigns, public.recruiter_saved_profiles, public.recruiter_contacts, public.recruiter_profiles, "
         "public.rep_profiles, public.brand_profiles, public.users, auth.users CASCADE"
     )

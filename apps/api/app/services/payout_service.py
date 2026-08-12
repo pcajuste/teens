@@ -93,6 +93,40 @@ async def release_payout(conn: asyncpg.Connection, settings: Settings, campaign_
     return PayoutResult(outcome="transferred", campaign_rep=updated, stripe_transfer_id=transfer_id)
 
 
+async def admin_release_payout(
+    conn: asyncpg.Connection, settings: Settings, campaign_rep_id: str, *, admin_id: str
+) -> PayoutResult:
+    """Admin-initiated manual release for a row sitting in the
+    stuck-payments queue (Build Prompt 13 deliverable 3: "uses
+    payout_service with admin-initiated audit flag"). Unlike
+    release_payout above -- which is only ever legal from
+    payout_status='pending' -- this is intentionally callable when
+    payout_status is 'processing' (stuck > 48h, admin_repository's
+    STUCK_PAYOUT_THRESHOLD_HOURS) or 'failed' (transfer.failed webhook),
+    the two states that put a row in GET /admin/payments/stuck in the
+    first place. Creates a fresh Stripe Transfer the same way
+    release_payout does, then records the admin-initiated audit trail
+    via admin_repository.mark_admin_released (who released it, when,
+    and the new transfer id) -- never a silent retry indistinguishable
+    from the automated path."""
+    cr = await campaign_reps_repository.get_by_id(conn, campaign_rep_id)
+    if cr is None or cr.status != "confirmed" or not cr.payout_cents:
+        return PayoutResult(outcome="not_confirmed", campaign_rep=cr)
+    if cr.payout_status not in ("processing", "failed"):
+        return PayoutResult(outcome="already_processed", campaign_rep=cr)
+
+    rep = await rep_profiles_repository.get_by_id(conn, cr.rep_id)
+    if rep is None or not rep.stripe_onboarding_complete or not rep.stripe_account_id:
+        return PayoutResult(outcome="rep_not_onboarded", campaign_rep=cr)
+
+    transfer_id = await stripe_service.create_payout_transfer(
+        settings, stripe_account_id=rep.stripe_account_id, amount_cents=cr.payout_cents, campaign_rep_id=cr.id
+    )
+    await admin_repository.mark_admin_released(conn, campaign_rep_id, admin_id=admin_id, stripe_transfer_id=transfer_id)
+    updated = await campaign_reps_repository.get_by_id(conn, campaign_rep_id)
+    return PayoutResult(outcome="transferred", campaign_rep=updated, stripe_transfer_id=transfer_id)
+
+
 async def handle_transfer_paid(conn: asyncpg.Connection, stripe_transfer_id: str, *, at: datetime) -> None:
     """transfer.paid webhook. Marks the row 'paid' (both
     rep_campaign_status and payout_status) and recomputes the rep's

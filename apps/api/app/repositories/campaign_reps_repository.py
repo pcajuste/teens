@@ -609,7 +609,7 @@ async def set_payout_processing(conn: asyncpg.Connection, campaign_rep_id: str, 
     row = await conn.fetchrow(
         f"""
         UPDATE public.campaign_reps
-        SET payout_status = 'processing', stripe_transfer_id = $2
+        SET payout_status = 'processing', stripe_transfer_id = $2, payout_processing_started_at = now()
         WHERE id = $1 AND status = 'confirmed' AND payout_status = 'pending'
         RETURNING {_CR_COLUMNS}
         """,

@@ -10,27 +10,17 @@ import { supabase } from "@/lib/supabase";
 import { api, ApiError } from "@/lib/api";
 import type { MeResponse } from "@/lib/types";
 
-// Single credentials page for every role. Role is looked up server-side via
-// GET /auth/me after sign-in -- the client never chooses where to land, so a
-// forged redirect/role query param can't send a rep into the brand portal.
-// Admin deliberately excluded: per Build Prompt 13's auth note, admin
-// must not be reachable via role-detection fallthrough from this
-// shared login page -- it has its own /admin-login route. If an admin
-// credential is entered here, we sign out immediately below rather
-// than routing anywhere.
-const PORTAL_PATH_BY_ROLE: Record<string, string> = {
-  rep: "/rep",
-  brand: "/brand",
-  recruiter: "/recruiter",
-};
-
-export default function LoginPage() {
+/** Dedicated admin sign-in, deliberately separate from the shared
+ * /login page (Build Prompt 13 auth note: admin must not be reachable
+ * via role-detection fallthrough from that page). Still reuses
+ * AuthGate for the loading/redirect mechanics once signed in --
+ * see apps/web/app/(admin)/layout.tsx. */
+export default function AdminLoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [resent, setResent] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -46,57 +36,21 @@ export default function LoginPage() {
 
     try {
       const me = await api.get<MeResponse>("/auth/me");
-      if (me.role === "admin") {
-        // Never fall through into the admin portal from this shared
-        // page -- bounce to the dedicated admin sign-in flow instead.
+      if (me.role !== "admin") {
         await supabase.auth.signOut();
-        setError("Admin accounts sign in at /admin-login.");
+        setError("This account is not an admin account.");
         setPending(false);
         return;
       }
-      router.push(PORTAL_PATH_BY_ROLE[me.role] ?? "/");
+      router.push("/admin");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not load your account.");
       setPending(false);
     }
   }
 
-  async function handleResendConsent() {
-    try {
-      await api.post("/auth/resend-consent", { email });
-      setResent(true);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not resend consent email.");
-    }
-  }
-
   return (
-    <AuthShell
-      title="Sign in to Teenure"
-      footer={
-        <div className="flex flex-col gap-2">
-          <p>
-            New here?{" "}
-            <a href="/rep/signup" className="font-medium text-primary hover:underline">
-              Sign up as a rep
-            </a>
-            ,{" "}
-            <a href="/brand/signup" className="font-medium text-primary hover:underline">
-              brand
-            </a>
-            , or{" "}
-            <a href="/recruiter/signup" className="font-medium text-primary hover:underline">
-              recruiter
-            </a>
-            .
-          </p>
-          <button type="button" onClick={handleResendConsent} className="text-primary hover:underline">
-            Resend parental consent email
-          </button>
-          {resent ? <p className="text-xs">If that email needs a consent link, we&apos;ve sent one.</p> : null}
-        </div>
-      }
-    >
+    <AuthShell title="Admin sign-in" subtitle="Internal use only.">
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="email">Email</Label>

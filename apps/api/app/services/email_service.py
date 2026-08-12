@@ -105,6 +105,27 @@ async def send_account_suspended_email(rep_email: str, client: ResendClient) -> 
     await client.send_email(to=rep_email, subject="Your Teenure account has been suspended", html=html)
 
 
+async def send_account_approved_email(to: str, *, account_type: str, client: ResendClient) -> None:
+    html = f"""
+    <p>Good news -- your Teenure {account_type} account has been approved
+    by our team and is now active.</p>
+    """
+    await client.send_email(to=to, subject="Your Teenure account has been approved", html=html)
+
+
+async def send_account_rejected_email(to: str, *, account_type: str, reason: str, client: ResendClient) -> None:
+    """Build Prompt 13 deliverable 1: rejection reason must be sent to
+    the applicant via email."""
+    html = f"""
+    <p>We've reviewed your Teenure {account_type} application and
+    weren't able to approve it at this time.</p>
+    <p><strong>Reason:</strong> {reason}</p>
+    <p>If you believe this was a mistake, reply to this email and
+    we'll take another look.</p>
+    """
+    await client.send_email(to=to, subject="Update on your Teenure application", html=html)
+
+
 async def send_digest_email(
     parent_email: str,
     client: ResendClient,

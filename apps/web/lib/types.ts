@@ -353,3 +353,89 @@ export interface ApiErrorBody {
     message: string;
   };
 }
+
+// ══════════════════════════════════════════════════════════════════
+// Admin Portal (Build Prompt 13)
+// ══════════════════════════════════════════════════════════════════
+
+export interface AdminQueueEntry {
+  user_id: string;
+  email: string;
+  role: string;
+  account_status: string;
+  pending_reason: "awaiting_parent_consent" | "awaiting_admin_approval";
+  display_name: string;
+  created_at: string;
+}
+
+export interface AdminCampaign {
+  id: string;
+  title: string;
+  status: string;
+  brand_name: string;
+  budget_cents: number;
+  target_categories: string[];
+  flagged_at: string | null;
+  flagged_reason: string | null;
+  resolved_at: string | null;
+  resolution_action: string | null;
+  created_at: string;
+}
+
+export interface AdminStuckPayment {
+  campaign_rep_id: string;
+  campaign_id: string;
+  rep_id: string;
+  payout_cents: number | null;
+  payout_status: string;
+  stripe_transfer_id: string | null;
+  payout_processing_started_at: string | null;
+  hours_stuck: number;
+}
+
+export interface AdminRevenuePeriod {
+  period: string;
+  brand_campaign_fees_cents: number;
+  intelligence_subscription_cents: number;
+  recruiter_active_subscriptions: number;
+}
+
+export interface AdminCountBreakdown {
+  by_city?: { city: string; state: string; count: number }[];
+  by_category?: { category: string; count: number }[];
+  by_status?: { status: string; count: number }[];
+}
+
+export interface AdminConsentStatusEntry {
+  consent_state: string;
+  count: number;
+}
+
+export interface AdminOutlierBrand {
+  brand_id: string;
+  company_name: string;
+  rating_count: number;
+  average_rating: number;
+  reason: string;
+}
+
+export interface AdminParentSuspendedRep {
+  rep_id: string;
+  rep_user_id: string;
+  display_name: string;
+  parent_id: string;
+  suspended_by_parent_at: string;
+}
+
+export interface AdminSafetyReport {
+  id: string;
+  reporter_rep_id: string;
+  reporter_display_name: string;
+  campaign_id: string | null;
+  reason: string;
+  description: string | null;
+  status: string;
+  created_at: string;
+  resolved_at: string | null;
+  resolution_note: string | null;
+}

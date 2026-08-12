@@ -26,6 +26,7 @@ from app.core.config import Settings, get_settings
 from app.core.profile_score import compute_profile_completeness_score
 from app.core.security import AuthenticatedUser, require_role
 from app.db.pool import get_connection
+from app.repositories import admin_repository
 from app.repositories import (
     campaign_reps_repository,
     campaigns_repository,
@@ -34,6 +35,7 @@ from app.repositories import (
     rep_profiles_repository,
     users_repository,
 )
+from app.schemas.admin import SafetyReportCreateRequest, SafetyReportResponse
 from app.schemas.recruiters import InboxMessageResponse
 from app.schemas.reps import (
     AcceptCampaignRequest,
@@ -640,3 +642,37 @@ async def upload_submission_file(
         ) from exc
 
     return {"url": uploaded.url, "storage_key": uploaded.storage_key}
+
+
+@reps_router.post("/safety-reports", response_model=SafetyReportResponse, status_code=status.HTTP_201_CREATED)
+async def file_safety_report(
+    body: SafetyReportCreateRequest,
+    user: AuthenticatedUser = Depends(require_role("rep")),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> SafetyReportResponse:
+    """One-tap report mechanism (Build Prompt 13 deliverable 7's
+    upstream half): lets a rep flag a brand/campaign/interaction for
+    admin review. Deliberately minimal -- a reason plus optional free
+    text and campaign reference, no back-and-forth required to submit.
+    Feeds admin.py's GET /admin/safety-reports queue, which the admin
+    UI renders as its highest-priority lane."""
+    profile = await _get_own_profile(conn, user)
+    report = await admin_repository.create_safety_report(
+        conn,
+        reporter_rep_id=profile.id,
+        campaign_id=body.campaign_id,
+        reason=body.reason,
+        description=body.description,
+    )
+    return SafetyReportResponse(
+        id=report.id,
+        reporter_rep_id=report.reporter_rep_id,
+        reporter_display_name=report.reporter_display_name,
+        campaign_id=report.campaign_id,
+        reason=report.reason,
+        description=report.description,
+        status=report.status,
+        created_at=report.created_at,
+        resolved_at=report.resolved_at,
+        resolution_note=report.resolution_note,
+    )
