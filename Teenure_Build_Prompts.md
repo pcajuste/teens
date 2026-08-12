@@ -9,6 +9,7 @@
 ## Table of Contents
 
 0. [Master Context Prompt](#0-master-context-prompt)
+0A. [Design System & UX Standards](#0a-design-system--ux-standards)
 1. [Repo & Environment Scaffolding](#1-repo--environment-scaffolding)
 2. [Database Schema & Row-Level Security](#2-database-schema--row-level-security)
 3. [FastAPI Core: Config, Security, Auth Scaffolding](#3-fastapi-core-config-security-auth-scaffolding)
@@ -121,6 +122,143 @@ why.
 
 Confirm you have read Teenure_MVP_Gameplan.md in full before proceeding to
 the first build prompt.
+```
+
+---
+
+## 0A. Design System & UX Standards
+
+> Added post-Prompt-8, after the built Rep Portal frontend (Prompt 6) was
+> assessed as functionally correct but visually indistinguishable from an
+> unstyled component library — default shadcn/ui primitives with no color
+> system, type scale, spacing discipline, or motion beyond what Tailwind
+> ships out of the box. That's a real gap: Teenure's users are a
+> compliance-sensitive three-sided market (teenagers, brand marketers,
+> college admissions/HR staff) where visual credibility is not cosmetic —
+> a recruiter or brand deciding whether to trust a platform with a minor's
+> data and a campaign budget is making a trust judgment partly *from the
+> UI itself* before they read a word of copy. Paste this section alongside
+> Section 0 for every frontend-touching prompt from Prompt 9 onward, and
+> treat Prompt 6/6A's existing screens as due for a retrofit pass against
+> it (tracked, not yet scheduled as its own numbered prompt — see the
+> changelog).
+
+```
+Design authority for this section: Andrew Chen's "Simple Is Marketable"
+thesis (https://andrewchen.com/simple-is-marketable/) — the same
+reductions that make a product feel clean also make it convert:
+fewer choices raise completion rates, shorter paths to value raise
+activation, and *removing* a low-value feature (not just visually
+de-emphasizing it) is what actually increases the prominence of the
+action that matters. This is the standard every screen gets measured
+against — not "does this look nice" but "does this reduction serve
+both trust and the funnel." If a design decision cannot answer "what
+metric or trust signal does this serve," it does not ship, regardless
+of how it looks — that cuts both ways: it rules out unstyled default
+components AND it rules out decoration for its own sake (gradient-heavy
+"AI startup" aesthetics, gratuitous animation, illustration for
+illustration's sake). The bar is Stripe's dashboard/checkout, Linear's
+issue tracker, and Vercel's dashboard — confident through typography
+and whitespace, not through ornamentation. Every one of those products
+is also aimed at a skeptical, professional audience deciding whether to
+trust the product with money or workflow-critical data, which is
+exactly Teenure's situation with brands and recruiters, and exactly why
+"looks like a hackathon project" is a real business risk, not just an
+aesthetic complaint.
+
+1. Design tokens, defined once, before any screen work in a given
+   portal:
+   - Color: a real palette in apps/web's Tailwind config / globals.css
+     — a primary brand hue (not Tailwind's default blue-600), a full
+     neutral scale for text/borders/backgrounds, and semantic colors
+     (success/warning/destructive/info) used consistently. Never an
+     arbitrary Tailwind color picked ad hoc per component.
+   - Typography: a deliberate type scale (display, h1-h4, body, label,
+     caption) with consistent weight/line-height per level, and a
+     typeface pairing chosen on purpose — not the unstyled system-ui
+     fallback. Headings and body text should be visually distinct in
+     more than just size.
+   - Spacing: an 8px-based scale, applied consistently — no
+     component-by-component arbitrary padding/margin values.
+   - Elevation: a small, consistent set of shadow/border treatments for
+     card hierarchy (resting, hover, active) — flat white-on-white with
+     only hairline borders is the single biggest tell of an unstyled
+     shadcn/ui screen and is exactly what's being corrected here.
+   Land these as an explicit apps/web/lib/design-tokens.ts or Tailwind
+   theme extension BEFORE building individual screens in whichever
+   prompt you're on — retrofitting tokens after screens exist is far
+   more expensive than establishing them first.
+
+2. Interaction and motion, used with restraint:
+   - Real button states: default, hover, active/pressed, loading
+     (spinner or skeleton, never a frozen button), disabled.
+   - Skeleton loading states for any data fetch, never a blank white
+     flash or unstyled "Loading..." text.
+   - Designed empty states (a short message + an action, not a blank
+     list) for every list/table view — available campaigns with none
+     yet, inbox with no messages, etc.
+   - Transitions (page/panel/modal) should be fast (150-250ms) and
+     purposeful — confirming state changed, not decorative. If a
+     motion doesn't help the user understand what just happened, cut
+     it.
+
+3. Content density and choice architecture (the direct application of
+   the Chen thesis above):
+   - One visually dominant primary action per screen; every other
+     action is visually subordinate (secondary button style, smaller,
+     or moved into an overflow/settings area).
+   - Onboarding and campaign-acceptance flows are audited for step
+     count the same way a growth team audits a signup funnel — every
+     field/screen must justify its presence at that step, or it moves
+     later/becomes optional.
+   - When a feature is genuinely low-value for a given screen, remove
+     it from that screen rather than shrinking/graying it out. A
+     grayed-out or de-prioritized element still costs the user a
+     decision; a removed one doesn't.
+
+4. Trust and credibility signals (Fortune-500-bar specific, since the
+   buyers here are brand marketers and college/employer staff
+   evaluating whether to associate their organization with the
+   platform):
+   - Real brand identity: a designed logo lockup, favicon, and OG/share
+     images — not the default Next.js starter icon set.
+   - Consistent, honest status/verification indicators (e.g. a brand's
+     "verified" badge, a campaign's status pill) using the semantic
+     color system from (1) — never fabricated social proof numbers.
+   - Accessible by default: WCAG AA contrast minimums, visible focus
+     states, semantic HTML/ARIA where shadcn/ui doesn't already provide
+     it. This is both a trust signal and a legal-risk reducer for an
+     app that serves minors.
+   - Error and 404/empty states written and styled with the same care
+     as the primary flows — a broken-looking error state undermines
+     trust disproportionately to how rarely it's seen.
+
+5. Explicit anti-goals — this section corrects "looks unfinished," it
+   does not authorize over-designing:
+   - No decoration without a stated purpose. Every gradient, shadow,
+     animation, or illustration must map to a specific UX or trust
+     purpose describable in one sentence; if it can't be, cut it.
+   - No motion for motion's sake, no stock-illustration filler, no
+     "AI startup" visual clichés (heavy gradients, glassmorphism for
+     its own sake, oversized rounded corners applied uniformly without
+     reason).
+   - Simplicity is the deliverable, not an excuse to ship the current
+     unstyled state. "Simple" means deliberately reduced, not
+     undesigned — the difference between the two is exactly the token
+     system in (1).
+
+Acceptance criteria (apply to every frontend prompt from Prompt 9
+onward, and to a future Prompt 6/6A retrofit pass):
+  - A design-tokens file/theme extension exists and every new screen
+    reads from it — no raw hex values or arbitrary Tailwind color/
+    spacing classes in component code.
+  - Every list/table view has a designed empty state; every async
+    action has a loading state; no blank-white-flash states remain.
+  - Every screen has exactly one visually dominant primary action.
+  - Lighthouse accessibility score ≥ 90 on every built page.
+  - A reviewer unfamiliar with the build should be able to look at any
+    two screens from different portals and identify them as the same
+    product from typography/color/spacing alone, without reading text.
 ```
 
 ---
@@ -541,6 +679,17 @@ Acceptance criteria:
 backend. Build deliverables 1–5 and 7 first; stub inbox or defer until
 Prompt 11 lands — state which you're doing.
 
+**Retrofit flagged:** as built, this portal predates
+[Section 0A](#0a-design-system--ux-standards) and uses unstyled
+shadcn/ui defaults throughout (no design tokens, no type scale, flat
+white-on-white cards). Functionally complete and passes its own
+acceptance criteria below, but does not meet 0A's acceptance criteria.
+Not yet scheduled as its own numbered prompt — do a design-tokens-first
+retrofit pass against 0A before or alongside Prompt 9, so the Rep and
+Brand portals don't visually diverge (0A's own acceptance criterion:
+"identify them as the same product from typography/color/spacing
+alone").
+
 ```
 Build the Rep Portal under apps/web/app/(rep)/.
 
@@ -818,10 +967,19 @@ Acceptance criteria:
 
 ## 9. Brand Portal — Frontend
 
-**Depends on:** Prompt 8.
+**Depends on:** Prompt 8, [Section 0A](#0a-design-system--ux-standards)
+(design tokens must exist — ideally shared with a Prompt 6 retrofit
+pass — before screens in this prompt are built).
 
 ```
 Build the Brand Portal under apps/web/app/(brand)/.
+
+Apply Section 0A in full: land/reuse the shared design-token theme
+before building screens, not after. This portal's audience (brand
+marketers deciding whether to trust the platform with a campaign
+budget) is exactly the "Fortune-500-bar" case 0A describes — treat its
+acceptance criteria as part of this prompt's own acceptance criteria,
+not a separate later pass.
 
 Deliverables:
 1. Signup/verification: business email, company name, website, EIN field,
@@ -943,10 +1101,15 @@ Acceptance criteria:
 
 ## 12. Recruiter Portal — Frontend
 
-**Depends on:** Prompt 11.
+**Depends on:** Prompt 11, [Section 0A](#0a-design-system--ux-standards).
 
 ```
 Build the Recruiter Portal under apps/web/app/(recruiter)/.
+
+Apply Section 0A in full — reuse the shared design tokens from Prompts
+6/9, do not establish a third divergent visual style. This portal's
+audience (college admissions/employer staff) is the other half of 0A's
+"Fortune-500-bar" case.
 
 Desktop-primary but fully responsive. Phone-width sanity pass required
 in acceptance criteria.
@@ -976,11 +1139,18 @@ Acceptance criteria:
 ## 12A. Demo Mode — Recruiter Preview & Brand Sales Page
 
 **Depends on:** Prompt 11 (real recruiter search), Prompt 6A (rep seed
-data), Prompt 10 (for earnings history if needed). Placed after the real
-Recruiter Portal — reuses Prompt 11's actual search endpoint against seed
-data rather than building a parallel fake version.
+data), Prompt 10 (for earnings history if needed), [Section 0A](#0a-design-system--ux-standards).
+Placed after the real Recruiter Portal — reuses Prompt 11's actual
+search endpoint against seed data rather than building a parallel fake
+version.
 
 ```
+This is the single highest-stakes surface for Section 0A: it's a sales
+page a brand or institution sees before ever creating an account. Apply
+0A in full, and hold this specific prompt to a higher bar than the
+"reviewer can tell it's the same product" acceptance criterion — this
+page needs to look like it belongs to an organization already trusted
+with money and minors' data, on first impression, with no other context.
 Build two things: recruiter search preview and brand sales page.
 
 Part 1 — Recruiter preview at apps/web/app/(marketing)/demo/recruiter/:
@@ -1016,7 +1186,11 @@ Acceptance criteria:
 
 ## 13. Admin Portal
 
-**Depends on:** Prompts 4, 4A, 8, 10, 11.
+**Depends on:** Prompts 4, 4A, 8, 10, 11, [Section 0A](#0a-design-system--ux-standards)
+(lighter application than the external-facing portals — internal-only,
+so density/efficiency for staff working queues all day matters more
+than first-impression polish, but still uses the same design tokens,
+not a fourth divergent style).
 
 ```
 Implement Admin Portal — Phase 4 from Section 5, admin routes from
@@ -1243,12 +1417,20 @@ Acceptance criteria:
 
 ## 18. Marketing Site
 
-**Depends on:** Prompt 1. Can build any time in parallel. Link to Prompt
-6A/12A demo experiences if already built; otherwise build CTAs to signup
-and add demo links once 6A/12A exist.
+**Depends on:** Prompt 1, [Section 0A](#0a-design-system--ux-standards).
+Can build any time in parallel. Link to Prompt 6A/12A demo experiences
+if already built; otherwise build CTAs to signup and add demo links
+once 6A/12A exist.
 
 ```
 Build the public marketing site under apps/web/app/(marketing)/.
+
+Same "highest-stakes first impression" bar as Prompt 12A applies here —
+apply Section 0A in full. If this is built before the token system
+exists elsewhere (per the "can build any time in parallel" note above),
+this is where the tokens get established first, and Prompts 6/9/12
+retrofit/build against what's landed here rather than each inventing
+their own.
 
 Deliverables:
 1. Landing page: core insight, one-sentence platform rule, differentiation
@@ -1330,6 +1512,34 @@ Acceptance criteria:
 ---
 
 ## Changelog
+
+**Build-log note (post-8, design system added)** — Added
+[Section 0A: Design System & UX Standards](#0a-design-system--ux-standards),
+prompted by a direct assessment that the built Rep Portal frontend
+(Prompt 6) was functionally correct but visually indistinguishable from
+unstyled shadcn/ui defaults — no color system, type scale, spacing
+discipline, or motion beyond framework defaults. For a three-sided
+platform whose brand and recruiter sides are professional buyers making
+a trust judgment (money, a minor's data) partly from the UI itself
+before reading any copy, that's a real product risk, not a cosmetic
+one.
+
+0A's authority is Andrew Chen's "Simple Is Marketable" thesis: the same
+reductions that make a product feel clean also make it convert (fewer
+choices raise completion, shorter paths raise activation, removing a
+low-value feature beats merely de-emphasizing it) — design decisions
+are evaluated against "what metric or trust signal does this serve,"
+which rules out both unstyled defaults and decoration-for-its-own-sake.
+The visual bar cited is Stripe/Linear/Vercel-style restraint (confident
+typography and whitespace, not ornamentation), since those products
+target the same kind of skeptical professional audience Teenure's brand
+and recruiter sides represent.
+
+Wired into every remaining frontend-touching prompt (9, 12, 12A, 13,
+18) as an explicit dependency, and flagged as an unscheduled retrofit
+against Prompt 6/6A's already-built screens — not yet its own numbered
+prompt; do the retrofit before or alongside Prompt 9 so the Rep and
+Brand portals share one design-token system rather than diverging.
 
 **Build-log note (post-6A, pre-7)** — CI (Prompt 17) and part of the
 Testing Suite (Prompt 16) were pulled forward out of order, ahead of
