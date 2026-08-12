@@ -41,6 +41,7 @@
 18. [Marketing Site](#18-marketing-site)
 19. [Analytics Integration (PostHog)](#19-analytics-integration-posthog)
 20. [Terminology Rename — Rep → Talent](#20-terminology-rename--rep--talent)
+DS. [Design System & Brand Application](#ds-design-system--brand-application)
 
 > **Note:** As of Prompt 20, the role called "Rep" throughout Prompts
 > 1–19 (and in `Teenure_MVP_Gameplan.md`) is renamed to "Talent" in
@@ -5502,7 +5503,83 @@ Acceptance criteria:
 
 ---
 
+## DS. Design System & Brand Application
+
+**Depends on:** All prior prompts (1–20). Every portal must exist before it
+can be reskinned.
+
+**Touches:** Prompt 6 (Rep/Talent Portal frontend), Prompt 9 (Brand Portal
+frontend), Prompt 12 (Recruiter Portal frontend), Prompt 13 (Admin Portal),
+Prompt 18 (Marketing Site), Prompt 4 (Auth flows), Prompt 4A (Parent
+Portal).
+
+**Does not touch:** Any backend file, API route, database schema, payout
+logic, or business rule. Frontend-only — if a change would alter behavior
+rather than appearance, it is out of scope.
+
+**Source:** Full prompt lives in
+[`docs/My_vision/Teenure_Design_System_Prompt.md`](docs/My_vision/Teenure_Design_System_Prompt.md)
+(not inlined here — it runs ~36KB with the full token system, component
+library, and per-portal application sequence). Companion reference files:
+[`docs/My_vision/teenure_logo.html`](docs/My_vision/teenure_logo.html)
+(logo/palette exploration) and
+[`docs/My_vision/teenure_redesign.jsx`](docs/My_vision/teenure_redesign.jsx)
+(applied mockup). Read all three before executing.
+
+```
+Summary (see the linked prompt file for the full, authoritative version):
+
+Establishes the brand's design system and applies it across every existing
+portal, in strict order: tokens -> logo component -> component library ->
+marketing site -> rep/talent portal -> brand portal -> recruiter portal ->
+parent portal -> admin portal -> auth flows. Each layer depends on the one
+before it — do not skip ahead.
+
+THE CORE RULE:
+  Teal (#0D9B7A) is the brand's identity and primary action color — buttons,
+  active nav states, focus rings, the logo, the wordmark accent, anything
+  prompting the user to act.
+
+  Gold (#F0A535) is reserved exclusively for earned/credentialed moments —
+  a campaign confirmed, a badge issued, a payout released, a challenge
+  converted. Never used on buttons, navigation, or general UI. The test:
+  if gold would appear on something the user hasn't yet earned, use teal
+  instead; if teal would appear on an earned achievement, use gold instead.
+  Gold found anywhere else is a bug, not a style choice.
+
+  Green (#22C55E) is a functional "complete" color only (paid status,
+  successful validation, email-verified) — not a brand color.
+
+  Cyan is removed from the system entirely; existing cyan usage is
+  replaced with teal or gold depending on context.
+
+Design tokens (styles/tokens.css or equivalent) cover brand colors,
+credential/completion/danger states, a dark canvas system (--ink,
+--canvas, --surface-1/2/3), border tokens, typography scale, shadows
+(including teal/gold glow shadows for earned-state emphasis), and a
+radius scale. No hardcoded hex values permitted in component files —
+everything routes through a token.
+
+Execute against Prompt 20's renamed identifiers (Talent, not Rep) if
+Prompt 20 has already landed; if this prompt runs before Prompt 20, revisit
+component names once the rename lands rather than doing both renames twice.
+```
+
+---
+
 ## Changelog
+
+**v1.8** — added Prompt DS (Design System & Brand Application), a
+frontend-only reskin pass captured from
+`docs/My_vision/Teenure_Design_System_Prompt.md` (full token system,
+component library, and per-portal application order — teal as the
+primary/action color, gold reserved exclusively for earned/credentialed
+moments, green as a functional complete-state color, cyan removed
+entirely). Companion palette/mockup references:
+`docs/My_vision/teenure_logo.html` and
+`docs/My_vision/teenure_redesign.jsx`. Sequenced after Prompt 20
+(Terminology Rename) since component/route names should reflect
+"Talent" before the reskin renames files again.
 
 **v1.7** — added Prompt 20 (Terminology Rename — Rep → Talent): a
 full, deliberate rename of the external teenage-user role from "Rep"
