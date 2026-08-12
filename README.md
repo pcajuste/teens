@@ -23,11 +23,22 @@ demo/                  Seed data for public-facing demo experiences
 pnpm install
 ```
 
+## Run both apps at once
+
+```bash
+./dev.sh
+# apps/web  -> http://localhost:3300
+# apps/api  -> http://localhost:8300/health
+```
+
+Creates the apps/api virtualenv and installs workspace deps on first run
+if missing. Ctrl-C stops both servers.
+
 ## Run apps/web (Next.js)
 
 ```bash
-pnpm --filter web dev
-# http://localhost:3000
+pnpm --filter web dev --port 3300
+# http://localhost:3300
 ```
 
 ## Run apps/api (FastAPI)
@@ -38,8 +49,8 @@ python3.11 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.local.example .env.local   # if present; otherwise create your own
-uvicorn app.main:app --reload --port 8000
-# http://localhost:8000/health
+uvicorn app.main:app --reload --port 8300
+# http://localhost:8300/health
 ```
 
 ## Environment variables
