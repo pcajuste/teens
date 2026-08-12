@@ -35,3 +35,6 @@ venv/
 
 # Agent worktrees
 .claude/worktrees/
+
+
+/docs
