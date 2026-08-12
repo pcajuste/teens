@@ -98,17 +98,26 @@ async def create_connect_onboarding_link(settings: Settings, *, account_id: str,
     return link.url
 
 
-async def create_payment_intent(settings: Settings, *, amount_cents: int, metadata: dict) -> tuple[str, str]:
+async def create_payment_intent(
+    settings: Settings, *, amount_cents: int, metadata: dict, customer_id: str | None = None
+) -> tuple[str, str]:
     """Build Prompt 8 deliverable 4 (POST /brands/campaigns/:id/activate
-    "kicks off PaymentIntent"). Returns (payment_intent_id, client_secret) --
-    the id is what campaigns.stripe_payment_intent_id stores, the
-    client_secret is what the not-yet-built Prompt 9 frontend needs to
-    collect card details via Stripe Elements. No payment method is
-    attached here; the PaymentIntent starts in
-    'requires_payment_method' and stays server-side-only until Prompt 9
-    exists. `amount_cents` is always budget_cents, computed server-side
-    at campaign creation (app/services/campaign_service.py) -- never a
-    client-submitted amount (Section 9).
+    "kicks off PaymentIntent"), `customer_id` wired in by Prompt 10
+    deliverable 2 ("against brand's stripe_customer_id"). Returns
+    (payment_intent_id, client_secret) -- the id is what
+    campaigns.stripe_payment_intent_id stores, the client_secret is what
+    the Prompt 9 frontend needs to collect card details via Stripe
+    Elements. No payment method is attached here; the PaymentIntent
+    starts in 'requires_payment_method'. `amount_cents` is always
+    budget_cents, computed server-side at campaign creation
+    (app/services/campaign_service.py) -- never a client-submitted
+    amount (Section 9). `customer_id` is optional because Prompt 8's
+    brand.stripe_customer_id is only ever populated lazily by the
+    caller (app/routers/brands.py's activate_campaign creates the
+    Customer on first activation, same create-or-reuse shape as
+    create_connect_account/create_connect_onboarding_link) -- passing
+    None omits the `customer` param entirely rather than sending an
+    empty string Stripe would reject.
 
     Distinct from create_campaign_checkout_session below: that's the
     alternative Checkout-Session-based integration Prompt 9's own text
@@ -116,12 +125,10 @@ async def create_payment_intent(settings: Settings, *, amount_cents: int, metada
     This function is the primitive either choice can use; a PaymentIntent
     id is what the campaigns schema (Section 7) actually stores."""
     _configure(settings)
-    intent = await asyncio.to_thread(
-        stripe.PaymentIntent.create,
-        amount=amount_cents,
-        currency="usd",
-        metadata=metadata,
-    )
+    kwargs = {"amount": amount_cents, "currency": "usd", "metadata": metadata}
+    if customer_id is not None:
+        kwargs["customer"] = customer_id
+    intent = await asyncio.to_thread(stripe.PaymentIntent.create, **kwargs)
     return intent.id, intent.client_secret
 
 
@@ -132,16 +139,49 @@ async def create_campaign_checkout_session(campaign_id: str, amount_cents: int) 
     raise NotImplementedError
 
 
-async def create_payout_transfer(stripe_account_id: str, amount_cents: int, campaign_rep_id: str) -> str:
-    """Transfer a rep's earned share for a completed campaign deliverable
-    to their Connect account. Prompt 10."""
-    raise NotImplementedError
+async def create_payout_transfer(
+    settings: Settings, *, stripe_account_id: str, amount_cents: int, campaign_rep_id: str
+) -> str:
+    """Transfer a rep's earned share (campaign_reps.payout_cents,
+    already fixed at campaign-creation time -- see
+    app/services/payout_service.py's module docstring) to their Connect
+    account. Called only after app/services/payout_service.release_payout
+    has confirmed the row is 'confirmed', payout_cents is set, and the
+    rep's Connect onboarding is complete. `campaign_rep_id` is recorded
+    in metadata so a Transfer is traceable back to the row from the
+    Stripe dashboard, mirroring create_connect_account's metadata
+    convention. Returns the Transfer id, stored on
+    campaign_reps.stripe_transfer_id."""
+    _configure(settings)
+    transfer = await asyncio.to_thread(
+        stripe.Transfer.create,
+        amount=amount_cents,
+        currency="usd",
+        destination=stripe_account_id,
+        metadata={"campaign_rep_id": campaign_rep_id},
+    )
+    return transfer.id
 
 
-async def refund_campaign(campaign_id: str, amount_cents: int) -> str:
-    """Issue a full or partial refund per the cancellation policy defined
-    in Prompt 8. Prompt 10."""
-    raise NotImplementedError
+async def refund_campaign(
+    settings: Settings, *, payment_intent_id: str, amount_cents: int, campaign_id: str
+) -> str:
+    """Issue a partial refund against the campaign's captured
+    PaymentIntent. See app/routers/brands.py's cancel_campaign for the
+    amount computation (un-paid remainder of budget_cents, per Prompt
+    10's own deliverable text) and docs/campaign-cancellation-refund-policy.md
+    for why that's the interim decision rather than a full refund.
+    `amount_cents` of 0 is never passed here -- the caller skips this
+    call entirely in that case, since Stripe rejects a zero-amount
+    refund."""
+    _configure(settings)
+    refund = await asyncio.to_thread(
+        stripe.Refund.create,
+        payment_intent=payment_intent_id,
+        amount=amount_cents,
+        metadata={"campaign_id": campaign_id},
+    )
+    return refund.id
 
 
 async def get_payment_intent_receipt_url(settings: Settings, *, payment_intent_id: str) -> str | None:

@@ -505,6 +505,26 @@ async def list_for_campaign(conn: asyncpg.Connection, campaign_id: str) -> list[
     return [CampaignRep.from_row(row) for row in rows]
 
 
+async def get_by_id(conn: asyncpg.Connection, campaign_rep_id: str) -> CampaignRep | None:
+    """Unscoped-by-campaign lookup -- used by app/services/payout_service.py,
+    which is handed a bare campaign_rep_id (from the /confirm route,
+    which has already verified campaign ownership before calling it)."""
+    row = await conn.fetchrow(f"SELECT {_CR_COLUMNS} FROM public.campaign_reps WHERE id = $1", campaign_rep_id)
+    return CampaignRep.from_row(row) if row else None
+
+
+async def get_by_stripe_transfer_id(conn: asyncpg.Connection, stripe_transfer_id: str) -> CampaignRep | None:
+    """Looked up by the transfer.paid/transfer.failed webhook handlers
+    (Build Prompt 10), which identify the row by Stripe transfer id, not
+    our own campaign_rep_id -- mirrors
+    rep_profiles_repository.get_by_stripe_account_id's shape for the
+    account.updated handler."""
+    row = await conn.fetchrow(
+        f"SELECT {_CR_COLUMNS} FROM public.campaign_reps WHERE stripe_transfer_id = $1", stripe_transfer_id
+    )
+    return CampaignRep.from_row(row) if row else None
+
+
 async def get_by_id_and_campaign(conn: asyncpg.Connection, campaign_rep_id: str, campaign_id: str) -> CampaignRep | None:
     row = await conn.fetchrow(
         f"SELECT {_CR_COLUMNS} FROM public.campaign_reps WHERE id = $1 AND campaign_id = $2",
@@ -571,6 +591,82 @@ async def request_revision(conn: asyncpg.Connection, campaign_rep_id: str, campa
         note,
     )
     return CampaignRep.from_row(row) if row else None
+
+
+# ══════════════════════════════════════════════════════════════════
+# Payout engine (Build Prompt 10) -- transitions app/services/
+# payout_service.py drives after a row reaches 'confirmed'.
+# ══════════════════════════════════════════════════════════════════
+
+
+async def set_payout_processing(conn: asyncpg.Connection, campaign_rep_id: str, *, stripe_transfer_id: str) -> CampaignRep | None:
+    """A Stripe Transfer has been created (payout_service.release_payout)
+    -- legal only from payout_status='pending' (the DB default), which
+    is what makes a retried release_payout call a no-op rather than a
+    second Transfer: the WHERE clause simply matches no row the second
+    time, and the caller (release_payout) checks payout_status before
+    ever reaching this far as its own first line of defense."""
+    row = await conn.fetchrow(
+        f"""
+        UPDATE public.campaign_reps
+        SET payout_status = 'processing', stripe_transfer_id = $2
+        WHERE id = $1 AND status = 'confirmed' AND payout_status = 'pending'
+        RETURNING {_CR_COLUMNS}
+        """,
+        campaign_rep_id,
+        stripe_transfer_id,
+    )
+    return CampaignRep.from_row(row) if row else None
+
+
+async def set_payout_paid(conn: asyncpg.Connection, campaign_rep_id: str, *, at: datetime) -> CampaignRep | None:
+    """transfer.paid webhook. status 'confirmed' -> 'paid' (the terminal
+    rep_campaign_status value -- distinct from payout_status='paid'),
+    payout_status 'processing' -> 'paid', paid_at set. Legal only from
+    payout_status='processing' so a duplicate webhook delivery (already
+    deduped at the stripe_events layer, but defended here too) is a
+    no-op, not a double-count in rep_profiles' cached totals."""
+    row = await conn.fetchrow(
+        f"""
+        UPDATE public.campaign_reps
+        SET status = 'paid', payout_status = 'paid', paid_at = $2
+        WHERE id = $1 AND payout_status = 'processing'
+        RETURNING {_CR_COLUMNS}
+        """,
+        campaign_rep_id,
+        at,
+    )
+    return CampaignRep.from_row(row) if row else None
+
+
+async def set_payout_failed(conn: asyncpg.Connection, campaign_rep_id: str) -> CampaignRep | None:
+    """transfer.failed webhook. Legal only from payout_status='processing'.
+    No admin-queue table exists yet (Prompt 13) -- until then,
+    payout_status='failed' rows are the queue."""
+    row = await conn.fetchrow(
+        f"""
+        UPDATE public.campaign_reps
+        SET payout_status = 'failed'
+        WHERE id = $1 AND payout_status = 'processing'
+        RETURNING {_CR_COLUMNS}
+        """,
+        campaign_rep_id,
+    )
+    return CampaignRep.from_row(row) if row else None
+
+
+async def sum_committed_payouts_for_campaign(conn: asyncpg.Connection, campaign_id: str) -> int:
+    """Sum of payout_cents already transferred or in flight
+    ('processing' or 'paid') for a campaign -- used by /cancel to
+    compute the un-paid remainder that's still refundable. See
+    docs/campaign-cancellation-refund-policy.md."""
+    return await conn.fetchval(
+        """
+        SELECT COALESCE(SUM(payout_cents), 0) FROM public.campaign_reps
+        WHERE campaign_id = $1 AND payout_status IN ('processing', 'paid')
+        """,
+        campaign_id,
+    )
 
 
 async def rate(conn: asyncpg.Connection, campaign_rep_id: str, campaign_id: str, *, brand_rating: int, brand_rating_note: str | None) -> CampaignRep | None:

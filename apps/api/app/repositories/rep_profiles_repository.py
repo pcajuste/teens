@@ -175,6 +175,43 @@ async def update_profile_completeness_score(conn: asyncpg.Connection, rep_id: st
     )
 
 
+async def recompute_cached_totals(conn: asyncpg.Connection, rep_id: str) -> None:
+    """Recomputes total_campaigns_completed, total_earnings_cents, and
+    average_rating from campaign_reps (Build Prompt 10 deliverable 7).
+    Section 7's schema comment leaves the mechanism open ("updated via
+    trigger or background job") and Prompt 2 only produced a design
+    note, never an implemented trigger (no such trigger exists in any
+    migration) -- so this is application-code recompute, called from
+    app/services/payout_service.handle_transfer_paid right after a
+    transfer.paid webhook lands, matching this codebase's existing
+    style of computing cached fields at the call site rather than in
+    SQL (see update_profile_completeness_score above).
+    profile_completeness_score is untouched here -- payout completion
+    doesn't change what's filled in on the profile."""
+    row = await conn.fetchrow(
+        """
+        SELECT
+            COUNT(*) FILTER (WHERE status = 'paid') AS total_campaigns_completed,
+            COALESCE(SUM(payout_cents) FILTER (WHERE status = 'paid'), 0) AS total_earnings_cents,
+            AVG(brand_rating) FILTER (WHERE brand_rating IS NOT NULL) AS average_rating
+        FROM public.campaign_reps
+        WHERE rep_id = $1
+        """,
+        rep_id,
+    )
+    await conn.execute(
+        """
+        UPDATE public.rep_profiles
+        SET total_campaigns_completed = $2, total_earnings_cents = $3, average_rating = $4, updated_at = now()
+        WHERE id = $1
+        """,
+        rep_id,
+        row["total_campaigns_completed"],
+        row["total_earnings_cents"],
+        row["average_rating"],
+    )
+
+
 async def get_by_stripe_account_id(conn: asyncpg.Connection, stripe_account_id: str) -> RepProfile | None:
     """Looked up by the account.updated webhook (Build Prompt 7), which
     identifies the account by Stripe account id, not our own rep_id."""

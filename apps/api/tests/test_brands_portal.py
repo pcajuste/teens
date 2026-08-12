@@ -106,7 +106,28 @@ def fake_stripe(monkeypatch):
             calls.append(("PaymentIntent.retrieve", {"id": id, **kwargs}))
             return {"latest_charge": {"receipt_url": f"https://stripe.example.com/receipts/{id}"}}
 
-    fake = SimpleNamespace(PaymentIntent=_PaymentIntent, calls=calls)
+    class _Customer:
+        @staticmethod
+        def create(**kwargs):
+            counter["n"] += 1
+            calls.append(("Customer.create", kwargs))
+            return SimpleNamespace(id=f"cus_fake{counter['n']}")
+
+    class _Refund:
+        @staticmethod
+        def create(**kwargs):
+            counter["n"] += 1
+            calls.append(("Refund.create", kwargs))
+            return SimpleNamespace(id=f"re_fake{counter['n']}")
+
+    class _Transfer:
+        @staticmethod
+        def create(**kwargs):
+            counter["n"] += 1
+            calls.append(("Transfer.create", kwargs))
+            return SimpleNamespace(id=f"tr_fake{counter['n']}")
+
+    fake = SimpleNamespace(PaymentIntent=_PaymentIntent, Customer=_Customer, Refund=_Refund, Transfer=_Transfer, calls=calls)
     monkeypatch.setattr(stripe_service, "stripe", fake)
     return fake
 
@@ -270,9 +291,13 @@ def test_activate_creates_payment_intent_and_transitions_to_pending_payment(clie
     assert body["status"] == "pending_payment"
     assert body["stripe_payment_intent_client_secret"].startswith("pi_fake")
 
-    name, kwargs = fake_stripe.calls[0]
-    assert name == "PaymentIntent.create"
-    assert kwargs["amount"] == 100_000
+    call_names = [name for name, _ in fake_stripe.calls]
+    # First activation lazily creates the brand's Stripe Customer (Build
+    # Prompt 10 deliverable 2), then the PaymentIntent against it.
+    assert call_names == ["Customer.create", "PaymentIntent.create"]
+    intent_kwargs = fake_stripe.calls[1][1]
+    assert intent_kwargs["amount"] == 100_000
+    assert intent_kwargs["customer"] == "cus_fake1"
 
 
 def test_activate_rejects_start_date_not_in_future(client, brand_headers, onboarded_brand, fake_stripe):
@@ -350,15 +375,43 @@ def test_cancel_draft_reports_no_refund_pending(client, brand_headers, onboarded
     assert body["refund_pending"] is False
 
 
-def test_cancel_active_campaign_reports_refund_pending(client, db, brand_headers, onboarded_brand):
+def test_cancel_active_campaign_refunds_full_budget_when_no_reps_paid(client, db, brand_headers, onboarded_brand, fake_stripe):
     created = client.post("/brands/campaigns", json=_BASE_CAMPAIGN_BODY, headers=brand_headers).json()
+    client.post(f"/brands/campaigns/{created['id']}/activate", headers=brand_headers)  # sets a real stripe_payment_intent_id
     db.execute("UPDATE public.campaigns SET status = 'active' WHERE id = $1", created["id"])
+    fake_stripe.calls.clear()
 
     response = client.post(f"/brands/campaigns/{created['id']}/cancel", headers=brand_headers)
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "cancelled"
     assert body["refund_pending"] is True
+    # No rep has been paid yet, so the entire budget is refundable --
+    # see docs/campaign-cancellation-refund-policy.md.
+    assert body["refund_amount_cents"] == 100_000
+
+    name, kwargs = fake_stripe.calls[0]
+    assert name == "Refund.create"
+    assert kwargs["amount"] == 100_000
+
+
+def test_cancel_active_campaign_only_refunds_unpaid_remainder(client, db, brand_headers, onboarded_brand, fake_stripe):
+    created = client.post("/brands/campaigns", json=_BASE_CAMPAIGN_BODY, headers=brand_headers).json()
+    client.post(f"/brands/campaigns/{created['id']}/activate", headers=brand_headers)
+    rep_id, campaign_rep_id = _invited_campaign_rep(client, db, brand_headers, created["id"])
+    db.execute("UPDATE public.campaign_reps SET status = 'submitted' WHERE id = $1", campaign_rep_id)
+    client.post(f"/brands/campaigns/{created['id']}/reps/{rep_id}/confirm", headers=brand_headers)
+    # Rep isn't Connect-onboarded in this test, so release_payout leaves
+    # payout_status='pending' -- simulate a completed transfer directly
+    # so the refund math has something committed to exclude.
+    db.execute("UPDATE public.campaign_reps SET payout_status = 'paid' WHERE id = $1", campaign_rep_id)
+    db.execute("UPDATE public.campaigns SET status = 'active' WHERE id = $1", created["id"])
+    fake_stripe.calls.clear()
+
+    response = client.post(f"/brands/campaigns/{created['id']}/cancel", headers=brand_headers)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["refund_amount_cents"] == 100_000 - created["payout_per_rep_cents"]
 
 
 def test_cancel_already_cancelled_returns_409(client, brand_headers, onboarded_brand):

@@ -83,6 +83,20 @@ async def send_campaign_blocked_notice_to_rep(rep_email: str, client: ResendClie
     await client.send_email(to=rep_email, subject="A campaign invitation was declined", html=html)
 
 
+async def send_campaign_payment_failed_email(brand_email: str, campaign_title: str, client: ResendClient) -> None:
+    """payment_intent.payment_failed webhook (Build Prompt 10 deliverable
+    3: "notify brand"). Points the brand at retry-payment rather than
+    activate -- the campaign is now in 'payment_failed', which
+    app/routers/brands.py's activate_campaign explicitly rejects."""
+    html = f"""
+    <p>The payment for your campaign <strong>{campaign_title}</strong>
+    couldn't be completed. No reps have been charged and nothing else
+    about your campaign has changed.</p>
+    <p>Retry payment from your Teenure dashboard to activate it.</p>
+    """
+    await client.send_email(to=brand_email, subject=f"Payment failed for {campaign_title}", html=html)
+
+
 async def send_account_suspended_email(rep_email: str, client: ResendClient) -> None:
     html = """
     <p>Your Teenure account has been suspended by your parent/guardian.

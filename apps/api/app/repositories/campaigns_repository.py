@@ -249,6 +249,42 @@ async def retry_payment(conn: asyncpg.Connection, campaign_id: str, *, stripe_pa
     return Campaign.from_row(row) if row else None
 
 
+async def set_active(conn: asyncpg.Connection, campaign_id: str) -> Campaign | None:
+    """payment_intent.succeeded webhook (Build Prompt 10 deliverable 3).
+    Legal only from 'pending_payment', per the campaign_status enum's
+    own comment."""
+    row = await conn.fetchrow(
+        f"""
+        UPDATE public.campaigns SET status = 'active', updated_at = now()
+        WHERE id = $1 AND status = 'pending_payment'
+        RETURNING {_COLUMNS}
+        """,
+        campaign_id,
+    )
+    return Campaign.from_row(row) if row else None
+
+
+async def set_payment_failed(conn: asyncpg.Connection, campaign_id: str) -> Campaign | None:
+    """payment_intent.payment_failed webhook (Build Prompt 10 deliverable
+    3). Legal only from 'pending_payment'."""
+    row = await conn.fetchrow(
+        f"""
+        UPDATE public.campaigns SET status = 'payment_failed', updated_at = now()
+        WHERE id = $1 AND status = 'pending_payment'
+        RETURNING {_COLUMNS}
+        """,
+        campaign_id,
+    )
+    return Campaign.from_row(row) if row else None
+
+
+async def get_by_stripe_payment_intent_id(conn: asyncpg.Connection, payment_intent_id: str) -> Campaign | None:
+    """Looked up by the payment_intent.succeeded/payment_failed webhook
+    handlers, which identify the campaign by Stripe PaymentIntent id."""
+    row = await conn.fetchrow(f"SELECT {_COLUMNS} FROM public.campaigns WHERE stripe_payment_intent_id = $1", payment_intent_id)
+    return Campaign.from_row(row) if row else None
+
+
 async def set_paused(conn: asyncpg.Connection, campaign_id: str) -> Campaign | None:
     """Legal only from 'active', per Section 8's route description
     ("Pause active campaign")."""

@@ -12,6 +12,32 @@ server-computed only, and float cents risk silent rounding drift)."""
 from __future__ import annotations
 
 
+async def get_or_create_stripe_customer_id(conn, settings, brand: "brand_profiles_repository.BrandProfile") -> str:
+    """Lazy create-or-reuse, same shape as
+    stripe_service.create_connect_account/create_connect_onboarding_link's
+    create-or-resume pattern for reps. Build Prompt 8's own build-log
+    note left this unwired ("service function ready for admin approval
+    flow, Prompt 13") since nothing called stripe_service.create_customer
+    yet; Prompt 10 deliverable 2 ("Wire /activate to create Stripe
+    PaymentIntent... against brand's stripe_customer_id") needs one to
+    exist, and waiting on Prompt 13's admin-approval flow isn't a
+    prerequisite for that -- a brand's Stripe Customer identity doesn't
+    depend on admin verification, so this creates it on first activation
+    instead."""
+    from app.repositories import brand_profiles_repository
+    from app.repositories import users_repository
+    from app.services import stripe_service
+
+    if brand.stripe_customer_id:
+        return brand.stripe_customer_id
+    user = await users_repository.get_user_by_id(conn, brand.user_id)
+    customer_id = await stripe_service.create_customer(
+        settings, email=user.email, metadata={"role": "brand", "brand_id": brand.id}
+    )
+    await brand_profiles_repository.set_stripe_customer_id(conn, brand.id, customer_id)
+    return customer_id
+
+
 def compute_campaign_fee_split(*, budget_cents: int, max_reps: int, platform_fee_percent: int) -> tuple[int, int, int]:
     """Returns (platform_fee_cents, rep_pool_cents, payout_per_rep_cents).
 

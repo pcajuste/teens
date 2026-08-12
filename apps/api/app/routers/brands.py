@@ -45,8 +45,8 @@ from app.schemas.brands import (
     RevisionRequest,
     SubmissionResponse,
 )
-from app.services import stripe_service
-from app.services.campaign_service import compute_campaign_fee_split
+from app.services import payout_service, stripe_service
+from app.services.campaign_service import compute_campaign_fee_split, get_or_create_stripe_customer_id
 from app.services.parent_service import determine_parent_approval, send_campaign_approval_request
 from app.services.resend_client import ResendClient, resend_client_dependency
 
@@ -349,8 +349,12 @@ async def activate_campaign(
             detail={"code": "invalid_max_reps", "message": "max_reps must be greater than 0."},
         )
 
+    customer_id = await get_or_create_stripe_customer_id(conn, settings, brand)
     payment_intent_id, client_secret = await stripe_service.create_payment_intent(
-        settings, amount_cents=campaign.budget_cents, metadata={"campaign_id": campaign.id, "brand_id": brand.id}
+        settings,
+        amount_cents=campaign.budget_cents,
+        metadata={"campaign_id": campaign.id, "brand_id": brand.id},
+        customer_id=customer_id,
     )
     updated = await campaigns_repository.set_pending_payment(conn, campaign_id, stripe_payment_intent_id=payment_intent_id)
     if updated is None:
@@ -379,8 +383,12 @@ async def retry_payment(
             detail={"code": "illegal_transition", "message": f"Cannot retry payment from status '{campaign.status}'."},
         )
 
+    customer_id = await get_or_create_stripe_customer_id(conn, settings, brand)
     payment_intent_id, client_secret = await stripe_service.create_payment_intent(
-        settings, amount_cents=campaign.budget_cents, metadata={"campaign_id": campaign.id, "brand_id": brand.id}
+        settings,
+        amount_cents=campaign.budget_cents,
+        metadata={"campaign_id": campaign.id, "brand_id": brand.id},
+        customer_id=customer_id,
     )
     assert payment_intent_id != campaign.stripe_payment_intent_id  # always a new PaymentIntent, never the failed one reused
     updated = await campaigns_repository.retry_payment(conn, campaign_id, stripe_payment_intent_id=payment_intent_id)
@@ -413,20 +421,25 @@ async def pause_campaign(
 async def cancel_campaign(
     campaign_id: str,
     user: AuthenticatedUser = Depends(require_role("brand")),
+    settings: Settings = Depends(get_settings),
     conn: asyncpg.Connection = Depends(get_connection),
 ) -> CancelCampaignResponse:
-    """See docs/campaign-cancellation-refund-policy.md -- the refund
-    *amount* for an already-charged campaign is an explicitly unresolved
-    business decision, not implemented here. This performs the status
-    transition and reports whether a refund is owed
-    (refund_pending=True for 'active'/'paused', which per the
-    campaign_status enum's own semantics always means a Stripe charge
-    already succeeded); it does not call stripe_service.refund_campaign,
-    which remains the Prompt 10 NotImplementedError stub it was in
-    Prompt 7."""
+    """See docs/campaign-cancellation-refund-policy.md, updated by Build
+    Prompt 10 to resolve what was left an open question in Prompt 8:
+    the *un-paid remainder* of budget_cents is refunded -- budget_cents
+    minus whatever's already been transferred or is in flight to reps
+    (payout_status IN ('processing','paid')), which also refunds the
+    portion of the platform fee attributable to that unpaid remainder
+    (nothing was delivered for it, so nothing should be kept for it).
+    Money already transferred to a rep is never clawed back. This is
+    Prompt 10's own proposed fallback ("partial refund for un-paid
+    remainder when some reps already paid"), not a guess -- see the doc
+    for the full writeup and what's still open (e.g. whether a brand
+    should be able to dispute a specific rep's already-paid transfer,
+    which is out of scope here)."""
     brand = await _get_own_brand_profile(conn, user)
     campaign = await _require_owned_campaign(conn, campaign_id, brand.id)
-    refund_pending = campaign.status in campaigns_repository.STATUSES_WITH_CAPTURED_PAYMENT
+    has_captured_payment = campaign.status in campaigns_repository.STATUSES_WITH_CAPTURED_PAYMENT
 
     updated = await campaigns_repository.set_cancelled(conn, campaign_id)
     if updated is None:
@@ -434,7 +447,21 @@ async def cancel_campaign(
             status_code=status.HTTP_409_CONFLICT,
             detail={"code": "illegal_transition", "message": f"Cannot cancel from status '{campaign.status}'."},
         )
-    return CancelCampaignResponse(id=updated.id, status=updated.status, refund_pending=refund_pending)
+
+    refund_amount_cents = 0
+    if has_captured_payment and updated.stripe_payment_intent_id is not None:
+        committed_cents = await campaign_reps_repository.sum_committed_payouts_for_campaign(conn, campaign_id)
+        refund_amount_cents = max(0, updated.budget_cents - committed_cents)
+        if refund_amount_cents > 0:
+            await stripe_service.refund_campaign(
+                settings,
+                payment_intent_id=updated.stripe_payment_intent_id,
+                amount_cents=refund_amount_cents,
+                campaign_id=updated.id,
+            )
+    return CancelCampaignResponse(
+        id=updated.id, status=updated.status, refund_pending=refund_amount_cents > 0, refund_amount_cents=refund_amount_cents
+    )
 
 
 @brands_router.get("/campaigns/{campaign_id}/receipt", response_model=ReceiptResponse)
@@ -589,12 +616,18 @@ async def confirm_submission(
     campaign_id: str,
     rep_id: str,
     user: AuthenticatedUser = Depends(require_role("brand")),
+    settings: Settings = Depends(get_settings),
     conn: asyncpg.Connection = Depends(get_connection),
 ) -> CampaignRepResponse:
-    """Stubs the payout engine (Prompt 10 wires it -- Build Prompt 8
-    deliverable 8): payout_cents is recorded now, server-computed from
-    the campaign's own payout_per_rep_cents, but no Stripe transfer is
-    initiated here (stripe_transfer_id / payout_status stay unset)."""
+    """payout_cents is recorded server-computed from the campaign's own
+    payout_per_rep_cents (never client-submitted), then
+    payout_service.release_payout initiates the Stripe transfer in the
+    same request (Build Prompt 10 deliverable 4). release_payout's own
+    'rep_not_onboarded' outcome doesn't fail this call -- the rep is
+    still confirmed and owed the payout, it just can't be transferred
+    yet, so it stays payout_status='pending' until the rep finishes
+    Connect onboarding (nothing currently retries this automatically --
+    flagged, not a Prompt 10 deliverable)."""
     brand = await _get_own_brand_profile(conn, user)
     campaign = await _require_owned_campaign(conn, campaign_id, brand.id)
     cr = await campaign_reps_repository.get_by_rep_and_campaign_id(conn, rep_id, campaign_id)
@@ -613,7 +646,9 @@ async def confirm_submission(
             status_code=status.HTTP_409_CONFLICT,
             detail={"code": "illegal_transition", "message": f"Cannot confirm from status '{cr.status}'."},
         )
-    return _to_campaign_rep_response(updated)
+
+    result = await payout_service.release_payout(conn, settings, updated.id)
+    return _to_campaign_rep_response(result.campaign_rep or updated)
 
 
 @brands_router.post("/campaigns/{campaign_id}/reps/{rep_id}/revision", response_model=CampaignRepResponse)

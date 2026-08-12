@@ -273,7 +273,40 @@ def test_webhook_unregistered_event_type_returns_200(client, settings):
 
 
 def test_webhook_stub_events_return_200_without_error(client, settings):
-    for event_type in ["payment_intent.succeeded", "transfer.failed", "customer.subscription.created"]:
-        payload, header = _signed_webhook(settings, {"id": "evt_1", "object": "event", "type": event_type, "data": {"object": {}}})
+    # customer.subscription.* stays a true no-op stub through Prompt 11 --
+    # payment_intent.*/transfer.* are implemented (Build Prompt 10) and
+    # covered by test_payout.py instead, each with a distinct event id
+    # since dedup is now keyed on event id (see
+    # test_webhook_duplicate_event_id_is_not_reprocessed below).
+    for event_type in ["customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted"]:
+        payload, header = _signed_webhook(
+            settings, {"id": f"evt_{event_type}", "object": "event", "type": event_type, "data": {"object": {}}}
+        )
         response = client.post("/webhooks/stripe", content=payload, headers={"Stripe-Signature": header})
         assert response.status_code == 200, event_type
+
+
+def test_webhook_duplicate_event_id_is_not_reprocessed(client, db, rep_headers, settings, fake_stripe):
+    _seed_rep_user(db)
+    client.put("/reps/me", json=_BASE_PROFILE_BODY, headers=rep_headers)
+    client.post("/reps/stripe/onboarding", headers=rep_headers)  # creates acct_fake123
+
+    event = {
+        "id": "evt_dup_1",
+        "object": "event",
+        "type": "account.updated",
+        "data": {"object": {"id": "acct_fake123", "charges_enabled": True, "payouts_enabled": True}},
+    }
+    payload, header = _signed_webhook(settings, event)
+    first = client.post("/webhooks/stripe", content=payload, headers={"Stripe-Signature": header})
+    assert first.status_code == 200
+    assert db.fetchval("SELECT stripe_onboarding_complete FROM public.rep_profiles WHERE user_id = $1", REP_USER_ID) is True
+
+    # Flip it back to False directly, then replay the exact same event --
+    # a real handler re-run would flip it back to True; a deduped replay
+    # must leave it alone (Build Prompt 10 acceptance criterion: same
+    # payload twice -> no duplicate side effects).
+    db.execute("UPDATE public.rep_profiles SET stripe_onboarding_complete = FALSE WHERE user_id = $1", REP_USER_ID)
+    second = client.post("/webhooks/stripe", content=payload, headers={"Stripe-Signature": header})
+    assert second.status_code == 200
+    assert db.fetchval("SELECT stripe_onboarding_complete FROM public.rep_profiles WHERE user_id = $1", REP_USER_ID) is False

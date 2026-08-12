@@ -119,6 +119,7 @@ class CancelCampaignResponse(BaseModel):
     id: str
     status: CampaignStatus
     refund_pending: bool
+    refund_amount_cents: int = 0
 
 
 class ReceiptResponse(BaseModel):

@@ -1058,9 +1058,85 @@ Acceptance criteria:
 
 ---
 
-## 10. Campaign Lifecycle & Payout Engine
+## 10. Campaign Lifecycle & Payout Engine — **implemented**
 
 **Depends on:** Prompt 7, Prompt 8.
+
+**Build-log note:** All 7 deliverables implemented.
+`app/services/payout_service.py`'s three stubs are now real
+(`calculate_platform_fee_split`, `release_payout`,
+`handle_transfer_paid`/`handle_transfer_failed`);
+`app/services/stripe_service.py`'s `create_payout_transfer` and
+`refund_campaign` stubs are now real Transfer/Refund calls;
+`app/routers/webhooks.py` implements `payment_intent.succeeded`,
+`payment_intent.payment_failed`, `transfer.paid`, `transfer.failed`
+(only `customer.subscription.*` remains a Prompt-11 stub) with a new
+`stripe_events` table (migration
+`20260815090000_stripe_events_table.sql` — a schema addition beyond
+Section 7, flagged per the same "documented, not assumed" convention as
+Prompt 7's `stripe_account_id` addition) giving every webhook
+insert-or-skip idempotency on Stripe's event id, checked before any
+handler runs. `POST /brands/campaigns/:id/confirm` now calls
+`release_payout` in the same request right after the state-machine
+transition to `'confirmed'`; `POST /activate`/`/retry-payment` now
+lazily create-or-reuse the brand's Stripe Customer
+(`campaign_service.get_or_create_stripe_customer_id`, same
+create-or-resume shape as the rep Connect onboarding flow) before
+creating the PaymentIntent against it, resolving Prompt 8's own
+build-log note that this was "ready for admin approval flow, Prompt
+13" — it turned out not to need Prompt 13 at all, since a brand's
+Stripe Customer identity doesn't depend on admin verification.
+
+**Refund policy resolved, not left open**: Prompt 8 explicitly declined
+to pick a cancellation refund amount and flagged it as a business
+decision. Rather than leave `refund_campaign` unimplemented
+indefinitely, this prompt adopts its own proposed fallback verbatim
+("partial refund for un-paid remainder when some reps already paid")
+as the documented interim policy — see the rewritten
+`docs/campaign-cancellation-refund-policy.md` for the exact formula and
+what's still open (e.g. platform-fee refundability, which this prompt
+did decide: refunded proportionally to the unpaid remainder).
+
+**rep_profiles cached-field recompute (deliverable 7)**: Prompt 2 only
+ever produced a design note for this ("updated via trigger or
+background job") — no trigger exists in any migration. Rather than
+inventing one now, `rep_profiles_repository.recompute_cached_totals`
+recomputes `total_campaigns_completed`/`total_earnings_cents`/
+`average_rating` in application code from `campaign_reps`, called from
+`payout_service.handle_transfer_paid` right after a payout completes —
+matching this codebase's existing style (`update_profile_completeness_score`)
+of computing cached fields at the call site rather than in SQL.
+
+**Interpretive decisions documented rather than guessed past:**
+- `payout_service.calculate_platform_fee_split` mirrors
+  `campaign_service.compute_campaign_fee_split`'s exact rounding rule
+  but is not on `release_payout`'s call path — the per-rep amount is
+  already fixed at campaign-creation time on `campaign_reps.payout_cents`,
+  so there's no second split to compute at payout time. Kept as its own
+  function purely for this prompt's own rounding-invariant unit-test
+  coverage, per the acceptance criteria's wording.
+- A `transfer.failed` row has no admin queue to land in yet (Prompt 13
+  isn't built) — `payout_status = 'failed'` on `campaign_reps` *is* the
+  interim queue, flagged rather than inventing a table this prompt
+  doesn't own.
+- A rep confirmed for payout but not yet Connect-onboarded
+  (`release_payout`'s `"rep_not_onboarded"` outcome) does not fail the
+  confirm call — the row stays `payout_status='pending'` until the rep
+  finishes onboarding. Nothing currently retries the transfer
+  automatically once they do; flagged, not a stated deliverable here.
+
+30 new/updated tests: `tests/test_payout.py` (fee-split rounding
+invariant, PaymentIntent/Customer wiring, `payment_intent.*` webhook
+transitions + brand notification email, `release_payout`'s three
+outcomes including idempotency against a retried confirm, `transfer.*`
+webhook transitions + cached-total recompute), plus updated coverage in
+`tests/test_stripe.py` (webhook idempotency against a replayed event
+id) and `tests/test_brands_portal.py` (activate/cancel tests updated
+for the real Customer/Refund calls now in their code path). All 155
+backend tests pass.
+
+```
+Implement the money-movement core. Treat every amount as untrusted until
 
 ```
 Implement the money-movement core. Treat every amount as untrusted until
