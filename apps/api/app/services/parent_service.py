@@ -445,7 +445,11 @@ def send_monthly_digests(conn: psycopg.Connection, settings: Settings) -> int:
 # ── Account controls ────────────────────────────────────────────────
 
 
-def suspend_account(conn: psycopg.Connection, settings: Settings, *, parent_record_id: str, rep_id: str) -> None:
+def suspend_account(conn: psycopg.Connection, parent_record_id: str, rep_id: str, *, settings: Settings | None = None) -> None:
+    if settings is None:
+        from app.core.config import get_settings
+
+        settings = get_settings()
     now = datetime.now(timezone.utc)
     with conn.cursor() as cur:
         cur.execute(

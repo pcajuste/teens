@@ -3,6 +3,7 @@ node_modules/
 .next/
 out/
 .pnpm-store/
+*.tsbuildinfo
 
 # Python
 __pycache__/

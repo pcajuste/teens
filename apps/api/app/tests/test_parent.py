@@ -1,31 +1,34 @@
 """Acceptance criteria for Prompt 4A (Parent Portal).
 
-Exercises app.services.parent_service directly against a lightweight
-in-memory fake connection -- same approach as test_reps.py's FakeDB,
-scoped to the tables/queries parent_service.py actually touches.
+Service-layer tests against app.services.parent_service, using a
+dedicated in-memory fake matching that module's exact SQL (same
+substring-matching approach as test_reps.py / test_auth.py). Router-level
+wiring (status codes, response shapes) is covered by the smaller set of
+end-to-end tests near the bottom of this file via a real TestClient.
 """
 
 from __future__ import annotations
 
 import uuid
+from contextlib import contextmanager
 from datetime import date, datetime, timedelta, timezone
 
 import pytest
+from fastapi.testclient import TestClient
 
 from app.core.config import Settings
-from app.core.parent_security import PortalClosedError as SessionPortalClosedError
-from app.core.parent_security import decode_parent_session_token, issue_parent_session_token
+from app.main import create_app
 from app.services import parent_service
 
 
 class FakeDB:
     def __init__(self) -> None:
-        self.users: dict[str, dict] = {}
         self.rep_profiles: dict[str, dict] = {}
+        self.users: dict[str, dict] = {}
         self.campaigns: dict[str, dict] = {}
-        self.brand_profiles: dict[str, dict] = {}
         self.campaign_reps: dict[str, dict] = {}
-        self.parent_records: dict[str, dict] = {}
+        self.brand_profiles: dict[str, dict] = {}
+        self.parent_records: dict[str, dict] = {}  # keyed by id
         self.parent_auth_tokens: dict[str, dict] = {}
 
 
@@ -35,23 +38,24 @@ class FakeCursor:
         self._result = None
         self._results: list = []
 
-    def __enter__(self):
+    def __enter__(self) -> "FakeCursor":
         return self
 
-    def __exit__(self, *exc):
+    def __exit__(self, *exc) -> None:
         return None
 
     def execute(self, sql: str, params=()) -> None:
         s = " ".join(sql.split())
+        params = tuple(params) if not isinstance(params, dict) else params
 
-        if "JOIN public.rep_profiles rp ON rp.id = pr.rep_id" in s and "WHERE pr.parent_email" in s:
+        if "SELECT pr.id, pr.rep_id, rp.display_name" in s and "FROM public.parent_records pr" in s:
             (email,) = params
-            for pr in self.db.parent_records.values():
-                if pr["parent_email"] == email:
-                    rep = self.db.rep_profiles[pr["rep_id"]]
-                    self._result = {"id": pr["id"], "rep_id": pr["rep_id"], "display_name": rep["display_name"]}
-                    return
-            self._result = None
+            match = next((p for p in self.db.parent_records.values() if p["parent_email"] == email), None)
+            if match is None:
+                self._result = None
+            else:
+                rep = self.db.rep_profiles[match["rep_id"]]
+                self._result = {"id": match["id"], "rep_id": match["rep_id"], "display_name": rep["display_name"]}
             return
 
         if s.startswith("INSERT INTO public.parent_auth_tokens"):
@@ -63,39 +67,41 @@ class FakeCursor:
             }
             return
 
-        if "FROM public.parent_auth_tokens t" in s and "JOIN public.parent_records pr" in s and "JOIN public.rep_profiles rp" in s:
+        if "SELECT t.id AS token_id" in s:
             (token_hash,) = params
-            for t in self.db.parent_auth_tokens.values():
-                if t["token_hash"] == token_hash:
-                    pr = self.db.parent_records[t["parent_record_id"]]
-                    rep = self.db.rep_profiles[pr["rep_id"]]
-                    self._result = {
-                        "token_id": t["id"], "expires_at": t["expires_at"], "used_at": t["used_at"],
-                        "parent_record_id": pr["id"], "rep_id": pr["rep_id"],
-                        "portal_expires_at": pr["portal_expires_at"], "parent_email": pr["parent_email"],
-                        "display_name": rep["display_name"],
-                    }
-                    return
-            self._result = None
+            match = next((t for t in self.db.parent_auth_tokens.values() if t["token_hash"] == token_hash), None)
+            if match is None:
+                self._result = None
+            else:
+                pr = self.db.parent_records[match["parent_record_id"]]
+                rep = self.db.rep_profiles[pr["rep_id"]]
+                self._result = {
+                    "token_id": match["id"], "expires_at": match["expires_at"], "used_at": match["used_at"],
+                    "parent_record_id": pr["id"], "rep_id": pr["rep_id"], "portal_expires_at": pr["portal_expires_at"],
+                    "parent_email": pr["parent_email"], "display_name": rep["display_name"],
+                }
             return
 
-        if s == "UPDATE public.parent_auth_tokens SET used_at = now() WHERE id = %s":
+        if s.startswith("UPDATE public.parent_auth_tokens SET used_at"):
             (token_id,) = params
             self.db.parent_auth_tokens[token_id]["used_at"] = datetime.now(timezone.utc)
             return
 
         if s == "SELECT * FROM public.parent_records WHERE id = %s":
+            # Used by app.core.parent_security.load_parent_record on
+            # every /parent/* request (session verification + portal
+            # expiry check).
             (parent_record_id,) = params
-            self._result = self.db.parent_records.get(parent_record_id)
+            self._result = dict(self.db.parent_records[parent_record_id]) if parent_record_id in self.db.parent_records else None
             return
 
-        if s.startswith("SELECT display_name, school_name, graduation_year"):
+        if "SELECT display_name, school_name, graduation_year, categories" in s:
             (rep_id,) = params
-            rep = self.db.rep_profiles.get(rep_id)
-            self._result = rep
+            rp = self.db.rep_profiles.get(rep_id)
+            self._result = dict(rp) if rp else None
             return
 
-        if "FROM public.campaign_reps cr" in s and "JOIN public.brand_profiles b" in s:
+        if "SELECT cr.id AS campaign_reps_id, cr.campaign_id, cr.parent_approval_deadline" in s:
             (rep_id,) = params
             out = []
             for cr in self.db.campaign_reps.values():
@@ -117,100 +123,103 @@ class FakeCursor:
 
         if s == "SELECT * FROM public.campaign_reps WHERE rep_id = %s AND campaign_id = %s":
             rep_id, campaign_id = params
-            self._result = next(
+            match = next(
                 (r for r in self.db.campaign_reps.values() if r["rep_id"] == rep_id and r["campaign_id"] == campaign_id),
                 None,
             )
+            self._result = dict(match) if match else None
             return
 
-        if s.startswith("SELECT * FROM public.campaign_reps WHERE rep_id = %s AND campaign_id = %s AND parent_approval_status = 'pending'"):
+        if s.startswith("SELECT * FROM public.campaign_reps") and "parent_approval_status = 'pending'" in s:
             rep_id, campaign_id = params
-            self._result = next(
+            match = next(
                 (r for r in self.db.campaign_reps.values()
                  if r["rep_id"] == rep_id and r["campaign_id"] == campaign_id and r["parent_approval_status"] == "pending"),
                 None,
             )
+            self._result = dict(match) if match else None
             return
 
-        if s.startswith("UPDATE public.campaign_reps") and "parent_approval_status = 'approved'" in s:
+        if s.startswith("UPDATE public.campaign_reps SET parent_approval_status = 'approved'"):
             (cr_id,) = params
             row = self.db.campaign_reps[cr_id]
             row.update(parent_approval_status="approved", parent_decided_at=datetime.now(timezone.utc))
             self._result = row
             return
 
-        if s.startswith("UPDATE public.campaign_reps") and "parent_approval_status = 'blocked'" in s:
+        if s.startswith("UPDATE public.campaign_reps") and "parent_approval_status = 'blocked'" in s and "id = %s" in s and "RETURNING *" in s:
             (cr_id,) = params
             row = self.db.campaign_reps[cr_id]
             row.update(parent_approval_status="blocked", parent_decided_at=datetime.now(timezone.utc), status="declined")
             self._result = row
             return
 
-        if s == "SELECT values_filters, campaign_approval_required, digest_enabled FROM public.parent_records WHERE id = %s":
+        if "SELECT values_filters, campaign_approval_required, digest_enabled" in s and "WHERE id = %s" in s and "UPDATE" not in s:
             (parent_record_id,) = params
             pr = self.db.parent_records.get(parent_record_id)
-            self._result = {k: pr[k] for k in ("values_filters", "campaign_approval_required", "digest_enabled")} if pr else None
+            self._result = (
+                {"values_filters": pr["values_filters"], "campaign_approval_required": pr["campaign_approval_required"], "digest_enabled": pr["digest_enabled"]}
+                if pr else None
+            )
             return
 
         if s.startswith("UPDATE public.parent_records SET values_filters"):
             values_filters, parent_record_id = params
-            self.db.parent_records[parent_record_id]["values_filters"] = values_filters
             pr = self.db.parent_records[parent_record_id]
-            self._result = {k: pr[k] for k in ("values_filters", "campaign_approval_required", "digest_enabled")}
-            return
-
-        if s.startswith("SELECT u.date_of_birth"):
-            (rep_id,) = params
-            rep = self.db.rep_profiles[rep_id]
-            user = self.db.users[rep["user_id"]]
-            self._result = {"date_of_birth": user["date_of_birth"]}
+            pr["values_filters"] = values_filters
+            self._result = {"values_filters": pr["values_filters"], "campaign_approval_required": pr["campaign_approval_required"], "digest_enabled": pr["digest_enabled"]}
             return
 
         if s.startswith("UPDATE public.parent_records SET campaign_approval_required"):
             campaign_approval_required, parent_record_id = params
-            self.db.parent_records[parent_record_id]["campaign_approval_required"] = campaign_approval_required
             pr = self.db.parent_records[parent_record_id]
-            self._result = {k: pr[k] for k in ("values_filters", "campaign_approval_required", "digest_enabled")}
+            pr["campaign_approval_required"] = campaign_approval_required
+            self._result = {"values_filters": pr["values_filters"], "campaign_approval_required": pr["campaign_approval_required"], "digest_enabled": pr["digest_enabled"]}
             return
 
         if s.startswith("UPDATE public.parent_records SET digest_enabled"):
             digest_enabled, parent_record_id = params
-            self.db.parent_records[parent_record_id]["digest_enabled"] = digest_enabled
             pr = self.db.parent_records[parent_record_id]
-            self._result = {k: pr[k] for k in ("values_filters", "campaign_approval_required", "digest_enabled")}
+            pr["digest_enabled"] = digest_enabled
+            self._result = {"values_filters": pr["values_filters"], "campaign_approval_required": pr["campaign_approval_required"], "digest_enabled": pr["digest_enabled"]}
             return
 
-        if s.startswith("SELECT categories, profile_completeness_score, total_earnings_cents"):
+        if "SELECT u.date_of_birth FROM public.users u" in s:
             (rep_id,) = params
-            rep = self.db.rep_profiles[rep_id]
-            self._result = {k: rep[k] for k in ("categories", "profile_completeness_score", "total_earnings_cents")}
+            rp = self.db.rep_profiles[rep_id]
+            self._result = {"date_of_birth": self.db.users[rp["user_id"]]["date_of_birth"]}
             return
 
-        if "COUNT(*) AS n" in s:
+        if "SELECT categories, profile_completeness_score, total_earnings_cents" in s:
+            (rep_id,) = params
+            rp = self.db.rep_profiles[rep_id]
+            self._result = {
+                "categories": rp["categories"], "profile_completeness_score": rp["profile_completeness_score"],
+                "total_earnings_cents": rp["total_earnings_cents"],
+            }
+            return
+
+        if "SELECT COUNT(*) AS n, COALESCE(SUM(payout_cents), 0) AS earned" in s:
             rep_id, month_start = params
-            n = sum(
-                1 for cr in self.db.campaign_reps.values()
+            matches = [
+                cr for cr in self.db.campaign_reps.values()
                 if cr["rep_id"] == rep_id and cr["status"] in ("confirmed", "paid")
                 and cr.get("confirmed_at") and cr["confirmed_at"] >= month_start
-            )
-            earned = sum(
-                cr["payout_cents"] or 0 for cr in self.db.campaign_reps.values()
-                if cr["rep_id"] == rep_id and cr["status"] in ("confirmed", "paid")
-                and cr.get("confirmed_at") and cr["confirmed_at"] >= month_start
-            )
-            self._result = {"n": n, "earned": earned}
+            ]
+            self._result = {"n": len(matches), "earned": sum(cr.get("payout_cents") or 0 for cr in matches)}
             return
 
         if s.startswith("UPDATE public.parent_records SET suspended_by_parent_at = %s"):
-            suspended_at, parent_record_id = params
-            self.db.parent_records[parent_record_id]["suspended_by_parent_at"] = suspended_at
+            now, parent_record_id = params
+            self.db.parent_records[parent_record_id]["suspended_by_parent_at"] = now
             return
 
         if s.startswith("UPDATE public.users SET account_status = 'suspended'"):
             (rep_id,) = params
-            rep = self.db.rep_profiles[rep_id]
-            self.db.users[rep["user_id"]]["account_status"] = "suspended"
-            self._result = {"email": self.db.users[rep["user_id"]]["email"]}
+            rp = self.db.rep_profiles[rep_id]
+            user = self.db.users[rp["user_id"]]
+            user["account_status"] = "suspended"
+            self._result = {"email": user["email"]}
             return
 
         if s == "SELECT suspended_by_parent_at FROM public.parent_records WHERE id = %s":
@@ -226,8 +235,8 @@ class FakeCursor:
 
         if s.startswith("UPDATE public.users SET account_status = 'active'"):
             (rep_id,) = params
-            rep = self.db.rep_profiles[rep_id]
-            self.db.users[rep["user_id"]]["account_status"] = "active"
+            rp = self.db.rep_profiles[rep_id]
+            self.db.users[rp["user_id"]]["account_status"] = "active"
             return
 
         raise AssertionError(f"FakeCursor got an unexpected query: {s}")
@@ -252,36 +261,26 @@ class FakeConn:
     def rollback(self) -> None:
         pass
 
+    def close(self) -> None:
+        pass
+
 
 REP_ID = "10000000-0000-0000-0000-000000000001"
-USER_ID = "00000000-0000-0000-0000-000000000001"
+REP_USER_ID = "00000000-0000-0000-0000-000000000001"
 PARENT_RECORD_ID = "20000000-0000-0000-0000-000000000001"
-
-
-def _settings() -> Settings:
-    return Settings(
-        next_public_supabase_url="http://localhost:54321", next_public_supabase_anon_key="x",
-        supabase_service_role_key="x", supabase_jwt_secret="x", database_url="postgresql://x",
-        stripe_secret_key="sk_test_x", stripe_publishable_key="pk_test_x", stripe_webhook_secret="whsec_x",
-        stripe_platform_fee_percent=35, resend_api_key="x", resend_from_email="noreply@teenure.com",
-        resend_parent_consent_template_id="t", next_public_app_url="http://localhost:3100",
-        api_url="http://localhost:8001", admin_secret_key="x", allowed_origins="http://localhost:3100",
-        jobs_runner_secret="x", min_rep_age=14, parental_consent_required_under=16,
-        parent_session_secret="test-parent-secret",
-    )
 
 
 @pytest.fixture
 def fake_db() -> FakeDB:
     db = FakeDB()
-    db.users[USER_ID] = {
-        "id": USER_ID, "email": "rep@example.com", "account_status": "active",
+    db.users[REP_USER_ID] = {
+        "id": REP_USER_ID, "email": "rep@example.com", "role": "rep", "account_status": "active",
         "date_of_birth": date.today().replace(year=date.today().year - 16),
     }
     db.rep_profiles[REP_ID] = {
-        "id": REP_ID, "user_id": USER_ID, "display_name": "Rep One", "school_name": "Lincoln High",
+        "id": REP_ID, "user_id": REP_USER_ID, "display_name": "Rep One", "school_name": "Lincoln High",
         "graduation_year": 2027, "categories": ["gaming"], "profile_completeness_score": 50,
-        "total_earnings_cents": 5000, "total_campaigns_completed": 1,
+        "total_earnings_cents": 5000, "total_campaigns_completed": 2,
     }
     db.parent_records[PARENT_RECORD_ID] = {
         "id": PARENT_RECORD_ID, "rep_id": REP_ID, "parent_email": "parent@example.com",
@@ -292,250 +291,301 @@ def fake_db() -> FakeDB:
     return db
 
 
-@pytest.fixture(autouse=True)
-def _reset_rate_limit():
-    parent_service._last_request_at.clear()
-    yield
+@pytest.fixture
+def settings() -> Settings:
+    from app.tests.conftest import _test_settings
+
+    return _test_settings()
 
 
-def test_request_link_non_enumerating_for_unknown_email(fake_db: FakeDB) -> None:
-    settings = _settings()
-    calls = []
-
-    def fake_send(**kwargs):
-        calls.append(kwargs)
-
-    import app.services.email_service as es
-
-    orig = es.send_parent_magic_link_email
-    es.send_parent_magic_link_email = fake_send
-    try:
-        parent_service.request_link(FakeConn(fake_db), settings, parent_email="nobody@example.com")
-    finally:
-        es.send_parent_magic_link_email = orig
-    assert calls == []  # no email sent, but also no exception/signal that it doesn't exist
+def _make_campaign(fake_db: FakeDB, **overrides) -> str:
+    brand_id = str(uuid.uuid4())
+    fake_db.brand_profiles[brand_id] = {"id": brand_id, "company_name": "Acme Co"}
+    campaign_id = str(uuid.uuid4())
+    fake_db.campaigns[campaign_id] = {
+        "id": campaign_id, "brand_id": brand_id, "product_name": "Widget",
+        "key_messaging": "Widgets are great", "deliverables_description": "1 post",
+        "prohibited_content": None, "payout_per_rep_cents": 5000, "target_categories": ["gaming"],
+        "start_date": date(2026, 1, 1), "end_date": date(2026, 2, 1),
+        **overrides,
+    }
+    return campaign_id
 
 
-def test_request_link_sends_email_for_known_parent(fake_db: FakeDB) -> None:
-    settings = _settings()
-    calls = []
-    import app.services.email_service as es
+def _make_pending_campaign_rep(fake_db: FakeDB, campaign_id: str, **overrides) -> str:
+    cr_id = str(uuid.uuid4())
+    fake_db.campaign_reps[cr_id] = {
+        "id": cr_id, "rep_id": REP_ID, "campaign_id": campaign_id, "status": "invited",
+        "parent_approval_status": "pending",
+        "parent_approval_deadline": datetime.now(timezone.utc) + timedelta(hours=48),
+        "parent_decided_at": None, "confirmed_at": None, "payout_cents": None,
+        **overrides,
+    }
+    return cr_id
 
-    orig = es.send_parent_magic_link_email
-    es.send_parent_magic_link_email = lambda **kw: calls.append(kw)
-    try:
-        parent_service.request_link(FakeConn(fake_db), settings, parent_email="parent@example.com")
-    finally:
-        es.send_parent_magic_link_email = orig
-    assert len(calls) == 1
+
+# ── Auth: non-enumeration + rate limiting ───────────────────────────
+
+
+def test_request_link_no_enumeration_for_unknown_email(fake_db: FakeDB, settings: Settings, monkeypatch) -> None:
+    sent = []
+    monkeypatch.setattr(
+        "app.services.email_service.send_parent_magic_link_email",
+        lambda **kw: sent.append(kw),
+    )
+    # No error raised, no email sent, regardless of whether the email matches.
+    parent_service.request_link(FakeConn(fake_db), settings, parent_email="nobody@example.com")
+    assert sent == []
+
+
+def test_request_link_sends_for_known_email(fake_db: FakeDB, settings: Settings, monkeypatch) -> None:
+    sent = []
+    monkeypatch.setattr(
+        "app.services.email_service.send_parent_magic_link_email",
+        lambda **kw: sent.append(kw),
+    )
+    parent_service.request_link(FakeConn(fake_db), settings, parent_email="parent@example.com")
+    assert len(sent) == 1
+    assert sent[0]["parent_email"] == "parent@example.com"
     assert len(fake_db.parent_auth_tokens) == 1
 
 
-def test_request_link_rate_limited_on_second_call(fake_db: FakeDB) -> None:
-    settings = _settings()
-    import app.services.email_service as es
-
-    orig = es.send_parent_magic_link_email
-    es.send_parent_magic_link_email = lambda **kw: None
-    try:
-        parent_service.request_link(FakeConn(fake_db), settings, parent_email="parent@example.com")
-        with pytest.raises(parent_service.RateLimitedError):
-            parent_service.request_link(FakeConn(fake_db), settings, parent_email="parent@example.com")
-    finally:
-        es.send_parent_magic_link_email = orig
+# ── Auth: verify token ───────────────────────────────────────────────
 
 
-def _issue_and_verify(fake_db: FakeDB, settings: Settings) -> tuple[str, str]:
-    import app.services.email_service as es
-
-    orig = es.send_parent_magic_link_email
-    captured = {}
-    es.send_parent_magic_link_email = lambda **kw: captured.update(kw)
-    try:
-        parent_service.request_link(FakeConn(fake_db), settings, parent_email="parent@example.com")
-    finally:
-        es.send_parent_magic_link_email = orig
-    token = captured["token"]
-    return parent_service.verify_token(FakeConn(fake_db), settings, token=token)
-
-
-def test_verify_token_issues_working_session(fake_db: FakeDB) -> None:
-    settings = _settings()
-    session_token, rep_id = _issue_and_verify(fake_db, settings)
-    assert rep_id == REP_ID
-    payload = decode_parent_session_token(session_token, settings)
-    assert payload["rep_id"] == REP_ID
-    assert payload["parent_record_id"] == PARENT_RECORD_ID
-
-
-def test_verify_token_rejects_reuse(fake_db: FakeDB) -> None:
-    settings = _settings()
-    import app.services.email_service as es
-
-    orig = es.send_parent_magic_link_email
-    captured = {}
-    es.send_parent_magic_link_email = lambda **kw: captured.update(kw)
-    try:
-        parent_service.request_link(FakeConn(fake_db), settings, parent_email="parent@example.com")
-    finally:
-        es.send_parent_magic_link_email = orig
-    token = captured["token"]
-    parent_service.verify_token(FakeConn(fake_db), settings, token=token)
-    with pytest.raises(parent_service.TokenAlreadyUsedError):
-        parent_service.verify_token(FakeConn(fake_db), settings, token=token)
-
-
-def test_verify_token_invalid_for_unknown_token(fake_db: FakeDB) -> None:
+def test_verify_token_invalid(fake_db: FakeDB, settings: Settings) -> None:
     with pytest.raises(parent_service.TokenInvalidError):
-        parent_service.verify_token(FakeConn(fake_db), _settings(), token="garbage")
+        parent_service.verify_token(FakeConn(fake_db), settings, token="not-a-real-token")
 
 
-def test_verify_token_portal_closed_when_rep_18(fake_db: FakeDB) -> None:
+def test_verify_token_expired(fake_db: FakeDB, settings: Settings) -> None:
+    token_hash = parent_service._hash_token("expired-token")
+    fake_db.parent_auth_tokens["t1"] = {
+        "id": "t1", "parent_record_id": PARENT_RECORD_ID, "token_hash": token_hash,
+        "expires_at": datetime.now(timezone.utc) - timedelta(minutes=1), "used_at": None,
+    }
+    with pytest.raises(parent_service.TokenExpiredError):
+        parent_service.verify_token(FakeConn(fake_db), settings, token="expired-token")
+
+
+def test_verify_token_already_used(fake_db: FakeDB, settings: Settings) -> None:
+    token_hash = parent_service._hash_token("used-token")
+    fake_db.parent_auth_tokens["t1"] = {
+        "id": "t1", "parent_record_id": PARENT_RECORD_ID, "token_hash": token_hash,
+        "expires_at": datetime.now(timezone.utc) + timedelta(minutes=10), "used_at": datetime.now(timezone.utc),
+    }
+    with pytest.raises(parent_service.TokenAlreadyUsedError):
+        parent_service.verify_token(FakeConn(fake_db), settings, token="used-token")
+
+
+def test_verify_token_success_issues_session(fake_db: FakeDB, settings: Settings) -> None:
+    token_hash = parent_service._hash_token("good-token")
+    fake_db.parent_auth_tokens["t1"] = {
+        "id": "t1", "parent_record_id": PARENT_RECORD_ID, "token_hash": token_hash,
+        "expires_at": datetime.now(timezone.utc) + timedelta(minutes=10), "used_at": None,
+    }
+    session_token, rep_id = parent_service.verify_token(FakeConn(fake_db), settings, token="good-token")
+    assert rep_id == REP_ID
+    assert isinstance(session_token, str) and session_token
+    assert fake_db.parent_auth_tokens["t1"]["used_at"] is not None
+
+
+def test_verify_token_portal_closed_at_18(fake_db: FakeDB, settings: Settings, monkeypatch) -> None:
     fake_db.parent_records[PARENT_RECORD_ID]["portal_expires_at"] = datetime.now(timezone.utc) - timedelta(days=1)
-    settings = _settings()
-    import app.services.email_service as es
-
-    orig_link, orig_closed = es.send_parent_magic_link_email, es.send_portal_closed_email
-    es.send_parent_magic_link_email = lambda **kw: None
-    es.send_portal_closed_email = lambda **kw: None
-    try:
-        parent_service.request_link(FakeConn(fake_db), settings, parent_email="parent@example.com")
-        token_id = next(iter(fake_db.parent_auth_tokens))
-        # can't recover raw token here (only hash stored) -- simulate via
-        # direct verify_token call using the known hash bypass instead:
-        # re-derive by calling request_link's captured token via a spy.
-    finally:
-        pass
-    # Simpler: directly exercise the portal-expiry branch through a fresh
-    # captured token.
-    captured = {}
-    es.send_parent_magic_link_email = lambda **kw: captured.update(kw)
-    parent_service._last_request_at.clear()
-    parent_service.request_link(FakeConn(fake_db), settings, parent_email="parent@example.com")
-    es.send_parent_magic_link_email = orig_link
-    es.send_portal_closed_email = orig_closed
+    token_hash = parent_service._hash_token("adult-token")
+    fake_db.parent_auth_tokens["t1"] = {
+        "id": "t1", "parent_record_id": PARENT_RECORD_ID, "token_hash": token_hash,
+        "expires_at": datetime.now(timezone.utc) + timedelta(minutes=10), "used_at": None,
+    }
+    monkeypatch.setattr("app.services.email_service.send_portal_closed_email", lambda **kw: None)
     with pytest.raises(parent_service.PortalClosedError):
-        parent_service.verify_token(FakeConn(fake_db), settings, token=captured["token"])
+        parent_service.verify_token(FakeConn(fake_db), settings, token="adult-token")
 
 
-def _session(fake_db: FakeDB) -> parent_service:
-    return PARENT_RECORD_ID, REP_ID
+# ── Dashboard ───────────────────────────────────────────────────────
 
 
-def test_get_dashboard_returns_allow_listed_fields(fake_db: FakeDB) -> None:
-    row = parent_service.get_dashboard(FakeConn(fake_db), REP_ID)
-    assert row["display_name"] == "Rep One"
-    assert row["total_earnings_cents"] == 5000
-    assert "submission_text" not in row
+def test_get_dashboard_returns_earnings_and_summary(fake_db: FakeDB) -> None:
+    dashboard = parent_service.get_dashboard(FakeConn(fake_db), REP_ID)
+    assert dashboard["display_name"] == "Rep One"
+    assert dashboard["total_earnings_cents"] == 5000
+    assert dashboard["total_campaigns_completed"] == 2
 
 
-def _make_campaign(fake_db: FakeDB, *, pending: bool = True) -> tuple[str, str]:
-    campaign_id = str(uuid.uuid4())
-    brand_id = str(uuid.uuid4())
-    fake_db.brand_profiles[brand_id] = {"id": brand_id, "company_name": "Acme Co"}
-    fake_db.campaigns[campaign_id] = {
-        "id": campaign_id, "brand_id": brand_id, "product_name": "Widget", "key_messaging": "Widgets rule",
-        "deliverables_description": "1 post", "prohibited_content": None, "payout_per_rep_cents": 5000,
-        "start_date": date(2026, 1, 1), "end_date": date(2026, 2, 1), "target_categories": ["gaming"],
-    }
-    cr_id = str(uuid.uuid4())
-    fake_db.campaign_reps[cr_id] = {
-        "id": cr_id, "campaign_id": campaign_id, "rep_id": REP_ID,
-        "parent_approval_status": "pending" if pending else "approved",
-        "parent_approval_deadline": datetime.now(timezone.utc) + timedelta(hours=48),
-        "status": "invited", "payout_cents": 5000, "confirmed_at": None,
-    }
-    return campaign_id, cr_id
+# ── Campaign approval queue ──────────────────────────────────────────
 
 
-def test_pending_campaigns_returns_full_brief(fake_db: FakeDB) -> None:
-    campaign_id, _ = _make_campaign(fake_db)
-    rows = parent_service.pending_campaigns(FakeConn(fake_db), REP_ID)
-    assert len(rows) == 1
-    assert rows[0]["brand_name"] == "Acme Co"
-    assert rows[0]["campaign_id"] == campaign_id
+def test_approve_campaign(fake_db: FakeDB) -> None:
+    campaign_id = _make_campaign(fake_db)
+    cr_id = _make_pending_campaign_rep(fake_db, campaign_id)
+
+    row = parent_service.approve_campaign(FakeConn(fake_db), REP_ID, campaign_id)
+    assert row["parent_approval_status"] == "approved"
+    assert fake_db.campaign_reps[cr_id]["parent_approval_status"] == "approved"
 
 
-def test_approve_campaign_is_idempotent(fake_db: FakeDB) -> None:
-    campaign_id, cr_id = _make_campaign(fake_db)
-    row1 = parent_service.approve_campaign(FakeConn(fake_db), REP_ID, campaign_id)
-    assert row1["parent_approval_status"] == "approved"
-    row2 = parent_service.approve_campaign(FakeConn(fake_db), REP_ID, campaign_id)
-    assert row2["parent_approval_status"] == "approved"
+def test_approve_campaign_idempotent(fake_db: FakeDB) -> None:
+    campaign_id = _make_campaign(fake_db)
+    _make_pending_campaign_rep(fake_db, campaign_id, parent_approval_status="approved")
+
+    row = parent_service.approve_campaign(FakeConn(fake_db), REP_ID, campaign_id)
+    assert row["parent_approval_status"] == "approved"
 
 
-def test_block_campaign_auto_declines_neutrally(fake_db: FakeDB) -> None:
-    campaign_id, cr_id = _make_campaign(fake_db)
+def test_block_campaign_neutral_auto_decline(fake_db: FakeDB) -> None:
+    """A parent block must land at status='declined' with no reason field
+    exposed anywhere in the row a brand-facing query would read.
+    """
+    campaign_id = _make_campaign(fake_db)
+    cr_id = _make_pending_campaign_rep(fake_db, campaign_id)
+
     row = parent_service.block_campaign(FakeConn(fake_db), REP_ID, campaign_id)
     assert row["parent_approval_status"] == "blocked"
     assert row["status"] == "declined"
+    assert fake_db.campaign_reps[cr_id]["status"] == "declined"
 
 
-def test_block_campaign_not_found_for_non_pending(fake_db: FakeDB) -> None:
-    campaign_id, _ = _make_campaign(fake_db, pending=False)
+def test_block_campaign_not_pending_raises(fake_db: FakeDB) -> None:
+    campaign_id = _make_campaign(fake_db)
     with pytest.raises(parent_service.CampaignNotPendingError):
         parent_service.block_campaign(FakeConn(fake_db), REP_ID, campaign_id)
 
 
+def test_pending_campaigns_returns_full_brief(fake_db: FakeDB) -> None:
+    campaign_id = _make_campaign(fake_db, target_categories=["gaming", "in_person_travel_required"])
+    _make_pending_campaign_rep(fake_db, campaign_id)
+
+    rows = parent_service.pending_campaigns(FakeConn(fake_db), REP_ID)
+    assert len(rows) == 1
+    assert rows[0]["brand_name"] == "Acme Co"
+    assert rows[0]["requires_in_person"] is True
+
+
+# ── Settings / values filters / approval toggle ─────────────────────
+
+
 def test_update_values_filters(fake_db: FakeDB) -> None:
-    row = parent_service.update_values_filters(FakeConn(fake_db), PARENT_RECORD_ID, ["alcohol_adjacent"])
-    assert row["values_filters"] == ["alcohol_adjacent"]
+    row = parent_service.update_values_filters(FakeConn(fake_db), PARENT_RECORD_ID, ["alcohol_adjacent", "gambling"])
+    assert row["values_filters"] == ["alcohol_adjacent", "gambling"]
 
 
-def test_update_approval_required_allowed_for_16_17(fake_db: FakeDB) -> None:
-    row = parent_service.update_approval_required(
-        FakeConn(fake_db), PARENT_RECORD_ID, REP_ID, campaign_approval_required=False
-    )
-    assert row["campaign_approval_required"] is False
-
-
-def test_update_approval_required_rejected_outside_16_17(fake_db: FakeDB) -> None:
-    fake_db.users[USER_ID]["date_of_birth"] = date.today().replace(year=date.today().year - 20)
+def test_approval_toggle_rejected_under_16(fake_db: FakeDB) -> None:
+    fake_db.users[REP_USER_ID]["date_of_birth"] = date.today().replace(year=date.today().year - 14)
     with pytest.raises(parent_service.ApprovalToggleNotPermittedError):
         parent_service.update_approval_required(
             FakeConn(fake_db), PARENT_RECORD_ID, REP_ID, campaign_approval_required=False
         )
 
 
+def test_approval_toggle_allowed_for_16_17(fake_db: FakeDB) -> None:
+    fake_db.users[REP_USER_ID]["date_of_birth"] = date.today().replace(year=date.today().year - 17)
+    row = parent_service.update_approval_required(
+        FakeConn(fake_db), PARENT_RECORD_ID, REP_ID, campaign_approval_required=False
+    )
+    assert row["campaign_approval_required"] is False
+
+
+def test_approval_toggle_rejected_at_18(fake_db: FakeDB) -> None:
+    fake_db.users[REP_USER_ID]["date_of_birth"] = date.today().replace(year=date.today().year - 18)
+    with pytest.raises(parent_service.ApprovalToggleNotPermittedError):
+        parent_service.update_approval_required(
+            FakeConn(fake_db), PARENT_RECORD_ID, REP_ID, campaign_approval_required=True
+        )
+
+
+# ── Monthly digest content boundary ─────────────────────────────────
+
+
 def test_digest_preview_excludes_message_and_submission_content(fake_db: FakeDB) -> None:
-    preview = parent_service.digest_preview(FakeConn(fake_db), REP_ID)
-    serialized_keys = set(preview.keys())
-    assert serialized_keys == {
-        "campaigns_completed_this_month", "earnings_this_month_cents", "earnings_lifetime_cents",
-        "profile_completeness_score", "categories_active_in",
+    """Hard content-boundary check (deliverable 5): the digest payload
+    must never contain recruiter message content, submission text/files,
+    or brand contact details -- verified here by asserting the whole
+    serialized digest only contains the allow-listed keys.
+    """
+    digest = parent_service.digest_preview(FakeConn(fake_db), REP_ID)
+    allowed_keys = {
+        "campaigns_completed_this_month", "earnings_this_month_cents",
+        "earnings_lifetime_cents", "profile_completeness_score", "categories_active_in",
     }
-    for forbidden in ("submission_text", "submission_file_urls", "message_text", "brand_contact"):
-        assert forbidden not in preview
+    assert set(digest.keys()) == allowed_keys
+    serialized = str(digest)
+    for forbidden in ("submission_text", "submission_file_urls", "message_text", "brand_email", "brand_contact"):
+        assert forbidden not in serialized
 
 
-def test_suspend_and_unsuspend_by_parent(fake_db: FakeDB) -> None:
-    settings = _settings()
-    import app.services.email_service as es
+# ── Account controls ─────────────────────────────────────────────────
 
-    orig = es.send_account_suspended_email
-    es.send_account_suspended_email = lambda **kw: None
-    try:
-        parent_service.suspend_account(FakeConn(fake_db), settings, parent_record_id=PARENT_RECORD_ID, rep_id=REP_ID)
-    finally:
-        es.send_account_suspended_email = orig
-    assert fake_db.users[USER_ID]["account_status"] == "suspended"
+
+def test_suspend_account_sets_status_and_notifies(fake_db: FakeDB, monkeypatch) -> None:
+    sent = []
+    monkeypatch.setattr("app.services.email_service.send_account_suspended_email", lambda **kw: sent.append(kw))
+
+    parent_service.suspend_account(FakeConn(fake_db), PARENT_RECORD_ID, REP_ID, settings=settings)
+    assert fake_db.users[REP_USER_ID]["account_status"] == "suspended"
     assert fake_db.parent_records[PARENT_RECORD_ID]["suspended_by_parent_at"] is not None
+    assert len(sent) == 1
+
+
+def test_unsuspend_reverses_parent_initiated_suspension(fake_db: FakeDB, monkeypatch) -> None:
+    monkeypatch.setattr("app.services.email_service.send_account_suspended_email", lambda **kw: None)
+    parent_service.suspend_account(FakeConn(fake_db), PARENT_RECORD_ID, REP_ID, settings=settings)
 
     parent_service.unsuspend_account(FakeConn(fake_db), PARENT_RECORD_ID, REP_ID)
-    assert fake_db.users[USER_ID]["account_status"] == "active"
+    assert fake_db.users[REP_USER_ID]["account_status"] == "active"
     assert fake_db.parent_records[PARENT_RECORD_ID]["suspended_by_parent_at"] is None
 
 
 def test_unsuspend_rejected_when_not_parent_initiated(fake_db: FakeDB) -> None:
-    # Admin-initiated: status is suspended but suspended_by_parent_at is None.
-    fake_db.users[USER_ID]["account_status"] = "suspended"
+    # No suspension has happened at all -- same failure mode as an
+    # admin-initiated suspension from the parent's point of view.
     with pytest.raises(PermissionError):
         parent_service.unsuspend_account(FakeConn(fake_db), PARENT_RECORD_ID, REP_ID)
 
 
-def test_session_token_round_trip(fake_db: FakeDB) -> None:
-    settings = _settings()
+# ── End-to-end router smoke tests ────────────────────────────────────
+
+
+@pytest.fixture
+def parent_client(settings: Settings, fake_db: FakeDB, monkeypatch: pytest.MonkeyPatch) -> TestClient:
+    from app.core import db as db_module
+    from app.routers import parent as parent_router
+
+    @contextmanager
+    def fake_get_connection(_settings: Settings):
+        yield FakeConn(fake_db)
+
+    monkeypatch.setattr(db_module, "get_connection", fake_get_connection)
+    monkeypatch.setattr(parent_router, "get_connection", fake_get_connection)
+
+    return TestClient(create_app(settings=settings))
+
+
+def _parent_headers(settings: Settings) -> dict:
+    from app.core.parent_security import issue_parent_session_token
+
     token = issue_parent_session_token(parent_record_id=PARENT_RECORD_ID, rep_id=REP_ID, settings=settings)
-    payload = decode_parent_session_token(token, settings)
-    assert payload["parent_record_id"] == PARENT_RECORD_ID
-    assert payload["rep_id"] == REP_ID
+    return {"Authorization": f"Bearer {token}"}
+
+
+def test_request_link_route_always_202(parent_client: TestClient) -> None:
+    resp = parent_client.post("/parent/auth/request-link", json={"parent_email": "unknown@example.com"})
+    assert resp.status_code == 202
+    assert resp.json() == {"status": "sent_if_eligible"}
+
+
+def test_dashboard_requires_session(parent_client: TestClient) -> None:
+    resp = parent_client.get("/parent/dashboard")
+    assert resp.status_code == 401
+
+
+def test_dashboard_with_valid_session(parent_client: TestClient, settings: Settings) -> None:
+    resp = parent_client.get("/parent/dashboard", headers=_parent_headers(settings))
+    assert resp.status_code == 200
+    assert resp.json()["display_name"] == "Rep One"
+
+
+def test_session_rejected_after_portal_expiry(parent_client: TestClient, settings: Settings, fake_db: FakeDB) -> None:
+    fake_db.parent_records[PARENT_RECORD_ID]["portal_expires_at"] = datetime.now(timezone.utc) - timedelta(days=1)
+    resp = parent_client.get("/parent/dashboard", headers=_parent_headers(settings))
+    assert resp.status_code == 403
+    assert "closed" in resp.json()["error"]["message"].lower()

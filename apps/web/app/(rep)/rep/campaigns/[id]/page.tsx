@@ -97,6 +97,21 @@ export default function CampaignDetailPage() {
     }
   }
 
+  async function doWithdraw() {
+    if (!campaign) return;
+    if (!confirm("Withdraw from this campaign? This can't be undone.")) return;
+    setActing(true);
+    setActionError(null);
+    try {
+      await api.withdrawCampaign(campaign.campaign_id);
+      await load();
+    } catch (err) {
+      setActionError(err instanceof ApiError ? String(err.detail ?? err.message) : "Could not withdraw from this campaign.");
+    } finally {
+      setActing(false);
+    }
+  }
+
   if (loading) {
     return (
       <main className="container py-6">
@@ -114,8 +129,10 @@ export default function CampaignDetailPage() {
   }
 
   const canApply = campaign.status === "available" || campaign.status === "not_applied";
-  const canAcceptDecline = campaign.status === "invited";
+  const awaitingParentApproval = campaign.status === "invited" && campaign.parent_approval_status === "pending";
+  const canAcceptDecline = campaign.status === "invited" && !awaitingParentApproval;
   const canSubmit = campaign.status === "accepted" || campaign.status === "revision_requested";
+  const canWithdraw = ["invited", "accepted", "submitted", "revision_requested"].includes(campaign.status);
   const expiry = countdown(campaign.invite_expires_at);
 
   return (
@@ -172,6 +189,19 @@ export default function CampaignDetailPage() {
         </Button>
       )}
 
+      {awaitingParentApproval && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Waiting on your parent</CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground">
+            This campaign needs your parent or guardian&apos;s approval before you can accept or
+            decline it. We&apos;ve sent them a notification — check back once they&apos;ve responded,
+            or it will automatically expire if they don&apos;t respond within 48 hours.
+          </CardContent>
+        </Card>
+      )}
+
       {canAcceptDecline && (
         <Card>
           <CardHeader>
@@ -206,6 +236,12 @@ export default function CampaignDetailPage() {
       )}
 
       <StatusTracker status={campaign.status} />
+
+      {canWithdraw && (
+        <Button onClick={doWithdraw} disabled={acting} variant="destructive" size="sm">
+          Withdraw from campaign
+        </Button>
+      )}
     </main>
   );
 }

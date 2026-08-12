@@ -185,7 +185,7 @@ def suspend(
 ) -> dict:
     with get_connection(settings) as conn:
         parent_service.suspend_account(
-            conn, settings, parent_record_id=session.parent_record_id, rep_id=session.rep_id
+            conn, session.parent_record_id, session.rep_id, settings=settings
         )
     return {"status": "suspended"}
 

@@ -67,6 +67,7 @@ export const api = {
   acceptCampaign: (id: string, body: import("./types").AcceptRequest) =>
     apiFetch(`/campaigns/${id}/accept`, { method: "POST", body: JSON.stringify(body) }),
   declineCampaign: (id: string) => apiFetch(`/campaigns/${id}/decline`, { method: "POST" }),
+  withdrawCampaign: (id: string) => apiFetch(`/campaigns/${id}/withdraw`, { method: "POST" }),
   submitCampaign: (id: string, body: import("./types").SubmitRequest) =>
     apiFetch(`/campaigns/${id}/submit`, { method: "POST", body: JSON.stringify(body) }),
   requestUploadUrl: (
