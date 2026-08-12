@@ -1,0 +1,72 @@
+"""Typed application settings.
+
+Loads every variable listed in the repo-root `.env.example`. Required
+variables (no default in `.env.example`) cause a startup failure via
+pydantic-settings' normal validation if missing — there is no silent
+fallback for secrets or connection strings, per Section 9's "no client
+trust" posture extended to config: a misconfigured deploy should fail
+loudly at boot, not degrade at request time.
+
+Supersedes Prompt 1's minimal `app/core/settings.py` placeholder.
+"""
+from __future__ import annotations
+
+from functools import lru_cache
+
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=(".env.local", ".env"),
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    environment: str = "development"
+
+    # ── Supabase ─────────────────────────────────────────────────
+    next_public_supabase_url: str
+    next_public_supabase_anon_key: str
+    supabase_service_role_key: str
+    database_url: str
+    supabase_jwt_secret: str
+
+    # ── Stripe ───────────────────────────────────────────────────
+    stripe_secret_key: str
+    stripe_publishable_key: str
+    stripe_webhook_secret: str
+    stripe_platform_fee_percent: int = 35
+
+    # ── Resend ───────────────────────────────────────────────────
+    resend_api_key: str
+    resend_from_email: str = "noreply@teenure.com"
+    resend_parent_consent_template_id: str
+    resend_parent_magic_link_template_id: str
+    resend_parent_digest_template_id: str
+
+    # ── App ──────────────────────────────────────────────────────
+    next_public_app_url: str
+    api_url: str
+    admin_secret_key: str
+    allowed_origins_raw: str = Field(default="http://localhost:3100", alias="ALLOWED_ORIGINS")
+
+    # ── Scheduled jobs ───────────────────────────────────────────
+    jobs_runner_secret: str
+
+    # ── Feature flags ────────────────────────────────────────────
+    min_rep_age: int = 14
+    parental_consent_required_under: int = 16
+
+    # ── Parent Portal ────────────────────────────────────────────
+    parent_session_secret: str
+
+    @property
+    def allowed_origins(self) -> list[str]:
+        return [origin.strip() for origin in self.allowed_origins_raw.split(",") if origin.strip()]
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()

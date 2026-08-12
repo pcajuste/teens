@@ -1,23 +1,25 @@
 """App-factory entrypoint for the Teenure FastAPI backend.
 
 Deliberately not a bare module-level `FastAPI()` instance — using a
-factory (`create_app`) lets tests and future environments inject
-different config (Prompt 3's typed settings) without import-time
-side effects.
+factory (`create_app`) lets tests inject different config via
+dependency overrides on `get_settings` without import-time side
+effects.
 """
 from __future__ import annotations
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.core.settings import get_settings
+from app.core.config import get_settings
+from app.core.errors import register_exception_handlers
+from app.jobs.runner import router as jobs_router
 from app.routers import health
 
 
 def create_app() -> FastAPI:
     settings = get_settings()
 
-    app = FastAPI(title=settings.app_name)
+    app = FastAPI(title="Teenure API")
 
     app.add_middleware(
         CORSMiddleware,
@@ -27,7 +29,10 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    register_exception_handlers(app)
+
     app.include_router(health.router)
+    app.include_router(jobs_router)
 
     return app
 

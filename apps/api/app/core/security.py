@@ -1,0 +1,148 @@
+"""Auth dependencies: Supabase JWT verification, role/account-status
+enforcement, and the separate parent-session mechanism.
+
+Two distinct token types flow through this module:
+
+1. Supabase JWTs (HS256, signed with SUPABASE_JWT_SECRET) — issued to
+   reps/brands/recruiters/admins on login. `role` and `account_status`
+   are read from the token's `app_metadata` claim, which a Postgres
+   trigger keeps in sync with `public.users` (role, account_status)
+   on every insert/update — see docs/rep_profiles_cache_recompute.md
+   sibling note for the trigger design. This avoids a DB round-trip
+   on every request; a status change (e.g. suspension) takes effect
+   on the user's next token refresh, matching Supabase's standard
+   session-refresh cadence.
+2. Parent session tokens (HS256, signed with PARENT_SESSION_SECRET —
+   a distinct secret) — issued when a parent clicks their magic-link
+   email (Prompt 4A). Parents have no `auth.users` row (Section 7), so
+   they are never issued a Supabase-signed JWT; this is a
+   purpose-built, short-lived session token carrying only
+   `parent_id`/`rep_id`, verified by `get_parent_session` and never
+   accepted by `get_current_user`.
+"""
+from __future__ import annotations
+
+from typing import Literal
+
+import jwt
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from pydantic import BaseModel
+
+from app.core.config import Settings, get_settings
+
+Role = Literal["rep", "brand", "recruiter", "admin"]
+AccountStatus = Literal["pending", "active", "suspended", "rejected"]
+
+_supabase_bearer = HTTPBearer(auto_error=False)
+_parent_bearer = HTTPBearer(auto_error=False)
+
+PARENT_SESSION_ISSUER = "teenure-parent-portal"
+
+
+class AuthenticatedUser(BaseModel):
+    id: str
+    email: str
+    role: Role
+    account_status: AccountStatus
+
+
+class ParentSession(BaseModel):
+    parent_id: str
+    rep_id: str
+
+
+def _unauthorized(code: str, message: str) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail={"code": code, "message": message},
+    )
+
+
+def _forbidden(code: str, message: str) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail={"code": code, "message": message},
+    )
+
+
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_supabase_bearer),
+    settings: Settings = Depends(get_settings),
+) -> AuthenticatedUser:
+    if credentials is None:
+        raise _unauthorized("missing_credentials", "Authorization: Bearer token required.")
+
+    try:
+        payload = jwt.decode(
+            credentials.credentials,
+            settings.supabase_jwt_secret,
+            algorithms=["HS256"],
+            audience="authenticated",
+        )
+    except jwt.PyJWTError as exc:
+        raise _unauthorized("invalid_token", "Supabase JWT is invalid or expired.") from exc
+
+    app_metadata = payload.get("app_metadata") or {}
+    role = app_metadata.get("role")
+    account_status = app_metadata.get("account_status")
+    if not role or not account_status or "sub" not in payload:
+        raise _unauthorized("malformed_token", "Token is missing required user claims.")
+
+    return AuthenticatedUser(
+        id=payload["sub"],
+        email=payload.get("email", ""),
+        role=role,
+        account_status=account_status,
+    )
+
+
+def require_active_account(user: AuthenticatedUser = Depends(get_current_user)) -> AuthenticatedUser:
+    if user.account_status != "active":
+        raise _forbidden(
+            "account_not_active",
+            f"Account status is '{user.account_status}', not 'active'.",
+        )
+    return user
+
+
+def require_role(*roles: Role):
+    """Dependency factory: 403 with code 'role_mismatch' unless the
+    caller's role is one of `roles`. Applies the account-status check
+    first, so a suspended user gets 'account_not_active' rather than a
+    role-mismatch message that would leak nothing useful."""
+
+    async def _dependency(user: AuthenticatedUser = Depends(require_active_account)) -> AuthenticatedUser:
+        if user.role not in roles:
+            raise _forbidden(
+                "role_mismatch",
+                f"Requires role in {sorted(roles)}, caller has '{user.role}'.",
+            )
+        return user
+
+    return _dependency
+
+
+async def get_parent_session(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_parent_bearer),
+    settings: Settings = Depends(get_settings),
+) -> ParentSession:
+    if credentials is None:
+        raise _unauthorized("missing_parent_session", "Parent session token required.")
+
+    try:
+        payload = jwt.decode(
+            credentials.credentials,
+            settings.parent_session_secret,
+            algorithms=["HS256"],
+            issuer=PARENT_SESSION_ISSUER,
+        )
+    except jwt.PyJWTError as exc:
+        raise _unauthorized("invalid_parent_session", "Parent session token is invalid or expired.") from exc
+
+    parent_id = payload.get("parent_id")
+    rep_id = payload.get("rep_id")
+    if not parent_id or not rep_id:
+        raise _unauthorized("malformed_parent_session", "Token is missing required parent-session claims.")
+
+    return ParentSession(parent_id=parent_id, rep_id=rep_id)
