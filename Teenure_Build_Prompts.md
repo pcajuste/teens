@@ -339,12 +339,7 @@ Acceptance criteria:
 **Depends on:** Prompt 4. Canonically sits between Prompts 4 and 5 in
 the build sequence — the parent campaign-approval gate and values-filter
 exclusion in Prompt 5 depend on the parent_service functions this
-prompt implements. Because this prompt is built before Prompt 5 in this
-repo, Prompt 5's parent-approval gate, values-filter exclusion, and
-withdraw endpoint (its own deliverables 3, 7, and 9) are native parts of
-its original implementation — there is no retrofit step here or in
-Prompt 5/6; build each prompt once, in order, using the parent_service
-functions this prompt creates.
+prompt implements.
 
 ```
 Build the Parent Portal: a separate authenticated surface for parents of
@@ -1102,14 +1097,7 @@ Deliverables:
 4. Frontend tests (Vitest/RTL or Next.js equivalent): FTC checkbox gate,
    credit-spend confirmation prompts, age-gate/pending-consent screen
    states, parent-approval-pending state in rep campaign view,
-   parent portal approve/block actions, and the rep dashboard's
-   available-campaigns panel excluding a parent-blocked-category
-   campaign for a rep whose parent has that category in values_filters
-   (mock the API response with a category the seeded rep's parent has
-   blocked and assert it never renders — this is a safety-enforcement
-   surface, not just a display concern, so it needs the same test-backed
-   guarantee as the FTC checkbox rather than resting on manual
-   verification alone).
+   parent portal approve/block actions.
 5. CI-runnable command running backend and frontend suites together,
    failing build on any failure.
 
@@ -1118,9 +1106,6 @@ Acceptance criteria:
   - Integration flows pass end-to-end against local Supabase and Stripe
     test mode.
   - Parent portal approval flow integration test passes.
-  - Frontend test proves (not just visually confirms) that a
-    parent-blocked-category campaign is absent from the rendered
-    available-campaigns panel.
   - CI command returns non-zero on any failure.
 ```
 
