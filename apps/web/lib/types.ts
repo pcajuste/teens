@@ -1086,12 +1086,25 @@ export interface InsightEligibility {
   manually_reviewed_at: string | null;
 }
 
+export type InsightFeedbackFormat = "rating_scale" | "structured_qa";
+
+export interface QAQuestion {
+  id: string;
+  prompt: string;
+}
+
+export interface QAAnswer {
+  question_id: string;
+  answer_text: string;
+}
+
 export interface InsightCampaign {
   id: string;
   title: string;
   material_url: string;
   business_question: string;
-  feedback_format: string;
+  feedback_format: InsightFeedbackFormat;
+  qa_questions: QAQuestion[];
   panel_size: number;
   panel_criteria: Record<string, unknown>;
   compensation_cents: number;
@@ -1107,6 +1120,8 @@ export interface InsightCampaignCreateRequest {
   title: string;
   material_url: string;
   business_question: string;
+  feedback_format?: InsightFeedbackFormat;
+  qa_questions?: QAQuestion[];
   panel_size: number;
   panel_criteria?: Record<string, unknown>;
   compensation_cents: number;
@@ -1119,6 +1134,8 @@ export interface InsightInvitation {
   campaign_id: string;
   campaign_title: string;
   business_question: string;
+  feedback_format: InsightFeedbackFormat;
+  qa_questions: QAQuestion[];
   confidentiality_terms: string;
   compensation_cents: number;
   invited_at: string;
@@ -1130,8 +1147,23 @@ export interface RatingAnswer {
   score: number;
 }
 
+export interface InsightResponseSubmitRequest {
+  ratings?: RatingAnswer[];
+  qa_answers?: QAAnswer[];
+}
+
 export interface InsightBrandResult {
   pseudonym_handle: string;
-  ratings: RatingAnswer[];
+  feedback_format: InsightFeedbackFormat;
+  ratings: RatingAnswer[] | null;
+  qa_answers: QAAnswer[] | null;
   submitted_at: string;
+}
+
+export interface InsightBrandResults {
+  feedback_format: InsightFeedbackFormat;
+  released: boolean;
+  responses_submitted: number;
+  responses_required: number;
+  results: InsightBrandResult[];
 }

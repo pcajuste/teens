@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 
 
 def _word_count_at_most(value: str, max_words: int, field_name: str) -> str:
@@ -140,10 +140,24 @@ class InsightEligibilityResponse(BaseModel):
     manually_reviewed_at: datetime | None
 
 
+class QAQuestion(BaseModel):
+    id: str
+    prompt: str
+
+    @field_validator("prompt")
+    @classmethod
+    def _prompt_length(cls, value: str) -> str:
+        if len(value) > 300:
+            raise ValueError("prompt must be at most 300 characters")
+        return value
+
+
 class InsightCampaignCreateRequest(BaseModel):
     title: str
     material_url: str
     business_question: str
+    feedback_format: str = "rating_scale"
+    qa_questions: list[QAQuestion] = []
     panel_size: int
     panel_criteria: dict = {}
     compensation_cents: int
@@ -166,6 +180,25 @@ class InsightCampaignCreateRequest(BaseModel):
             raise ValueError("compensation_cents must be >= 0")
         return value
 
+    @field_validator("feedback_format")
+    @classmethod
+    def _known_format(cls, value: str) -> str:
+        if value not in ("rating_scale", "structured_qa"):
+            raise ValueError("feedback_format must be one of: rating_scale, structured_qa")
+        return value
+
+    @model_validator(mode="after")
+    def _qa_questions_match_format(self) -> "InsightCampaignCreateRequest":
+        if self.feedback_format == "structured_qa":
+            if not 1 <= len(self.qa_questions) <= 8:
+                raise ValueError("structured_qa campaigns need between 1 and 8 qa_questions")
+            ids = [q.id for q in self.qa_questions]
+            if len(ids) != len(set(ids)):
+                raise ValueError("qa_questions ids must be unique")
+        elif self.qa_questions:
+            raise ValueError("qa_questions is only valid when feedback_format is structured_qa")
+        return self
+
 
 class InsightCampaignResponse(BaseModel):
     id: str
@@ -173,6 +206,7 @@ class InsightCampaignResponse(BaseModel):
     material_url: str
     business_question: str
     feedback_format: str
+    qa_questions: list[QAQuestion]
     panel_size: int
     panel_criteria: dict
     compensation_cents: int
@@ -193,6 +227,8 @@ class InsightInvitationResponse(BaseModel):
     campaign_id: str
     campaign_title: str
     business_question: str
+    feedback_format: str
+    qa_questions: list[QAQuestion]
     confidentiality_terms: str
     compensation_cents: int
     invited_at: datetime
@@ -211,15 +247,29 @@ class RatingAnswer(BaseModel):
         return value
 
 
-class InsightResponseSubmitRequest(BaseModel):
-    ratings: list[RatingAnswer]
+class QAAnswer(BaseModel):
+    question_id: str
+    answer_text: str
 
-    @field_validator("ratings")
+    @field_validator("answer_text")
     @classmethod
-    def _non_empty_ratings(cls, value: list[RatingAnswer]) -> list[RatingAnswer]:
-        if not value:
-            raise ValueError("ratings must not be empty")
+    def _answer_length(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("answer_text must not be empty")
+        if len(value) > 500:
+            raise ValueError("answer_text must be at most 500 characters")
         return value
+
+
+class InsightResponseSubmitRequest(BaseModel):
+    ratings: list[RatingAnswer] | None = None
+    qa_answers: list[QAAnswer] | None = None
+
+    @model_validator(mode="after")
+    def _exactly_one_populated(self) -> "InsightResponseSubmitRequest":
+        if bool(self.ratings) == bool(self.qa_answers):
+            raise ValueError("submit exactly one of: ratings, qa_answers")
+        return self
 
 
 class InsightResponseAck(BaseModel):
@@ -232,5 +282,36 @@ class InsightBrandResultResponse(BaseModel):
     talent_id/display_name field exists on this model at all."""
 
     pseudonym_handle: str
-    ratings: list[dict]
+    feedback_format: str
+    ratings: list[dict] | None
+    qa_answers: list[dict] | None
+    submitted_at: datetime
+
+
+class InsightBrandResultsResponse(BaseModel):
+    """Wraps per-response results with the campaign's release state.
+    For structured_qa, results stays [] and released=False until every
+    panel_size response has been submitted *and* moderator-approved
+    (issue #52's k-anonymity gate) -- rating_scale is always released
+    per-response, matching its pre-existing behavior."""
+
+    feedback_format: str
+    released: bool
+    responses_submitted: int
+    responses_required: int
+    results: list[InsightBrandResultResponse]
+
+
+class InsightResponseModerationItem(BaseModel):
+    """Admin-facing queue item for a pending structured_qa response.
+    Pseudonymous like every other brand/admin-adjacent Insight &
+    Feedback surface -- a human reviewer moderating text still doesn't
+    need the talent's real identity to do their job."""
+
+    id: str
+    campaign_id: str
+    campaign_title: str
+    pseudonym_handle: str
+    qa_answers: list[dict]
+    scrub_flags: list[dict]
     submitted_at: datetime

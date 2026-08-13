@@ -106,8 +106,12 @@ export default function TalentDashboardPage() {
   const titleFor = (campaignId: string) =>
     available.find((c) => c.id === campaignId)?.title ?? "Campaign";
 
+  const firstName = profile?.display_name?.split(" ")[0];
+
   return (
-    <TalentShell title="Your dashboard">
+    <TalentShell
+      title={firstName ? `Welcome back, ${firstName}` : "Welcome back"}
+    >
       <div className="flex flex-col gap-8">
         {error ? (
           <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">

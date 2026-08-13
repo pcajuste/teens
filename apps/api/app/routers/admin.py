@@ -69,7 +69,7 @@ from app.schemas.exclusivity import (
 from app.routers.challenges import _to_challenge_response
 from app.routers.content_templates import _to_insight_campaign_response, _to_scholarship_response
 from app.schemas.challenges import AdminChallengeAnalyticsResponse, ChallengeResponse
-from app.schemas.content_templates import InsightCampaignResponse, ScholarshipResponse
+from app.schemas.content_templates import InsightCampaignResponse, InsightResponseModerationItem, ScholarshipResponse
 from app.schemas.intelligence import TrendBucketResponse
 from app.services import payout_service, stripe_service
 from app.services.email_service import (
@@ -772,6 +772,42 @@ async def reject_insight_campaign(
 ) -> InsightCampaignResponse:
     updated = await insight_feedback_repository.review(conn, campaign_id, approved=False, reviewer_id=admin.id, rejection_reason=body.reason)
     return _to_insight_campaign_response(updated)
+
+
+@admin_router.get("/content-templates/insight-responses/queue", response_model=list[InsightResponseModerationItem])
+async def insight_responses_review_queue(
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> list[InsightResponseModerationItem]:
+    """structured_qa responses always land here pending human review --
+    no automated PII scrub result ever auto-clears a response to the
+    brand (issue #52)."""
+    rows = await insight_feedback_repository.list_pending_response_reviews(conn)
+    return [InsightResponseModerationItem(**r) for r in rows]
+
+
+@admin_router.post("/content-templates/insight-responses/{response_id}/approve")
+async def approve_insight_response(
+    response_id: str,
+    admin: AuthenticatedUser = Depends(require_role("admin")),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> dict:
+    await insight_feedback_repository.review_response(
+        conn, response_id, approved=True, reviewer_id=admin.id, rejection_reason=None
+    )
+    return {"id": response_id, "moderation_status": "approved"}
+
+
+@admin_router.post("/content-templates/insight-responses/{response_id}/reject")
+async def reject_insight_response(
+    response_id: str,
+    body: RejectRequest,
+    admin: AuthenticatedUser = Depends(require_role("admin")),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> dict:
+    await insight_feedback_repository.review_response(
+        conn, response_id, approved=False, reviewer_id=admin.id, rejection_reason=body.reason
+    )
+    return {"id": response_id, "moderation_status": "rejected"}
 
 
 @admin_router.post("/content-templates/insight-eligibility/{brand_id}/mark-reviewed")

@@ -19,6 +19,7 @@ from app.repositories import (
 )
 from app.schemas.content_templates import (
     InsightBrandResultResponse,
+    InsightBrandResultsResponse,
     InsightCampaignCreateRequest,
     InsightCampaignResponse,
     InsightEligibilityResponse,
@@ -32,7 +33,7 @@ from app.schemas.content_templates import (
     ScholarshipCreateRequest,
     ScholarshipResponse,
 )
-from app.services import insight_feedback_service
+from app.services import insight_feedback_service, pseudonym_service
 
 brands_scholarships_router = APIRouter(prefix="/brands/scholarships", tags=["content-templates"])
 talents_scholarships_router = APIRouter(prefix="/talents/scholarships", tags=["content-templates"])
@@ -365,7 +366,8 @@ async def put_insight_eligibility(
 def _to_insight_campaign_response(c: insight_feedback_repository.InsightCampaign) -> InsightCampaignResponse:
     return InsightCampaignResponse(
         id=c.id, title=c.title, material_url=c.material_url, business_question=c.business_question,
-        feedback_format=c.feedback_format, panel_size=c.panel_size, panel_criteria=c.panel_criteria,
+        feedback_format=c.feedback_format, qa_questions=c.qa_questions, panel_size=c.panel_size,
+        panel_criteria=c.panel_criteria,
         compensation_cents=c.compensation_cents, confidentiality_terms=c.confidentiality_terms,
         is_startup_validation=c.is_startup_validation, moderation_status=c.moderation_status,
         rejection_reason=c.rejection_reason, status=c.status, created_at=c.created_at,
@@ -404,6 +406,7 @@ async def create_insight_campaign(
         panel_criteria=body.panel_criteria, compensation_cents=body.compensation_cents,
         confidentiality_terms=body.confidentiality_terms, is_startup_validation=body.is_startup_validation,
         opens_at=body.opens_at, closes_at=body.closes_at,
+        feedback_format=body.feedback_format, qa_questions=[q.model_dump() for q in body.qa_questions],
     )
     return _to_insight_campaign_response(campaign)
 
@@ -456,16 +459,22 @@ async def activate_insight_campaign(
     return _to_insight_campaign_response(updated)
 
 
-@brands_insight_router.get("/campaigns/{campaign_id}/results", response_model=list[InsightBrandResultResponse])
+@brands_insight_router.get("/campaigns/{campaign_id}/results", response_model=InsightBrandResultsResponse)
 async def insight_campaign_results(
     campaign_id: str,
     user: AuthenticatedUser = Depends(require_role("brand")),
     conn: asyncpg.Connection = Depends(get_connection),
-) -> list[InsightBrandResultResponse]:
+) -> InsightBrandResultsResponse:
     brand = await _get_own_brand_profile(conn, user)
     await _require_owned_insight_campaign(conn, campaign_id, brand.id)
     results = await insight_feedback_repository.brand_facing_results(conn, campaign_id)
-    return [InsightBrandResultResponse(**r) for r in results]
+    return InsightBrandResultsResponse(
+        feedback_format=results["feedback_format"],
+        released=results["released"],
+        responses_submitted=results["responses_submitted"],
+        responses_required=results["responses_required"],
+        results=[InsightBrandResultResponse(**r) for r in results["results"]],
+    )
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -491,6 +500,11 @@ async def set_insight_opt_in(
 ) -> dict:
     profile = await _get_own_talent_profile(conn, user)
     await talent_profiles_repository.set_insight_feedback_opt_in(conn, profile.id, opted_in=opted_in)
+    if opted_in:
+        # Provision the handle at the moment of opt-in, not lazily on
+        # first panel selection -- a talent should be able to see their
+        # handle before it's ever used anywhere (issue #37).
+        await pseudonym_service.get_or_create_pseudonym(conn, profile.id)
     return {"opted_in": opted_in}
 
 
@@ -504,7 +518,8 @@ async def my_insight_invitations(
     return [
         InsightInvitationResponse(
             panel_member_id=i.panel_member_id, campaign_id=i.campaign_id, campaign_title=i.campaign_title,
-            business_question=i.business_question, confidentiality_terms=i.confidentiality_terms,
+            business_question=i.business_question, feedback_format=i.feedback_format,
+            qa_questions=i.qa_questions, confidentiality_terms=i.confidentiality_terms,
             compensation_cents=i.compensation_cents, invited_at=i.invited_at, responded_at=i.responded_at,
         )
         for i in rows
@@ -530,8 +545,34 @@ async def respond_to_insight_invitation(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"code": "already_responded", "message": "You've already submitted feedback for this invitation."},
         )
-    submitted_at = await insight_feedback_repository.submit_response(
-        conn, panel_member_id=panel_member_id, ratings=[r.model_dump() for r in body.ratings]
-    )
+    campaign = await insight_feedback_repository.get_by_id(conn, str(member["campaign_id"]))
+
+    if campaign.feedback_format == "rating_scale":
+        if not body.ratings:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"code": "wrong_format", "message": "This invitation expects ratings, not qa_answers."},
+            )
+        submitted_at = await insight_feedback_repository.submit_response(
+            conn, panel_member_id=panel_member_id, feedback_format="rating_scale",
+            ratings=[r.model_dump() for r in body.ratings],
+        )
+    else:
+        if not body.qa_answers:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"code": "wrong_format", "message": "This invitation expects qa_answers, not ratings."},
+            )
+        try:
+            submitted_at = await insight_feedback_service.submit_structured_qa_response(
+                conn, panel_member_id=panel_member_id, campaign=campaign,
+                qa_answers=[a.model_dump() for a in body.qa_answers],
+            )
+        except insight_feedback_service.UnknownQuestionIdError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"code": "unknown_question_id", "message": str(exc)},
+            ) from exc
+
     await insight_feedback_repository.mark_responded(conn, panel_member_id)
     return InsightResponseAck(panel_member_id=panel_member_id, submitted_at=submitted_at)

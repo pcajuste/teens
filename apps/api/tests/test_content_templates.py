@@ -375,11 +375,14 @@ def test_insight_full_pseudonymous_flow(client, db, brand_headers, talent_header
     assert already.status_code == 400
     assert already.json()["error"]["code"] == "already_responded"
 
-    # Brand-facing results are pseudonymous -- no talent identity anywhere
+    # Brand-facing results are pseudonymous -- no talent identity anywhere.
+    # rating_scale is released per-response immediately (no k-anonymity gate).
     results = client.get(f"/brands/insight/campaigns/{campaign_id}/results", headers=brand_headers)
     assert results.status_code == 200
-    assert len(results.json()) == 1
-    result = results.json()[0]
+    body = results.json()
+    assert body["released"] is True
+    assert len(body["results"]) == 1
+    result = body["results"][0]
     assert "pseudonym_handle" in result
     assert result["pseudonym_handle"].startswith("Contributor_")
     assert "talent_id" not in result
@@ -434,3 +437,188 @@ def test_insight_opt_out_talent_never_selected(client, db, brand_headers, onboar
     activated = client.post(f"/brands/insight/campaigns/{campaign_id}/activate", headers=brand_headers)
     assert activated.status_code == 400
     assert activated.json()["error"]["code"] == "insufficient_panel"
+
+
+# ---------------------------------------------------------------------
+# structured_qa feedback format (issue #52)
+# ---------------------------------------------------------------------
+
+_QA_QUESTIONS = [
+    {"id": "q1", "prompt": "What did you think of the design?"},
+    {"id": "q2", "prompt": "Would you buy this at $80?"},
+]
+
+
+def _activated_structured_qa_campaign(client, db, brand_headers, onboarded_admin, *, panel_size: int):
+    client.put("/brands/insight/eligibility", json=_ELIGIBILITY_BODY, headers=brand_headers)
+    created = client.post(
+        "/brands/insight/campaigns",
+        json={
+            **_INSIGHT_CAMPAIGN_BODY,
+            "panel_size": panel_size,
+            "feedback_format": "structured_qa",
+            "qa_questions": _QA_QUESTIONS,
+        },
+        headers=brand_headers,
+    )
+    assert created.status_code == 201, created.text
+    campaign_id = created.json()["id"]
+    client.post(f"/brands/insight/campaigns/{campaign_id}/submit-for-review", headers=brand_headers)
+    client.post(f"/admin/content-templates/insight-campaigns/{campaign_id}/approve", headers=onboarded_admin)
+
+    talents = [_seed_talent(db, opt_in=True, categories=["gaming"]) for _ in range(panel_size)]
+    activated = client.post(f"/brands/insight/campaigns/{campaign_id}/activate", headers=brand_headers)
+    assert activated.status_code == 200, activated.text
+    return campaign_id, talents
+
+
+def _qa_answers_body(prefix: str = "answer") -> dict:
+    return {"qa_answers": [{"question_id": q["id"], "answer_text": f"{prefix} for {q['id']}"} for q in _QA_QUESTIONS]}
+
+
+def test_insight_structured_qa_full_flow(client, db, brand_headers, talent_headers_factory, onboarded_brand, onboarded_admin):
+    _complete_company_profile(client, brand_headers)
+    campaign_id, talents = _activated_structured_qa_campaign(client, db, brand_headers, onboarded_admin, panel_size=2)
+
+    talent_a_headers = talent_headers_factory(talents[0][1])
+    invitations = client.get("/talents/insight/invitations", headers=talent_a_headers)
+    assert invitations.status_code == 200
+    invite = invitations.json()[0]
+    assert invite["feedback_format"] == "structured_qa"
+    assert invite["qa_questions"] == _QA_QUESTIONS
+
+    respond_a = client.post(
+        f"/talents/insight/invitations/{invite['panel_member_id']}/respond",
+        json=_qa_answers_body(),
+        headers=talent_a_headers,
+    )
+    assert respond_a.status_code == 200, respond_a.text
+
+    # Only one of two panelists has responded -- withheld entirely.
+    results = client.get(f"/brands/insight/campaigns/{campaign_id}/results", headers=brand_headers)
+    assert results.status_code == 200
+    body = results.json()
+    assert body["released"] is False
+    assert body["results"] == []
+    assert body["responses_submitted"] == 0  # pending_review, not yet approved
+    assert body["responses_required"] == 2
+
+    # Response sits in the admin moderation queue until reviewed.
+    queue = client.get("/admin/content-templates/insight-responses/queue", headers=onboarded_admin)
+    assert queue.status_code == 200
+    pending = [r for r in queue.json() if r["campaign_id"] == campaign_id]
+    assert len(pending) == 1
+    assert pending[0]["qa_answers"] == _qa_answers_body()["qa_answers"]
+    assert "talent_id" not in pending[0]
+    response_a_id = pending[0]["id"]
+
+    approve_a = client.post(f"/admin/content-templates/insight-responses/{response_a_id}/approve", headers=onboarded_admin)
+    assert approve_a.status_code == 200
+
+    # Still withheld -- only 1/2 panelists approved.
+    results = client.get(f"/brands/insight/campaigns/{campaign_id}/results", headers=brand_headers).json()
+    assert results["released"] is False
+    assert results["responses_submitted"] == 1
+
+    talent_b_headers = talent_headers_factory(talents[1][1])
+    invite_b = client.get("/talents/insight/invitations", headers=talent_b_headers).json()[0]
+    client.post(
+        f"/talents/insight/invitations/{invite_b['panel_member_id']}/respond",
+        json=_qa_answers_body("second"),
+        headers=talent_b_headers,
+    )
+    response_b_id = next(
+        r["id"] for r in client.get("/admin/content-templates/insight-responses/queue", headers=onboarded_admin).json()
+        if r["campaign_id"] == campaign_id
+    )
+    client.post(f"/admin/content-templates/insight-responses/{response_b_id}/approve", headers=onboarded_admin)
+
+    # Both panelists approved -- now released.
+    results = client.get(f"/brands/insight/campaigns/{campaign_id}/results", headers=brand_headers).json()
+    assert results["released"] is True
+    assert len(results["results"]) == 2
+    for r in results["results"]:
+        assert "talent_id" not in r
+        assert "display_name" not in r
+        assert r["qa_answers"] is not None
+
+
+def test_insight_qa_rejected_response_excluded_from_gate(
+    client, db, brand_headers, talent_headers_factory, onboarded_brand, onboarded_admin
+):
+    _complete_company_profile(client, brand_headers)
+    campaign_id, talents = _activated_structured_qa_campaign(client, db, brand_headers, onboarded_admin, panel_size=2)
+
+    for talent in talents:
+        headers = talent_headers_factory(talent[1])
+        invite = client.get("/talents/insight/invitations", headers=headers).json()[0]
+        client.post(f"/talents/insight/invitations/{invite['panel_member_id']}/respond", json=_qa_answers_body(), headers=headers)
+
+    queue = [
+        r for r in client.get("/admin/content-templates/insight-responses/queue", headers=onboarded_admin).json()
+        if r["campaign_id"] == campaign_id
+    ]
+    assert len(queue) == 2
+    client.post(f"/admin/content-templates/insight-responses/{queue[0]['id']}/approve", headers=onboarded_admin)
+    client.post(
+        f"/admin/content-templates/insight-responses/{queue[1]['id']}/reject",
+        json={"reason": "contains identifying detail"},
+        headers=onboarded_admin,
+    )
+
+    # One approved, one rejected -- gate never reaches panel_size=2 approved.
+    results = client.get(f"/brands/insight/campaigns/{campaign_id}/results", headers=brand_headers).json()
+    assert results["released"] is False
+    assert results["responses_submitted"] == 1
+    assert results["results"] == []
+
+
+def test_insight_qa_moderation_queue_requires_admin(
+    client, db, brand_headers, talent_headers_factory, onboarded_brand, onboarded_admin
+):
+    _complete_company_profile(client, brand_headers)
+    _activated_structured_qa_campaign(client, db, brand_headers, onboarded_admin, panel_size=1)
+    forbidden = client.get("/admin/content-templates/insight-responses/queue", headers=brand_headers)
+    assert forbidden.status_code == 403
+
+
+def test_insight_qa_question_id_mismatch_rejected(
+    client, db, brand_headers, talent_headers_factory, onboarded_brand, onboarded_admin
+):
+    _complete_company_profile(client, brand_headers)
+    campaign_id, talents = _activated_structured_qa_campaign(client, db, brand_headers, onboarded_admin, panel_size=1)
+    headers = talent_headers_factory(talents[0][1])
+    invite = client.get("/talents/insight/invitations", headers=headers).json()[0]
+
+    response = client.post(
+        f"/talents/insight/invitations/{invite['panel_member_id']}/respond",
+        json={"qa_answers": [{"question_id": "not-a-real-question", "answer_text": "hello"}]},
+        headers=headers,
+    )
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "unknown_question_id"
+
+
+def test_insight_campaign_create_rejects_qa_questions_out_of_range(client, brand_headers, onboarded_brand):
+    _complete_company_profile(client, brand_headers)
+    client.put("/brands/insight/eligibility", json=_ELIGIBILITY_BODY, headers=brand_headers)
+    too_many = client.post(
+        "/brands/insight/campaigns",
+        json={**_INSIGHT_CAMPAIGN_BODY, "feedback_format": "structured_qa", "qa_questions": [{"id": f"q{i}", "prompt": "x"} for i in range(9)]},
+        headers=brand_headers,
+    )
+    assert too_many.status_code == 422
+
+    none_provided = client.post(
+        "/brands/insight/campaigns",
+        json={**_INSIGHT_CAMPAIGN_BODY, "feedback_format": "structured_qa", "qa_questions": []},
+        headers=brand_headers,
+    )
+    assert none_provided.status_code == 422
+
+    rating_with_questions = client.post(
+        "/brands/insight/campaigns",
+        json={**_INSIGHT_CAMPAIGN_BODY, "qa_questions": [{"id": "q1", "prompt": "x"}]},
+        headers=brand_headers,
+    )
+    assert rating_with_questions.status_code == 422

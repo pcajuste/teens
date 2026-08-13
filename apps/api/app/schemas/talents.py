@@ -238,6 +238,15 @@ class AchievementLinkVisibilityUpdateRequest(BaseModel):
     earnings_visible_on_public_profile: bool
 
 
+class PseudonymResponse(BaseModel):
+    """GET /talents/me/pseudonym -- the talent's own Insight & Feedback
+    handle (Build Prompt 8I). Self-lookup only: talent -> their handle,
+    never handle -> talent, so this does not touch the no-reverse-lookup
+    guarantee in app/services/pseudonym_service.py."""
+
+    handle: str
+
+
 class PublicVerifiedProfileResponse(BaseModel):
     """GET /verified/:token -- public, unauthenticated. `public` is False
     when the token is valid but the talent has verified_profile_public

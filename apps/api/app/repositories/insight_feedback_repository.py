@@ -8,6 +8,13 @@ result -- see brand_facing_results() below, which joins through
 talent_pseudonyms.handle only. That's the actual enforcement point for
 the "brand never sees real identity" guarantee, not an RLS policy (see
 the migration's RLS section for why).
+
+brand_facing_results() is also the enforcement point for issue #52's
+k-anonymity gate on structured_qa: it withholds all answers for a
+campaign (released=False, results=[]) until every panel_size response
+has been submitted and moderator-approved via review_response(), so no
+individual free-text answer can be correlated back to a specific
+early respondent.
 """
 from __future__ import annotations
 
@@ -153,7 +160,7 @@ async def mark_manually_reviewed(conn: asyncpg.Connection, brand_id: str, *, rev
 # ──────────────────────────────────────────────────────────────────
 
 _CAMPAIGN_COLUMNS = (
-    "id, brand_id, title, material_url, business_question, feedback_format, panel_size, "
+    "id, brand_id, title, material_url, business_question, feedback_format, qa_questions, panel_size, "
     "panel_criteria, compensation_cents, confidentiality_terms, is_startup_validation, "
     "opens_at, closes_at, moderation_status, reviewed_by, reviewed_at, rejection_reason, "
     "status, created_at, updated_at"
@@ -164,6 +171,10 @@ def _load_criteria(raw) -> dict:
     return json.loads(raw) if isinstance(raw, str) else dict(raw or {})
 
 
+def _load_list(raw) -> list:
+    return json.loads(raw) if isinstance(raw, str) else list(raw or [])
+
+
 @dataclass(frozen=True, slots=True)
 class InsightCampaign:
     id: str
@@ -172,6 +183,7 @@ class InsightCampaign:
     material_url: str
     business_question: str
     feedback_format: str
+    qa_questions: list[dict]
     panel_size: int
     panel_criteria: dict
     compensation_cents: int
@@ -196,6 +208,7 @@ class InsightCampaign:
             material_url=row["material_url"],
             business_question=row["business_question"],
             feedback_format=row["feedback_format"],
+            qa_questions=_load_list(row["qa_questions"]),
             panel_size=row["panel_size"],
             panel_criteria=_load_criteria(row["panel_criteria"]),
             compensation_cents=row["compensation_cents"],
@@ -227,13 +240,16 @@ async def create_campaign(
     is_startup_validation: bool,
     opens_at: datetime | None,
     closes_at: datetime | None,
+    feedback_format: str = "rating_scale",
+    qa_questions: list[dict] = [],
 ) -> InsightCampaign:
     row = await conn.fetchrow(
         f"""
         INSERT INTO public.insight_feedback_campaigns
           (brand_id, title, material_url, business_question, panel_size, panel_criteria,
-           compensation_cents, confidentiality_terms, is_startup_validation, opens_at, closes_at)
-        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11)
+           compensation_cents, confidentiality_terms, is_startup_validation, opens_at, closes_at,
+           feedback_format, qa_questions)
+        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11, $12, $13::jsonb)
         RETURNING {_CAMPAIGN_COLUMNS}
         """,
         brand_id,
@@ -247,6 +263,8 @@ async def create_campaign(
         is_startup_validation,
         opens_at,
         closes_at,
+        feedback_format,
+        json.dumps(qa_questions),
     )
     return InsightCampaign.from_row(row)
 
@@ -372,6 +390,8 @@ class PanelInvitation:
     campaign_id: str
     campaign_title: str
     business_question: str
+    feedback_format: str
+    qa_questions: list[dict]
     confidentiality_terms: str
     compensation_cents: int
     invited_at: datetime
@@ -382,7 +402,8 @@ async def list_invitations_for_talent(conn: asyncpg.Connection, talent_id: str) 
     rows = await conn.fetch(
         """
         SELECT m.id AS panel_member_id, c.id AS campaign_id, c.title AS campaign_title,
-               c.business_question, c.confidentiality_terms, c.compensation_cents,
+               c.business_question, c.feedback_format, c.qa_questions,
+               c.confidentiality_terms, c.compensation_cents,
                m.invited_at, m.responded_at
         FROM public.insight_feedback_panel_members m
         JOIN public.insight_feedback_campaigns c ON c.id = m.campaign_id
@@ -397,6 +418,8 @@ async def list_invitations_for_talent(conn: asyncpg.Connection, talent_id: str) 
             campaign_id=str(r["campaign_id"]),
             campaign_title=r["campaign_title"],
             business_question=r["business_question"],
+            feedback_format=r["feedback_format"],
+            qa_questions=_load_list(r["qa_questions"]),
             confidentiality_terms=r["confidentiality_terms"],
             compensation_cents=r["compensation_cents"],
             invited_at=r["invited_at"],
@@ -425,15 +448,34 @@ async def mark_responded(conn: asyncpg.Connection, panel_member_id: str) -> None
 # ──────────────────────────────────────────────────────────────────
 
 
-async def submit_response(conn: asyncpg.Connection, *, panel_member_id: str, ratings: list[dict]) -> datetime:
+async def submit_response(
+    conn: asyncpg.Connection,
+    *,
+    panel_member_id: str,
+    feedback_format: str,
+    ratings: list[dict] | None = None,
+    qa_answers: list[dict] | None = None,
+    scrub_flags: list[dict] | None = None,
+) -> datetime:
+    """rating_scale rows are cleared immediately (moderation_status
+    'approved') -- a 1-5 score carries no PII risk. structured_qa rows
+    start 'pending_review' and require an admin to approve/reject via
+    review_response() before brand_facing_results() will ever surface
+    them -- no response is auto-cleared to the brand (issue #52)."""
+    moderation_status = "approved" if feedback_format == "rating_scale" else "pending_review"
     row = await conn.fetchrow(
         """
-        INSERT INTO public.insight_feedback_responses (campaign_id, panel_member_id, ratings)
-        SELECT campaign_id, id, $2::jsonb FROM public.insight_feedback_panel_members WHERE id = $1
+        INSERT INTO public.insight_feedback_responses
+          (campaign_id, panel_member_id, ratings, qa_answers, moderation_status, scrub_flags)
+        SELECT campaign_id, id, $2::jsonb, $3::jsonb, $4, $5::jsonb
+        FROM public.insight_feedback_panel_members WHERE id = $1
         RETURNING submitted_at
         """,
         panel_member_id,
-        json.dumps(ratings),
+        json.dumps(ratings or []),
+        json.dumps(qa_answers) if qa_answers is not None else None,
+        moderation_status,
+        json.dumps(scrub_flags or []),
     )
     return row["submitted_at"]
 
@@ -445,29 +487,147 @@ async def has_responded(conn: asyncpg.Connection, panel_member_id: str) -> bool:
     return row is not None
 
 
-async def brand_facing_results(conn: asyncpg.Connection, campaign_id: str) -> list[dict]:
-    """The one and only brand-facing read of response  data. Selects
+async def brand_facing_results(conn: asyncpg.Connection, campaign_id: str) -> dict:
+    """The one and only brand-facing read of response data. Selects
     talent_pseudonyms.handle and nothing from talent_profiles or
-    users -- see this module's docstring."""
+    users -- see this module's docstring. Also the enforcement point
+    for issue #52's k-anonymity gate: structured_qa answers are
+    withheld in full (results=[], released=False) until every
+    panel_size response has been submitted *and* moderator-approved,
+    so a brand can never correlate an early individual response back
+    to "whoever answered first." rating_scale keeps its pre-existing
+    per-response release behavior -- numeric scores were never the
+    risk #52 flagged."""
+    campaign = await conn.fetchrow(
+        "SELECT feedback_format, panel_size FROM public.insight_feedback_campaigns WHERE id = $1", campaign_id
+    )
+    feedback_format = campaign["feedback_format"]
+    panel_size = campaign["panel_size"]
+
+    if feedback_format == "rating_scale":
+        rows = await conn.fetch(
+            """
+            SELECT p.handle AS pseudonym_handle, r.ratings, r.submitted_at
+            FROM public.insight_feedback_responses r
+            JOIN public.insight_feedback_panel_members m ON m.id = r.panel_member_id
+            JOIN public.talent_pseudonyms p ON p.id = m.pseudonym_id
+            WHERE r.campaign_id = $1
+            ORDER BY r.submitted_at ASC
+            """,
+            campaign_id,
+        )
+        results = [
+            {
+                "pseudonym_handle": r["pseudonym_handle"],
+                "feedback_format": feedback_format,
+                "ratings": _load_list(r["ratings"]),
+                "qa_answers": None,
+                "submitted_at": r["submitted_at"],
+            }
+            for r in rows
+        ]
+        return {
+            "feedback_format": feedback_format,
+            "released": True,
+            "responses_submitted": len(results),
+            "responses_required": panel_size,
+            "results": results,
+        }
+
+    approved_count = await conn.fetchval(
+        "SELECT count(*) FROM public.insight_feedback_responses WHERE campaign_id = $1 AND moderation_status = 'approved'",
+        campaign_id,
+    )
+    if approved_count < panel_size:
+        return {
+            "feedback_format": feedback_format,
+            "released": False,
+            "responses_submitted": approved_count,
+            "responses_required": panel_size,
+            "results": [],
+        }
+
     rows = await conn.fetch(
         """
-        SELECT p.handle AS pseudonym_handle, r.ratings, r.submitted_at
+        SELECT p.handle AS pseudonym_handle, r.qa_answers, r.submitted_at
         FROM public.insight_feedback_responses r
         JOIN public.insight_feedback_panel_members m ON m.id = r.panel_member_id
         JOIN public.talent_pseudonyms p ON p.id = m.pseudonym_id
-        WHERE r.campaign_id = $1
+        WHERE r.campaign_id = $1 AND r.moderation_status = 'approved'
         ORDER BY r.submitted_at ASC
         """,
         campaign_id,
     )
-    return [
+    results = [
         {
             "pseudonym_handle": r["pseudonym_handle"],
-            "ratings": json.loads(r["ratings"]) if isinstance(r["ratings"], str) else r["ratings"],
+            "feedback_format": feedback_format,
+            "ratings": None,
+            "qa_answers": _load_list(r["qa_answers"]),
             "submitted_at": r["submitted_at"],
         }
         for r in rows
     ]
+    return {
+        "feedback_format": feedback_format,
+        "released": True,
+        "responses_submitted": approved_count,
+        "responses_required": panel_size,
+        "results": results,
+    }
+
+
+async def list_pending_response_reviews(conn: asyncpg.Connection) -> list[dict]:
+    """Admin moderation queue for structured_qa responses. Joins
+    through talent_pseudonyms.handle only, same as brand_facing_results
+    above -- a human reviewer moderating text still doesn't need the
+    talent's real identity, and keeping this query pseudonymous avoids
+    setting a weaker precedent a future change might accidentally reuse
+    for an actual brand-facing path."""
+    rows = await conn.fetch(
+        """
+        SELECT r.id, r.campaign_id, c.title AS campaign_title, p.handle AS pseudonym_handle,
+               r.qa_answers, r.scrub_flags, r.submitted_at
+        FROM public.insight_feedback_responses r
+        JOIN public.insight_feedback_panel_members m ON m.id = r.panel_member_id
+        JOIN public.talent_pseudonyms p ON p.id = m.pseudonym_id
+        JOIN public.insight_feedback_campaigns c ON c.id = r.campaign_id
+        WHERE r.moderation_status = 'pending_review'
+        ORDER BY r.submitted_at ASC
+        """
+    )
+    return [
+        {
+            "id": str(r["id"]),
+            "campaign_id": str(r["campaign_id"]),
+            "campaign_title": r["campaign_title"],
+            "pseudonym_handle": r["pseudonym_handle"],
+            "qa_answers": _load_list(r["qa_answers"]),
+            "scrub_flags": _load_list(r["scrub_flags"]),
+            "submitted_at": r["submitted_at"],
+        }
+        for r in rows
+    ]
+
+
+async def review_response(
+    conn: asyncpg.Connection, response_id: str, *, approved: bool, reviewer_id: str, rejection_reason: str | None
+) -> None:
+    """A rejected response never counts toward brand_facing_results()'s
+    k-anonymity threshold -- known, unhandled-this-pass consequence: a
+    campaign with enough rejections may never reach panel_size approved
+    responses (no re-invite/backfill mechanism exists yet)."""
+    await conn.execute(
+        """
+        UPDATE public.insight_feedback_responses
+        SET moderation_status = $2, reviewed_by = $3, reviewed_at = now(), rejection_reason = $4
+        WHERE id = $1
+        """,
+        response_id,
+        "approved" if approved else "rejected",
+        reviewer_id,
+        rejection_reason,
+    )
 
 
 async def talent_own_insight_history(conn: asyncpg.Connection, talent_id: str) -> list[dict]:

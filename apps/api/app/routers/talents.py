@@ -54,6 +54,7 @@ from app.schemas.talents import (
     GoalSuggestion,
     MilestoneEarningsEntry,
     MilestoneParticipationResponse,
+    PseudonymResponse,
     TalentProfilePreviewResponse,
     TalentProfileResponse,
     TalentProfileUpdateRequest,
@@ -61,7 +62,7 @@ from app.schemas.talents import (
     SubmitCampaignRequest,
     SubmitMilestoneRequest,
 )
-from app.services import stripe_service
+from app.services import pseudonym_service, stripe_service
 from app.services.email_service import send_goal_completed_email, send_milestone_submitted_email
 from app.services.parent_service import apply_values_filter, determine_parent_approval, send_campaign_approval_request
 from app.services.resend_client import ResendClient, resend_client_dependency
@@ -399,6 +400,19 @@ async def put_me(
         )
 
     return _to_profile_response(profile)
+
+
+@talents_router.get("/me/pseudonym", response_model=PseudonymResponse)
+async def get_me_pseudonym(
+    user: AuthenticatedUser = Depends(require_role("talent")),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> PseudonymResponse:
+    """The talent's own Insight & Feedback handle, generating it on first
+    request rather than requiring feedback participation first -- a talent
+    should be able to see the handle before it's ever used anywhere."""
+    profile = await _get_own_profile(conn, user)
+    pseudonym = await pseudonym_service.get_or_create_pseudonym(conn, profile.id)
+    return PseudonymResponse(handle=pseudonym.handle)
 
 
 @talents_router.get("/me/profile-preview", response_model=TalentProfilePreviewResponse)
