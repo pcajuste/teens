@@ -11,17 +11,29 @@ import { BrandShell } from "@/components/brand/brand-shell";
 import { api, ApiError } from "@/lib/api";
 import type { Campaign, CampaignStatus } from "@/lib/types";
 
-const STATUS_VARIANT: Record<
-  CampaignStatus,
-  "default" | "secondary" | "warning" | "success" | "destructive" | "outline"
-> = {
-  draft: "outline",
-  pending_payment: "secondary",
+// DS Section 7: draft/pending/cancelled are neutral; active is teal
+// ("running", not yet a result); completed is gold (a result -- money
+// actually released is earned); payment_failed stays a clear danger
+// signal, distinct from every other state, since it needs the brand's
+// attention.
+const STATUS_VARIANT: Record<CampaignStatus, "pending" | "destructive" | "active" | "earned"> = {
+  draft: "pending",
+  pending_payment: "pending",
   payment_failed: "destructive",
-  active: "success",
-  paused: "warning",
-  completed: "secondary",
-  cancelled: "outline",
+  active: "active",
+  paused: "pending",
+  completed: "earned",
+  cancelled: "pending",
+};
+
+const STATUS_CARD_VARIANT: Record<CampaignStatus, "standard" | "featured" | "earned"> = {
+  draft: "standard",
+  pending_payment: "standard",
+  payment_failed: "standard",
+  active: "featured",
+  paused: "standard",
+  completed: "earned",
+  cancelled: "standard",
 };
 
 const STATUS_LABEL: Record<CampaignStatus, string> = {
@@ -67,7 +79,7 @@ export default function BrandDashboardPage() {
           <h1 className="text-xl font-semibold tracking-tight">
             Finish setting up your company profile
           </h1>
-          <p className="max-w-sm text-sm text-muted-foreground">
+          <p className="max-w-sm text-sm text-text-2">
             A few details about your company, then you&apos;re ready to create
             your first campaign.
           </p>
@@ -113,7 +125,7 @@ export default function BrandDashboardPage() {
         <div className="grid gap-4 sm:grid-cols-2">
           {campaigns.map((c) => (
             <Link key={c.id} href={`/brand/campaigns/${c.id}`}>
-              <Card className="hover:border-primary/30 hover:shadow-md">
+              <Card variant={STATUS_CARD_VARIANT[c.status]}>
                 <CardHeader>
                   <div className="flex items-center justify-between gap-2">
                     <CardTitle>{c.title}</CardTitle>
@@ -123,14 +135,18 @@ export default function BrandDashboardPage() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-sm text-text-2">
                     {c.product_name}
                   </p>
                   <div className="flex items-center justify-between pt-2 text-sm">
-                    <span className="text-muted-foreground">
+                    <span className="text-text-2">
                       {c.talents_accepted_count}/{c.max_talents} talents
                     </span>
-                    <span className="font-semibold text-foreground">
+                    <span
+                      className={
+                        c.status === "completed" ? "font-semibold text-gold" : "font-semibold text-foreground"
+                      }
+                    >
                       {money(c.budget_cents)}
                     </span>
                   </div>

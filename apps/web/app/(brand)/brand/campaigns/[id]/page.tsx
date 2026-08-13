@@ -14,23 +14,23 @@ import { api, ApiError } from "@/lib/api";
 import { trackEvent } from "@/lib/analytics";
 import type {
   Campaign,
-  campaignTalent,
+  CampaignTalent,
   CampaignStatus,
   InviteResult,
   TalentBrowseCard,
 } from "@/lib/types";
 
-const STATUS_VARIANT: Record<
-  CampaignStatus,
-  "default" | "secondary" | "warning" | "success" | "destructive" | "outline"
-> = {
-  draft: "outline",
-  pending_payment: "secondary",
+// DS Section 7: draft/pending/cancelled are neutral; active is teal
+// ("running"); completed is gold (a result). payment_failed stays a
+// clear danger signal.
+const STATUS_VARIANT: Record<CampaignStatus, "pending" | "destructive" | "active" | "earned"> = {
+  draft: "pending",
+  pending_payment: "pending",
   payment_failed: "destructive",
-  active: "success",
-  paused: "warning",
-  completed: "secondary",
-  cancelled: "outline",
+  active: "active",
+  paused: "pending",
+  completed: "earned",
+  cancelled: "pending",
 };
 
 const STATUS_LABEL: Record<CampaignStatus, string> = {
@@ -43,7 +43,7 @@ const STATUS_LABEL: Record<CampaignStatus, string> = {
   cancelled: "Cancelled",
 };
 
-const talent_STATUS_LABEL: Record<string, string> = {
+const TALENT_STATUS_LABEL: Record<string, string> = {
   invited: "Invited",
   accepted: "Accepted",
   declined: "Declined",
@@ -53,12 +53,24 @@ const talent_STATUS_LABEL: Record<string, string> = {
   paid: "Paid",
 };
 
+// DS Section 6's status->chip mapping, reused here for the brand's own
+// view of each talent's participation on this campaign.
+const TALENT_STATUS_CHIP_VARIANT: Record<string, "active" | "earned" | "done" | "pending" | "destructive"> = {
+  invited: "active",
+  accepted: "active",
+  declined: "destructive",
+  submitted: "pending",
+  revision_requested: "pending",
+  confirmed: "earned",
+  paid: "done",
+};
+
 export default function BrandCampaignDetailPage() {
   const params = useParams<{ id: string }>();
   const campaignId = params.id;
 
   const [campaign, setCampaign] = useState<Campaign | null>(null);
-  const [campaignTalents, setCampaignReps] = useState<campaignTalent[]>([]);
+  const [campaignTalents, setCampaignReps] = useState<CampaignTalent[]>([]);
   const [browseCards, setBrowseCards] = useState<TalentBrowseCard[] | null>(
     null,
   );
@@ -71,7 +83,7 @@ export default function BrandCampaignDetailPage() {
     try {
       const [campaignRes, repsRes] = await Promise.all([
         api.get<Campaign>(`/brands/campaigns/${campaignId}`),
-        api.get<campaignTalent[]>(`/brands/campaigns/${campaignId}/talents`),
+        api.get<CampaignTalent[]>(`/brands/campaigns/${campaignId}/talents`),
       ]);
       setCampaign(campaignRes);
       setCampaignReps(repsRes);
@@ -203,7 +215,7 @@ export default function BrandCampaignDetailPage() {
             <h1 className="text-2xl font-semibold tracking-tight">
               {campaign.title}
             </h1>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-text-2">
               {campaign.product_name}
             </p>
           </div>
@@ -269,7 +281,7 @@ export default function BrandCampaignDetailPage() {
 
         <section className="flex flex-col gap-3">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-muted-foreground">
+            <h2 className="text-sm font-semibold text-text-3">
               Talents ({campaignTalents.length}/{campaign.max_talents})
             </h2>
             <Button
@@ -293,23 +305,23 @@ export default function BrandCampaignDetailPage() {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium">
-                       talent {cr.talent_id.slice(0, 8)}
+                        Talent {cr.talent_id.slice(0, 8)}
                       </p>
                       {cr.parent_approval_status === "pending" ? (
-                        <p className="text-xs text-warning-foreground">
+                        <p className="text-xs text-text-2">
                           Awaiting parent approval
                         </p>
                       ) : null}
                     </div>
-                    <Badge variant="secondary">
-                      {talent_STATUS_LABEL[cr.status] ?? cr.status}
+                    <Badge variant={TALENT_STATUS_CHIP_VARIANT[cr.status] ?? "pending"}>
+                      {TALENT_STATUS_LABEL[cr.status] ?? cr.status}
                     </Badge>
                   </div>
 
                   {campaign.payment_type === "milestone" &&
                   cr.status !== "invited" &&
                   cr.status !== "declined" ? (
-                    <div className="border-t border-border pt-3">
+                    <div className="border-t border-border-muted pt-3">
                       <TalentMilestoneProgress
                         campaignId={campaignId}
                         repId={cr.talent_id}
@@ -324,7 +336,7 @@ export default function BrandCampaignDetailPage() {
 
         {showBrowse ? (
           <section className="flex flex-col gap-3">
-            <h2 className="text-sm font-semibold text-muted-foreground">
+            <h2 className="text-sm font-semibold text-text-3">
               Browse matched talents
             </h2>
             {browseCards === null ? (
@@ -347,17 +359,26 @@ export default function BrandCampaignDetailPage() {
                     <CardContent>
                       <div className="flex flex-wrap gap-1">
                         {card.categories.slice(0, 4).map((cat) => (
-                          <Badge key={cat} variant="outline">
+                          <Badge key={cat} variant="pending">
                             {cat}
                           </Badge>
                         ))}
                       </div>
                       <div className="flex items-center justify-between pt-2">
-                        <p className="text-xs text-muted-foreground">
+                        <p className="text-xs text-text-2">
                           {card.profile_completeness_score}% complete
-                          {card.average_rating
-                            ? ` · ${card.average_rating.toFixed(1)}★`
-                            : ""}
+                          {card.average_rating ? (
+                            <>
+                              {" · "}
+                              {/* DS Section 7: an exceptional track record
+                                  (>=4.5) is a credential signal worth the
+                                  brand's attention -- gold; below that, an
+                                  ordinary rating stays neutral. */}
+                              <span className={card.average_rating >= 4.5 ? "font-semibold text-gold" : undefined}>
+                                {card.average_rating.toFixed(1)}★
+                              </span>
+                            </>
+                          ) : null}
                         </p>
                         <Button
                           size="sm"

@@ -319,7 +319,7 @@ export default function NewCampaignPage() {
               ))}
             </div>
             {checkingExclusivity ? (
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs text-text-2">
                 Checking category exclusivity...
               </p>
             ) : null}
@@ -363,7 +363,7 @@ export default function NewCampaignPage() {
               value={targetCitiesRaw}
               onChange={(e) => setTargetCitiesRaw(e.target.value)}
             />
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-text-2">
               Leave blank to match talents in any city.
             </p>
           </div>
@@ -382,12 +382,15 @@ export default function NewCampaignPage() {
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="budget">Budget (USD)</Label>
+              {/* DS Section 7: gold border once filled -- this is the
+                  brand's credential commitment (what talents will earn). */}
               <Input
                 id="budget"
                 type="number"
                 min={1}
                 step="0.01"
                 required
+                verified={budgetDollars > 0}
                 value={budgetDollars}
                 onChange={(e) => setBudgetDollars(Number(e.target.value))}
               />
@@ -443,7 +446,7 @@ export default function NewCampaignPage() {
                 </Badge>
               </button>
             </div>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-text-2">
               {paymentType === "flat"
                 ? "Talents are paid in full when their submission is confirmed."
                 : "Talents are paid in staged releases as each milestone is completed and confirmed."}
@@ -483,11 +486,11 @@ export default function NewCampaignPage() {
         </form>
 
         <div className="flex flex-col gap-3">
-          <p className="text-sm font-semibold text-muted-foreground">
+          <p className="text-sm font-semibold text-text-2">
             Preview — exactly what a talent sees
           </p>
           <CampaignBrief campaign={previewCampaign} />
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-text-2">
             The payout shown here is an estimate. The platform fee and final
             per-talent payout are computed server-side when you create the
             campaign.

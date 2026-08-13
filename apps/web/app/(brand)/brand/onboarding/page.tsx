@@ -81,7 +81,7 @@ export default function BrandOnboardingPage() {
   if (loading) {
     return (
       <BrandShell title="Company profile">
-        <p className="text-sm text-muted-foreground">Loading...</p>
+        <p className="text-sm text-text-2">Loading...</p>
       </BrandShell>
     );
   }
@@ -89,7 +89,7 @@ export default function BrandOnboardingPage() {
   return (
     <BrandShell title="Company profile">
       <form onSubmit={handleSubmit} className="flex max-w-xl flex-col gap-5">
-        <p className="text-sm text-muted-foreground">
+        <p className="text-sm text-text-2">
           This information is reviewed as part of account approval, and EIN is
           encrypted at talents -- it&apos;s never shown back to you or anyone
           else after you save it.
@@ -129,7 +129,7 @@ export default function BrandOnboardingPage() {
           <Label htmlFor="ein">
             EIN{" "}
             {hasEinOnFile ? (
-              <span className="font-normal text-muted-foreground">
+              <span className="font-normal text-text-2">
                 (on file)
               </span>
             ) : null}

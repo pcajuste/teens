@@ -125,7 +125,7 @@ export function MilestoneBuilder({
               </Label>
               <select
                 id={`milestone-verification-${i}`}
-                className="min-h-11 rounded-md border border-input bg-background px-3 text-sm"
+                className="min-h-11 rounded-md border border-input bg-white/4 px-3 text-sm text-foreground"
                 value={m.verification_method}
                 onChange={(e) =>
                   update(i, {
@@ -137,7 +137,7 @@ export function MilestoneBuilder({
                   Brand confirms manually
                 </option>
                 <option value="talent_submission">
-                 talent submission (24h auto-release)
+                  Talent submission (24h auto-release)
                 </option>
               </select>
             </div>

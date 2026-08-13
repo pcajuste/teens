@@ -90,7 +90,7 @@ export default function NewChallengePage() {
             <Label htmlFor="category">Category</Label>
             <select
               id="category"
-              className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              className="mt-1 w-full rounded-md border border-input bg-white/4 px-3 py-2 text-sm"
               value={category}
               onChange={(e) => setCategory(e.target.value as Category)}
             >
@@ -105,7 +105,7 @@ export default function NewChallengePage() {
             <Label htmlFor="submission_format">Submission format</Label>
             <select
               id="submission_format"
-              className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              className="mt-1 w-full rounded-md border border-input bg-white/4 px-3 py-2 text-sm"
               value={submissionFormat}
               onChange={(e) =>
                 setSubmissionFormat(e.target.value as ChallengeSubmissionFormat)
@@ -171,7 +171,7 @@ export default function NewChallengePage() {
               Create and activate
             </Button>
           </div>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-text-2">
             Challenges are free -- no Stripe charge. They&apos;re a brand
             acquisition tool at this stage.
           </p>
@@ -179,21 +179,21 @@ export default function NewChallengePage() {
 
         {/* Preview panel -- exactly what a talent will see. */}
         <Card className="p-5">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-text-2">
             Talent preview
           </p>
           <p className="text-lg font-semibold">{title || "Challenge title"}</p>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <p className="mt-1 text-sm text-text-2">
             {CATEGORY_LABELS[category]}
           </p>
           <p className="mt-3 text-sm">
             {brief || "Your brief will appear here."}
           </p>
           <p className="mt-3 text-sm font-medium">What to submit</p>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-text-2">
             {submissionPrompt || "Your submission prompt will appear here."}
           </p>
-          <div className="mt-4 rounded-lg border-2 border-primary/40 bg-primary/5 p-3 text-xs text-muted-foreground">
+          <div className="mt-4 rounded-lg border-2 border-primary/40 bg-primary/5 p-3 text-xs text-text-2">
             This challenge is unpaid. Talents see a mandatory disclosure before
             they can submit, and Teenure pays a $7.50 discovery bonus only if
             you convert their submission to a paid campaign invitation.

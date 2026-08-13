@@ -16,6 +16,15 @@ const STATUS_LABEL: Record<string, string> = {
   paid: "Paid",
 };
 
+// DS Section 6/7: confirmed is the earned moment (gold); paid is
+// complete (green); pending/submitted haven't been decided yet (neutral).
+const STATUS_CHIP_VARIANT: Record<string, "pending" | "earned" | "done"> = {
+  pending: "pending",
+  submitted: "pending",
+  confirmed: "earned",
+  paid: "done",
+};
+
 function money(cents: number | null): string {
   if (cents === null) return "—";
   return `$${(cents / 100).toFixed(2)}`;
@@ -98,7 +107,7 @@ export function TalentMilestoneProgress({
   if (error) return <p className="text-xs text-destructive">{error}</p>;
   if (!milestones)
     return (
-      <p className="text-xs text-muted-foreground">
+      <p className="text-xs text-text-2">
         Loading milestone progress…
       </p>
     );
@@ -121,18 +130,15 @@ export function TalentMilestoneProgress({
               <p className="text-sm font-medium">
                 {m.milestone_number}. {m.title}
               </p>
-              <Badge
-                variant={
-                  m.status === "paid" || m.status === "confirmed"
-                    ? "success"
-                    : "secondary"
-                }
-              >
+              <Badge variant={STATUS_CHIP_VARIANT[m.status] ?? "pending"}>
                 {STATUS_LABEL[m.status] ?? m.status}
               </Badge>
             </div>
-            <p className="text-xs text-muted-foreground">
-              {m.payout_percentage}% · {money(m.payout_cents)}
+            <p className="text-xs text-text-2">
+              {m.payout_percentage}% ·{" "}
+              <span className={m.status === "confirmed" || m.status === "paid" ? "font-medium text-gold" : undefined}>
+                {money(m.payout_cents)}
+              </span>
             </p>
 
             {m.talent_submission_text ? (
@@ -155,13 +161,13 @@ export function TalentMilestoneProgress({
             ) : null}
 
             {m.dispute_flag ? (
-              <p className="mt-1 text-xs text-warning-foreground">
+              <p className="mt-1 text-xs font-medium text-danger">
                 Disputed — awaiting admin review
               </p>
             ) : null}
 
             {autoReleaseDeadline ? (
-              <p className="mt-1 text-xs text-muted-foreground">
+              <p className="mt-1 text-xs text-text-2">
                 Auto-releases in <Countdown deadline={autoReleaseDeadline} />{" "}
                 unless disputed
               </p>

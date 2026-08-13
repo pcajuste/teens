@@ -114,7 +114,7 @@ export default function BrandSignupPage() {
           {pending ? "Creating account..." : "Sign up"}
         </Button>
 
-        <p className="text-center text-xs text-muted-foreground">
+        <p className="text-center text-xs text-text-2">
           Every brand account is reviewed before campaigns can go live.
         </p>
       </form>

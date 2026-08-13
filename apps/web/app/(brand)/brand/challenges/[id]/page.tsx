@@ -171,7 +171,7 @@ export default function BrandChallengeDetailPage() {
   if (!challenge) {
     return (
       <BrandShell title="Challenge" backHref="/brand/challenges">
-        <p className="text-sm text-muted-foreground">Challenge not found.</p>
+        <p className="text-sm text-text-2">Challenge not found.</p>
       </BrandShell>
     );
   }
@@ -193,18 +193,10 @@ export default function BrandChallengeDetailPage() {
         <Card className="p-5">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <Badge
-                variant={
-                  challenge.status === "active"
-                    ? "success"
-                    : challenge.status === "draft"
-                      ? "outline"
-                      : "secondary"
-                }
-              >
+              <Badge variant={challenge.status === "active" ? "active" : "pending"}>
                 {challenge.status}
               </Badge>
-              <span className="text-sm text-muted-foreground">
+              <span className="text-sm text-text-2">
                 {challenge.submissions_count} submissions ·{" "}
                 {challenge.conversion_count} converted
                 {challenge.conversion_rate != null
@@ -238,7 +230,7 @@ export default function BrandChallengeDetailPage() {
         </Card>
 
         {zeroConversionWarning ? (
-          <Card className="border-warning/40 bg-warning/10 p-4 text-sm">
+          <Card className="border-teal-border bg-teal-dim p-4 text-sm text-foreground">
             Consider using challenges to discover talents for active campaigns.
             Talents invest time in submissions -- converting the best ones builds
             your brand reputation on Teenure.
@@ -246,7 +238,7 @@ export default function BrandChallengeDetailPage() {
         ) : null}
 
         <section className="flex flex-col gap-3">
-          <h2 className="text-sm font-semibold text-muted-foreground">
+          <h2 className="text-sm font-semibold text-text-3">
             Submissions
           </h2>
           {submissions.length === 0 ? (
@@ -261,22 +253,21 @@ export default function BrandChallengeDetailPage() {
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <p className="font-medium">{s.talent.display_name}</p>
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-sm text-text-2">
                         {s.talent.city} · {s.talent.categories.join(", ")} ·
                         completeness {s.talent.profile_completeness_score}
                       </p>
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-sm text-text-2">
                         {s.talent.campaigns_completed} campaigns completed
                         {s.talent.challenge_conversion_rate != null
                           ? ` · ${Math.round(s.talent.challenge_conversion_rate * 100)}% challenge conversion`
                           : ""}
                       </p>
                     </div>
-                    <Badge
-                      variant={
-                        s.status === "converted" ? "success" : "secondary"
-                      }
-                    >
+                    {/* DS Section 7: a converted submission is the earned
+                        moment (gold bonus paid to the talent) -- everything
+                        else is a neutral in-progress state. */}
+                    <Badge variant={s.status === "converted" ? "earned" : "pending"}>
                       {s.status}
                     </Badge>
                   </div>
@@ -302,9 +293,10 @@ export default function BrandChallengeDetailPage() {
                   ) : null}
 
                   {s.status === "converted" ? (
-                    <p className="mt-3 text-sm text-muted-foreground">
-                      Converted · {money(s.payout_cents)} discovery bonus (
-                      {s.payout_status ?? "pending"})
+                    <p className="mt-3 text-sm text-text-2">
+                      Converted ·{" "}
+                      <span className="font-semibold text-gold">{money(s.payout_cents)} discovery bonus</span>{" "}
+                      ({s.payout_status ?? "pending"})
                     </p>
                   ) : (
                     <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -319,7 +311,7 @@ export default function BrandChallengeDetailPage() {
                         </Button>
                       ) : null}
                       <select
-                        className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                        className="rounded-md border border-input bg-white/4 px-2 py-1.5 text-sm"
                         value={selectedCampaign[s.id] ?? ""}
                         onChange={(e) =>
                           setSelectedCampaign((prev) => ({
@@ -353,7 +345,7 @@ export default function BrandChallengeDetailPage() {
                     </div>
                   )}
                   {s.status !== "converted" ? (
-                    <p className="mt-2 text-xs text-muted-foreground">
+                    <p className="mt-2 text-xs text-text-2">
                       Converting sends the Talent a campaign invitation and a
                       $7.50 Teenure discovery bonus. This does not create a
                       billing event -- the campaign budget was set at campaign

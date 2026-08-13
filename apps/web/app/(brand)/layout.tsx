@@ -18,7 +18,7 @@ export default function BrandLayout({ children }: { children: React.ReactNode })
         pendingState={(me, pathname) =>
           me.pending_reason === "pending_admin_approval" && !ALLOWED_WHILE_PENDING_PATHS.has(pathname) ? (
             <CenteredMessage title="Your account is under review">
-              <p className="max-w-sm text-sm text-muted-foreground">
+              <p className="max-w-sm text-sm text-text-2">
                 Every brand on Teenure is verified before they can run campaigns. We&apos;ll email you
                 as soon as your account is approved -- usually within one business day.
               </p>

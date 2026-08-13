@@ -196,7 +196,7 @@ export default function ChallengeDetailPage() {
                   <Label htmlFor="submission_file_url">File URL</Label>
                   <input
                     id="submission_file_url"
-                    className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    className="mt-1 w-full rounded-md border border-input bg-white/4 px-3 py-2 text-sm"
                     placeholder="https://…"
                     value={submissionFileUrl}
                     onChange={(e) => setSubmissionFileUrl(e.target.value)}

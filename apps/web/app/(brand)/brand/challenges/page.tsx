@@ -11,13 +11,10 @@ import { BrandShell } from "@/components/brand/brand-shell";
 import { api, ApiError } from "@/lib/api";
 import type { Challenge, ChallengeStatus } from "@/lib/types";
 
-const STATUS_VARIANT: Record<
-  ChallengeStatus,
-  "outline" | "success" | "secondary"
-> = {
-  draft: "outline",
-  active: "success",
-  closed: "secondary",
+const STATUS_VARIANT: Record<ChallengeStatus, "pending" | "active"> = {
+  draft: "pending",
+  active: "active",
+  closed: "pending",
 };
 
 const STATUS_LABEL: Record<ChallengeStatus, string> = {
@@ -68,7 +65,7 @@ export default function BrandChallengesPage() {
       ) : null}
 
       {zeroConversionWarning ? (
-        <Card className="border-warning/40 bg-warning/10 p-4 text-sm">
+        <Card className="border-teal-border bg-teal-dim p-4 text-sm text-foreground">
           Consider using challenges to discover talents for active campaigns.
           Talents invest time in submissions -- converting the best ones builds
           your brand reputation on Teenure.
@@ -104,9 +101,9 @@ export default function BrandChallengesPage() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-sm text-muted-foreground">{c.category}</p>
+                  <p className="text-sm text-text-2">{c.category}</p>
                   <div className="flex items-center justify-between pt-2 text-sm">
-                    <span className="text-muted-foreground">
+                    <span className="text-text-2">
                       {c.submissions_count} submissions
                     </span>
                     <span className="font-semibold text-foreground">

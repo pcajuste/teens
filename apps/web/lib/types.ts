@@ -448,7 +448,7 @@ export interface InviteResult {
   status: "invited" | "already_invited" | "campaign_full" | "talent_not_found";
 }
 
-export interface campaignTalent {
+export interface CampaignTalent {
   id: string;
   talent_id: string;
   status: string;

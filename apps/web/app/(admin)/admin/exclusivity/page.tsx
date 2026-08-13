@@ -147,7 +147,7 @@ export default function AdminExclusivityPage() {
               </Label>
               <select
                 id="sort"
-                className="min-h-9 rounded-md border border-input bg-background px-2 text-sm"
+                className="min-h-9 rounded-md border border-input bg-white/4 px-2 text-sm"
                 value={sortKey}
                 onChange={(e) => setSortKey(e.target.value as SortKey)}
               >

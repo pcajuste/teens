@@ -204,7 +204,7 @@ export default function RecruiterSavedPage() {
                       </span>
                       <div className="flex items-center gap-2">
                         <select
-                          className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+                          className="h-8 rounded-md border border-input bg-white/4 px-2 text-xs"
                           value={listName}
                           onChange={(e) =>
                             handleMoveToList(row.talent_id, e.target.value)

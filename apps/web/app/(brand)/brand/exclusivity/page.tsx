@@ -146,7 +146,7 @@ export default function BrandExclusivityPage() {
               <CardTitle>Category exclusivity</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-text-2">
                 Purchase sole rights to a category within a city (or every market) for a defined
                 window. While your agreement is active, no other brand can create or activate a
                 campaign in that category-and-city combination.
@@ -158,7 +158,7 @@ export default function BrandExclusivityPage() {
                     <Label htmlFor="excl-category">Category</Label>
                     <select
                       id="excl-category"
-                      className="min-h-11 rounded-md border border-input bg-background px-3 text-sm"
+                      className="min-h-11 rounded-md border border-input bg-white/4 px-3 text-sm"
                       value={category}
                       onChange={(e) => {
                         setCategory(e.target.value as Category);
@@ -251,15 +251,15 @@ export default function BrandExclusivityPage() {
                   <p className="text-sm font-semibold">Confirm your agreement</p>
                   <dl className="flex flex-col gap-1 text-sm">
                     <div className="flex justify-between">
-                      <dt className="text-muted-foreground">Category</dt>
+                      <dt className="text-text-2">Category</dt>
                       <dd>{CATEGORY_LABELS[category]}</dd>
                     </div>
                     <div className="flex justify-between">
-                      <dt className="text-muted-foreground">City</dt>
+                      <dt className="text-text-2">City</dt>
                       <dd>{city.trim() || "All markets"}</dd>
                     </div>
                     <div className="flex justify-between">
-                      <dt className="text-muted-foreground">Window</dt>
+                      <dt className="text-text-2">Window</dt>
                       <dd>
                         {startDate} &rarr; {endDate}
                       </dd>
@@ -302,7 +302,7 @@ export default function BrandExclusivityPage() {
                     {new Date(purchaseResult.starts_at).toLocaleDateString()} through{" "}
                     {new Date(purchaseResult.ends_at).toLocaleDateString()}.
                   </p>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-xs text-text-2">
                     Receipt total: {money(purchaseResult.fee_cents)} · agreement {purchaseResult.agreement_id}
                   </p>
                   <Button type="button" variant="outline" onClick={resetFlow} className="w-fit">
@@ -315,7 +315,7 @@ export default function BrandExclusivityPage() {
         </div>
 
         <div className="flex flex-col gap-3">
-          <p className="text-sm font-semibold text-muted-foreground">Your agreements</p>
+          <p className="text-sm font-semibold text-text-2">Your agreements</p>
           {agreementsError ? (
             <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{agreementsError}</p>
           ) : null}
@@ -334,12 +334,12 @@ export default function BrandExclusivityPage() {
                       </p>
                       <Badge variant={STATUS_VARIANT[a.status]}>{a.status}</Badge>
                     </div>
-                    <p className="text-xs text-muted-foreground">{a.city ?? "All markets"}</p>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-xs text-text-2">{a.city ?? "All markets"}</p>
+                    <p className="text-xs text-text-2">
                       {new Date(a.starts_at).toLocaleDateString()} &rarr;{" "}
                       {new Date(a.ends_at).toLocaleDateString()}
                     </p>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-xs text-text-2">
                       Paid {money(a.fee_cents)}
                       {a.refund_cents ? ` · refunded ${money(a.refund_cents)}` : ""}
                     </p>
