@@ -81,7 +81,7 @@ export default function AdminSafetyPage() {
                     <p className="text-sm font-medium">
                       {r.reporter_display_name}
                     </p>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-xs text-text-2">
                       {new Date(r.created_at).toLocaleString()} -- {r.reason}
                     </p>
                   </div>

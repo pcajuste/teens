@@ -698,7 +698,7 @@ export interface AdminOutlierBrand {
   reason: string;
 }
 
-export interface AdminParentSuspendedRep {
+export interface AdminParentSuspendedTalent {
   talent_id: string;
   talent_user_id: string;
   display_name: string;

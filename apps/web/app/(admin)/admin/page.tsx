@@ -9,7 +9,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { api, ApiError } from "@/lib/api";
-import type { AdminParentSuspendedRep, AdminQueueEntry } from "@/lib/types";
+import type { AdminParentSuspendedTalent, AdminQueueEntry } from "@/lib/types";
 
 type AccountType = "brand" | "recruiter";
 
@@ -70,14 +70,14 @@ function QueueSection({ type, title }: { type: AccountType; title: string }) {
           entries.map((entry) => (
             <div
               key={entry.user_id}
-              className="rounded-lg border border-border p-3"
+              className="rounded-lg border border-border-muted p-3"
             >
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <p className="text-sm font-medium">{entry.display_name}</p>
-                  <p className="text-xs text-muted-foreground">{entry.email}</p>
+                  <p className="text-xs text-text-2">{entry.email}</p>
                 </div>
-                <Badge variant="warning">
+                <Badge variant="pending">
                   {entry.pending_reason.replace(/_/g, " ")}
                 </Badge>
               </div>
@@ -131,7 +131,7 @@ function QueueSection({ type, title }: { type: AccountType; title: string }) {
   );
 }
 
-function RepConsentQueue() {
+function TalentConsentQueue() {
   const [entries, setEntries] = useState<AdminQueueEntry[] | null>(null);
 
   useEffect(() => {
@@ -144,7 +144,7 @@ function RepConsentQueue() {
         <CardTitle>Talents awaiting parent consent</CardTitle>
       </CardHeader>
       <CardContent>
-        <p className="mb-3 text-xs text-muted-foreground">
+        <p className="mb-3 text-xs text-text-2">
           Talents never require admin approval -- this is visibility only into
           who&apos;s waiting on the parental double opt-in.
         </p>
@@ -160,10 +160,10 @@ function RepConsentQueue() {
             {entries.map((e) => (
               <li
                 key={e.user_id}
-                className="rounded-lg border border-border p-3 text-sm"
+                className="rounded-lg border border-border-muted p-3 text-sm"
               >
                 {e.display_name} --{" "}
-                <span className="text-muted-foreground">{e.email}</span>
+                <span className="text-text-2">{e.email}</span>
               </li>
             ))}
           </ul>
@@ -174,13 +174,13 @@ function RepConsentQueue() {
 }
 
 function ParentSuspensionQueue() {
-  const [entries, setEntries] = useState<AdminParentSuspendedRep[] | null>(
+  const [entries, setEntries] = useState<AdminParentSuspendedTalent[] | null>(
     null,
   );
   const [error, setError] = useState<string | null>(null);
 
   async function load() {
-    const rows = await api.get<AdminParentSuspendedRep[]>(
+    const rows = await api.get<AdminParentSuspendedTalent[]>(
       "/admin/parent-suspensions",
     );
     setEntries(rows);
@@ -190,10 +190,10 @@ function ParentSuspensionQueue() {
     load();
   }, []);
 
-  async function reverse(repId: string) {
+  async function reverse(talentId: string) {
     setError(null);
     try {
-      await api.post(`/admin/parent-suspensions/${repId}/reverse`);
+      await api.post(`/admin/parent-suspensions/${talentId}/reverse`);
       await load();
     } catch (err) {
       setError(
@@ -208,7 +208,7 @@ function ParentSuspensionQueue() {
         <CardTitle>Parent-suspended accounts</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
-        <p className="text-xs text-muted-foreground">
+        <p className="text-xs text-text-2">
           Only suspensions a parent initiated can be reversed here -- an
           admin-initiated suspension can only be lifted by admin editing it
           directly.
@@ -222,11 +222,11 @@ function ParentSuspensionQueue() {
           entries.map((e) => (
             <div
               key={e.talent_id}
-              className="flex items-center justify-between rounded-lg border border-border p-3"
+              className="flex items-center justify-between rounded-lg border border-border-muted p-3"
             >
               <div>
                 <p className="text-sm font-medium">{e.display_name}</p>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-xs text-text-2">
                   Suspended{" "}
                   {new Date(e.suspended_by_parent_at).toLocaleString()}
                 </p>
@@ -252,7 +252,7 @@ export default function AdminQueuesPage() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <QueueSection type="brand" title="Brands awaiting approval" />
         <QueueSection type="recruiter" title="Recruiters awaiting approval" />
-        <RepConsentQueue />
+        <TalentConsentQueue />
         <ParentSuspensionQueue />
       </div>
     </AdminShell>

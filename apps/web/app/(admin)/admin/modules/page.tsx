@@ -274,7 +274,7 @@ export default function AdminModulesPage() {
                   {blocks.map((block, i) => (
                     <div
                       key={i}
-                      className="rounded-lg border border-border p-3"
+                      className="rounded-lg border border-border-muted p-3"
                     >
                       <div className="mb-2 flex items-center justify-between">
                         <Badge variant="outline">{block.type}</Badge>
@@ -494,19 +494,19 @@ export default function AdminModulesPage() {
                 <p className="text-lg font-semibold">
                   {title || "Untitled module"}
                 </p>
-                <p className="text-sm text-muted-foreground">{description}</p>
+                <p className="text-sm text-text-2">{description}</p>
                 {blocks.map((block, i) => (
                   <div key={i}>
                     {block.type === "text" ? (
                       <p className="text-sm">{block.text}</p>
                     ) : null}
                     {block.type === "video_url" ? (
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-sm text-text-2">
                         [video: {block.text}]
                       </p>
                     ) : null}
                     {block.type === "image_url" ? (
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-sm text-text-2">
                         [image: {block.text}]
                       </p>
                     ) : null}
@@ -514,7 +514,7 @@ export default function AdminModulesPage() {
                       ? block.questions.map((q, qi) => (
                           <div
                             key={qi}
-                            className="mb-3 rounded-md border border-border p-3"
+                            className="mb-3 rounded-md border border-border-muted p-3"
                           >
                             <p className="text-sm font-medium">{q.question}</p>
                             <div className="mt-2 flex flex-col gap-1">
@@ -554,7 +554,9 @@ export default function AdminModulesPage() {
       ) : (
         <div className="flex flex-col gap-3">
           {modules.map((m) => (
-            <Card key={m.id}>
+            // DS Section 10: archived modules are de-emphasized (reduced
+            // opacity) rather than removed from view.
+            <Card key={m.id} className={m.status === "archived" ? "opacity-60" : undefined}>
               <CardContent className="flex flex-col gap-2 p-4">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
@@ -564,7 +566,15 @@ export default function AdminModulesPage() {
                       aria-hidden="true"
                     />
                     <p className="text-sm font-semibold">{m.title}</p>
-                    <Badge variant="outline">{m.status}</Badge>
+                    {/* DS Section 10: active=teal chip; draft=neutral
+                        text-3 label, not a chip; archived=text-3. */}
+                    {m.status === "active" ? (
+                      <Badge variant="active">Active</Badge>
+                    ) : m.status === "draft" ? (
+                      <span className="text-xs font-medium text-text-3">Draft</span>
+                    ) : (
+                      <span className="text-xs font-medium text-text-3">Archived</span>
+                    )}
                   </div>
                   <div className="flex gap-2">
                     {m.status === "draft" ? (
@@ -583,8 +593,8 @@ export default function AdminModulesPage() {
                     ) : null}
                   </div>
                 </div>
-                <p className="text-sm text-muted-foreground">{m.description}</p>
-                <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+                <p className="text-sm text-text-2">{m.description}</p>
+                <div className="flex flex-wrap gap-3 text-xs text-text-2">
                   <span>{m.completion_count} completions</span>
                   <span>
                     {m.pass_rate !== null

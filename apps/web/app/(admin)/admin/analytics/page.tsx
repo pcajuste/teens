@@ -36,7 +36,7 @@ function Breakdown({
           <ul className="flex flex-col gap-1.5">
             {rows.map((row, i) => (
               <li key={i} className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">
+                <span className="text-text-2">
                   {String(row[keyName])}
                   {row.state ? `, ${row.state}` : ""}
                 </span>
@@ -52,7 +52,7 @@ function Breakdown({
 
 export default function AdminAnalyticsPage() {
   const [revenue, setRevenue] = useState<AdminRevenuePeriod[] | null>(null);
-  const [talents, setReps] = useState<AdminCountBreakdown | null>(null);
+  const [talents, setTalents] = useState<AdminCountBreakdown | null>(null);
   const [campaigns, setCampaigns] = useState<AdminCountBreakdown | null>(null);
   const [consent, setConsent] = useState<AdminConsentStatusEntry[] | null>(
     null,
@@ -62,7 +62,7 @@ export default function AdminAnalyticsPage() {
 
   useEffect(() => {
     api.get<AdminRevenuePeriod[]>("/admin/analytics/revenue").then(setRevenue);
-    api.get<AdminCountBreakdown>("/admin/analytics/talents").then(setReps);
+    api.get<AdminCountBreakdown>("/admin/analytics/talents").then(setTalents);
     api
       .get<AdminCountBreakdown>("/admin/analytics/campaigns")
       .then(setCampaigns);
@@ -90,7 +90,7 @@ export default function AdminAnalyticsPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-border text-left text-muted-foreground">
+                  <tr className="border-b border-border-muted text-left text-text-2">
                     <th className="py-2 pr-4">Period</th>
                     <th className="py-2 pr-4">Brand campaign fees</th>
                     <th className="py-2 pr-4">Intelligence subscriptions</th>
@@ -101,22 +101,25 @@ export default function AdminAnalyticsPage() {
                 </thead>
                 <tbody>
                   {revenue.map((r) => (
-                    <tr key={r.period} className="border-b border-border/60">
+                    // DS Section 10: earned/completed metrics (revenue
+                    // actually collected) are gold; activity/pipeline
+                    // metrics (an ongoing count) stay teal.
+                    <tr key={r.period} className="border-b border-border-muted/60">
                       <td className="py-2 pr-4">{r.period}</td>
-                      <td className="py-2 pr-4">
+                      <td className="py-2 pr-4 font-medium text-gold">
                         ${(r.brand_campaign_fees_cents / 100).toFixed(2)}
                       </td>
-                      <td className="py-2 pr-4 text-muted-foreground">
+                      <td className="py-2 pr-4 font-medium text-gold">
                         ${(r.intelligence_subscription_cents / 100).toFixed(2)}
                       </td>
-                      <td className="py-2 pr-4">
+                      <td className="py-2 pr-4 font-medium text-teal">
                         {r.recruiter_active_subscriptions}
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-              <p className="mt-2 text-xs text-muted-foreground">
+              <p className="mt-2 text-xs text-text-2">
                 Intelligence Subscription billing lands with the anonymization
                 pipeline (Build Prompt 14) -- reported as $0 until that table
                 exists, not fabricated.
@@ -159,7 +162,7 @@ export default function AdminAnalyticsPage() {
           ) : (
             <div className="flex flex-wrap gap-3">
               {consent.map((c) => (
-                <Badge key={c.consent_state} variant="outline">
+                <Badge key={c.consent_state} variant="pending">
                   {c.consent_state.replace(/_/g, " ")}: {c.count}
                 </Badge>
               ))}
@@ -185,10 +188,10 @@ export default function AdminAnalyticsPage() {
               {outliers.map((o) => (
                 <li
                   key={o.brand_id}
-                  className="rounded-lg border border-border p-3 text-sm"
+                  className="rounded-lg border border-border-muted p-3 text-sm"
                 >
                   <p className="font-medium">{o.company_name}</p>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-xs text-text-2">
                     {o.rating_count} ratings, avg {o.average_rating.toFixed(2)}{" "}
                     -- {o.reason}
                   </p>
@@ -208,24 +211,27 @@ export default function AdminAnalyticsPage() {
             <Skeleton className="h-24 w-full" />
           ) : (
             <div className="flex flex-col gap-4">
+              {/* DS Section 10: active modules teal; draft/archived/failed
+                  neutral; passed completions gold (earned); in-progress
+                  teal (pipeline). */}
               <div className="flex flex-wrap gap-3 text-sm">
-                <Badge variant="outline">{modules.active_modules} active</Badge>
-                <Badge variant="outline">{modules.draft_modules} draft</Badge>
-                <Badge variant="outline">
+                <Badge variant="active">{modules.active_modules} active</Badge>
+                <Badge variant="pending">{modules.draft_modules} draft</Badge>
+                <Badge variant="pending">
                   {modules.archived_modules} archived
                 </Badge>
-                <Badge variant="outline">
+                <Badge variant="earned">
                   {modules.completions_passed} passed
                 </Badge>
-                <Badge variant="outline">
+                <Badge variant="pending">
                   {modules.completions_failed} failed
                 </Badge>
-                <Badge variant="outline">
+                <Badge variant="active">
                   {modules.completions_in_progress} in progress
                 </Badge>
               </div>
               {modules.ftc_module_readiness ? (
-                <p className="text-sm text-muted-foreground">
+                <p className="text-sm text-text-2">
                   FTC launch readiness:{" "}
                   {modules.ftc_module_readiness.pass_percentage ?? 0}% of
                   talents who have touched a campaign have passed the FTC module
@@ -233,14 +239,14 @@ export default function AdminAnalyticsPage() {
                   {modules.ftc_module_readiness.attempted_reps}).
                 </p>
               ) : (
-                <p className="text-sm text-muted-foreground">
+                <p className="text-sm text-text-2">
                   FTC_MODULE_ID not configured yet.
                 </p>
               )}
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-border text-left text-muted-foreground">
+                    <tr className="border-b border-border-muted text-left text-text-2">
                       <th className="py-2 pr-4">Module</th>
                       <th className="py-2 pr-4">Completions</th>
                       <th className="py-2 pr-4">Pass rate</th>
@@ -260,7 +266,7 @@ export default function AdminAnalyticsPage() {
                       return (
                         <tr
                           key={m.module_id}
-                          className="border-b border-border/60"
+                          className="border-b border-border-muted/60"
                         >
                           <td className="py-2 pr-4">{m.title}</td>
                           <td className="py-2 pr-4">{m.completion_count}</td>
@@ -292,7 +298,7 @@ export default function AdminAnalyticsPage() {
                 <p className="mb-1 text-sm font-medium">Badge distribution</p>
                 <div className="flex flex-wrap gap-2">
                   {modules.badge_distribution.map((b) => (
-                    <Badge key={b.badge_title} variant="outline">
+                    <Badge key={b.badge_title} variant="active">
                       {b.badge_title}: {b.earned_count}
                     </Badge>
                   ))}

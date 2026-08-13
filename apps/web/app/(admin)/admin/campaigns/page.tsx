@@ -96,13 +96,13 @@ export default function AdminCampaignsPage() {
                 <div className="flex items-center justify-between gap-4">
                   <div>
                     <p className="text-sm font-medium">{c.title}</p>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-xs text-text-2">
                       {c.brand_name} -- ${(c.budget_cents / 100).toFixed(2)} --{" "}
                       {c.target_categories.join(", ")}
                     </p>
                   </div>
                   <div className="flex gap-2">
-                    <Badge variant="outline">{c.status}</Badge>
+                    <Badge variant="pending">{c.status}</Badge>
                     {c.flagged_at && !c.resolved_at ? (
                       <Badge variant="destructive">flagged</Badge>
                     ) : null}
@@ -114,7 +114,7 @@ export default function AdminCampaignsPage() {
                   </div>
                 </div>
                 {c.flagged_reason ? (
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-xs text-text-2">
                     Flag reason: {c.flagged_reason}
                   </p>
                 ) : null}

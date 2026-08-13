@@ -43,7 +43,7 @@ export default function AdminPaymentsPage() {
   return (
     <AdminShell
       title="Stuck payments"
-      action={<Badge variant="outline">processing &gt; 48h</Badge>}
+      action={<Badge variant="destructive">processing &gt; 48h</Badge>}
     >
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
       {rows === null ? (
@@ -66,7 +66,7 @@ export default function AdminPaymentsPage() {
                       : "0.00"}{" "}
                     -- {r.payout_status}
                   </p>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-xs text-text-2">
                     Stuck for {r.hours_stuck.toFixed(1)}h -- transfer{" "}
                     {r.stripe_transfer_id ?? "n/a"}
                   </p>

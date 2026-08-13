@@ -107,22 +107,22 @@ export default function AdminExclusivityPage() {
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <div>
-                <p className="text-xs text-muted-foreground">Total revenue</p>
+                <p className="text-xs text-text-2">Total revenue</p>
                 <p className="text-lg font-semibold">{money(analytics.total_revenue_cents)}</p>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">Active agreements</p>
+                <p className="text-xs text-text-2">Active agreements</p>
                 <p className="text-lg font-semibold">{analytics.active_count}</p>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">Avg. agreement length</p>
+                <p className="text-xs text-text-2">Avg. agreement length</p>
                 <p className="text-lg font-semibold">{analytics.average_agreement_length_days.toFixed(1)}d</p>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">Top categories by purchase frequency</p>
+                <p className="text-xs text-text-2">Top categories by purchase frequency</p>
                 <div className="mt-1 flex flex-wrap gap-1.5">
                   {analytics.categories_by_purchase_frequency.length === 0 ? (
-                    <span className="text-xs text-muted-foreground">No purchases yet</span>
+                    <span className="text-xs text-text-2">No purchases yet</span>
                   ) : (
                     analytics.categories_by_purchase_frequency.map((c) => (
                       <Badge key={c.category} variant="outline">
@@ -167,7 +167,7 @@ export default function AdminExclusivityPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-border text-left text-muted-foreground">
+                  <tr className="border-b border-border-muted text-left text-text-2">
                     <th className="py-2 pr-4">Category</th>
                     <th className="py-2 pr-4">City</th>
                     <th className="py-2 pr-4">Window</th>
@@ -181,7 +181,7 @@ export default function AdminExclusivityPage() {
                 </thead>
                 <tbody>
                   {sorted.map((a) => (
-                    <tr key={a.id} className="border-b border-border/60">
+                    <tr key={a.id} className="border-b border-border-muted/60">
                       <td className="py-2 pr-4">{a.category}</td>
                       <td className="py-2 pr-4">{a.city ?? "All markets"}</td>
                       <td className="py-2 pr-4 whitespace-nowrap">
@@ -232,11 +232,11 @@ export default function AdminExclusivityPage() {
           <div className="flex flex-col gap-3">
             <div className="rounded-lg bg-secondary/50 p-3 text-sm">
               <p className="font-medium">Proration preview</p>
-              <p className="text-muted-foreground">
+              <p className="text-text-2">
                 Estimated refund: <span className="font-semibold text-foreground">{money(previewRefundCents(cancelTarget))}</span>{" "}
                 of {money(cancelTarget.fee_cents)} paid.
               </p>
-              <p className="mt-1 text-xs text-muted-foreground">
+              <p className="mt-1 text-xs text-text-2">
                 Full refund if the window hasn&apos;t started yet; otherwise remaining days are refunded
                 proportionally, rounded down. The server computes the authoritative amount at confirmation
                 time.
