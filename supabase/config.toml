@@ -57,16 +57,16 @@ max_client_conn = 100
 # secret_key = "env(SECRET_VALUE)"
 
 [db.migrations]
-# If disabled, migrations will be skipped during a db push or reset.
+# If disabled, migrations will be skipped during a db push or talents.t.
 enabled = true
 # Specifies an ordered list of schema files, directories, or glob patterns that describe your database.
 # Supports paths relative to supabase directory: "./schemas/*.sql", "./database".
 schema_paths = []
 
 [db.seed]
-# If enabled, seeds the database after migrations during a db reset.
+# If enabled, seeds the database after migrations during a db talents.t.
 enabled = true
-# Specifies an ordered list of seed files to load during db reset.
+# Specifies an ordered list of seed files to load during db talents.t.
 # Supports glob patterns relative to supabase directory: "./seeds/*.sql"
 sql_paths = ["./seed.sql"]
 
@@ -226,7 +226,7 @@ double_confirm_changes = true
 enable_confirmations = false
 # If enabled, users will need to reauthenticate or have logged in recently to change their password.
 secure_password_change = false
-# Controls the minimum amount of time that must pass before sending another signup confirmation or password reset email.
+# Controls the minimum amount of time that must pass before sending another signup confirmation or password talents.t email.
 max_frequency = "1s"
 # Number of characters used in the email OTP.
 otp_length = 6

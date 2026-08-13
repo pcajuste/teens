@@ -9,19 +9,19 @@ interface CreditConfirmDialogProps {
   description: string;
   confirmLabel?: string;
   onCancel: () => void;
-  /** Fires the real, credit-spending request. Its response is the only
+  /** Fires the real, credit-spending request. Its response  is the only
    * source of truth for the new balance -- this dialog never
    * locally decrements a credit counter (Section 9: server-side only). */
   onConfirm: () => Promise<void>;
   /** Optional extra content rendered between the description and the
    * confirm/cancel buttons -- e.g. the message textarea for the
-   * "contact a rep" flow, so composing and confirming the spend happen
+   * "contact a talent" flow, so composing and confirming the spend happen
    * in one dialog rather than two stacked overlays. */
   children?: React.ReactNode;
   confirmDisabled?: boolean;
 }
 
-/** Every credit-spending action (view full profile, contact a rep) must
+/** Every credit-spending action (view full profile, contact a talent) must
  * route through this dialog before firing its request -- no silent
  * credit spend, per Build Prompt 12's acceptance criteria. */
 export function CreditConfirmDialog({
@@ -52,17 +52,34 @@ export function CreditConfirmDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      role="dialog"
+      aria-modal="true"
+    >
       <div className="w-full max-w-sm rounded-xl border border-border bg-card p-6 shadow-md">
         <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
         <p className="mt-2 text-sm text-muted-foreground">{description}</p>
         {children ? <div className="mt-4">{children}</div> : null}
-        {error ? <p className="mt-3 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p> : null}
+        {error ? (
+          <p className="mt-3 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {error}
+          </p>
+        ) : null}
         <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <Button type="button" variant="outline" onClick={onCancel} disabled={pending}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onCancel}
+            disabled={pending}
+          >
             Cancel
           </Button>
-          <Button type="button" onClick={handleConfirm} disabled={pending || confirmDisabled}>
+          <Button
+            type="button"
+            onClick={handleConfirm}
+            disabled={pending || confirmDisabled}
+          >
             {pending ? "Working..." : confirmLabel}
           </Button>
         </div>

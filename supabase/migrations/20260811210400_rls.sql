@@ -3,10 +3,10 @@
 -- ──────────────────────────────────────────────────────────────────
 
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.rep_profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.talent_profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.brand_profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.campaigns ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.campaign_reps ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.campaign_talents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.recruiter_profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.recruiter_contacts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.recruiter_saved_profiles ENABLE ROW LEVEL SECURITY;
@@ -23,12 +23,12 @@ CREATE POLICY "User reads own row"
 -- Cross-table RLS helper functions.
 --
 -- Several policies below need to look up a row in a DIFFERENT
--- RLS-protected table (e.g. "does this rep have a campaign_reps row
+-- RLS-protected table (e.g. "does this talent have a campaign_talents row
 -- for this campaign" from within a campaigns policy, or vice versa).
 -- Doing that with a plain EXISTS(...) subquery re-triggers RLS
 -- evaluation on the referenced table, and several of these references
--- are mutually circular (rep_profiles -> campaign_reps -> rep_profiles,
--- campaigns -> campaign_reps -> campaigns), which Postgres detects and
+-- are mutually circular (talent_profiles -> campaign_talents -> talent_profiles,
+-- campaigns -> campaign_talents -> campaigns), which Postgres detects and
 -- refuses to execute ("infinite recursion detected in policy for
 -- relation ...").
 --
@@ -43,10 +43,10 @@ CREATE POLICY "User reads own row"
 -- it doesn't itself become a data-leak path.
 CREATE SCHEMA IF NOT EXISTS rls;
 
-CREATE OR REPLACE FUNCTION rls.rep_id_for_user(p_user_id UUID) RETURNS UUID
+CREATE OR REPLACE FUNCTION rls.talent_id_for_user(p_user_id UUID) RETURNS UUID
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
 AS $$
-  SELECT id FROM public.rep_profiles WHERE user_id = p_user_id;
+  SELECT id FROM public.talent_profiles WHERE user_id = p_user_id;
 $$;
 
 CREATE OR REPLACE FUNCTION rls.is_recruiter(p_user_id UUID) RETURNS BOOLEAN
@@ -65,28 +65,28 @@ AS $$
   );
 $$;
 
-CREATE OR REPLACE FUNCTION rls.brand_has_rep_in_campaign(p_rep_id UUID, p_user_id UUID) RETURNS BOOLEAN
+CREATE OR REPLACE FUNCTION rls.brand_has_talent_in_campaign(p_talent_id UUID, p_user_id UUID) RETURNS BOOLEAN
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
 AS $$
   SELECT EXISTS (
     SELECT 1
-    FROM public.campaign_reps cr
+    FROM public.campaign_talents cr
     JOIN public.campaigns c ON c.id = cr.campaign_id
     JOIN public.brand_profiles bp ON bp.id = c.brand_id
-    WHERE cr.rep_id = p_rep_id AND bp.user_id = p_user_id
+    WHERE cr.talent_id = p_talent_id AND bp.user_id = p_user_id
   );
 $$;
 
--- Returns TRUE if the given rep (by rep_profiles.id) is allowed to see
--- the given campaign: they have a campaign_reps row for it AND that
+-- Returns TRUE if the given talent (by talent_profiles.id) is allowed to see
+-- the given campaign: they have a campaign_talents row for it AND that
 -- row's parent_approval_status is not 'pending'/'blocked'.
-CREATE OR REPLACE FUNCTION rls.rep_can_see_campaign(p_campaign_id UUID, p_rep_id UUID) RETURNS BOOLEAN
+CREATE OR REPLACE FUNCTION rls.talent_can_see_campaign(p_campaign_id UUID, p_talent_id UUID) RETURNS BOOLEAN
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
 AS $$
   SELECT EXISTS (
-    SELECT 1 FROM public.campaign_reps cr
+    SELECT 1 FROM public.campaign_talents cr
     WHERE cr.campaign_id = p_campaign_id
-      AND cr.rep_id = p_rep_id
+      AND cr.talent_id = p_talent_id
       AND cr.parent_approval_status IN ('not_required', 'approved')
   );
 $$;
@@ -110,29 +110,29 @@ BEGIN
 END$$;
 
 -- ──────────────────────────────────────────────────────────────────
--- rep_profiles
+-- talent_profiles
 -- ──────────────────────────────────────────────────────────────────
 
--- Reps see/edit only their own profile.
-CREATE POLICY "Rep owns their profile"
-  ON public.rep_profiles FOR ALL
+-- Talents see/edit only their own profile.
+CREATE POLICY   "Talent owns their profile"
+  ON public.talent_profiles FOR ALL
   USING (user_id = auth.uid());
 
--- Recruiters see only opted-in rep profiles.
-CREATE POLICY "Recruiters see opted-in reps"
-  ON public.rep_profiles FOR SELECT
+-- Recruiters see only opted-in talent profiles.
+CREATE POLICY "Recruiters see opted-in talents"
+  ON public.talent_profiles FOR SELECT
   USING (
     recruiter_visible = TRUE
     AND rls.is_recruiter(auth.uid())
   );
 
--- Brands see reps only in campaign context (via campaign_reps) --
--- i.e. a rep they have an active campaign_reps row with, regardless of
--- that rep's recruiter_visible flag (a brand campaign relationship is
+-- Brands see talents only in campaign context (via campaign_talents) --
+-- i.e. a talent they have an active campaign_talents row with, regardless of
+-- that talent's recruiter_visible flag (a brand campaign relationship is
 -- not the same consent as recruiter discovery).
-CREATE POLICY "Brands see reps via campaign context"
-  ON public.rep_profiles FOR SELECT
-  USING (rls.brand_has_rep_in_campaign(rep_profiles.id, auth.uid()));
+CREATE POLICY "Brands see talents via campaign context"
+  ON public.talent_profiles FOR SELECT
+  USING (rls.brand_has_talent_in_campaign(talent_profiles.id, auth.uid()));
 
 -- Admin sees everything -- enforced via service role key in admin
 -- portal (service_role bypasses RLS entirely; no policy needed here).
@@ -158,35 +158,35 @@ CREATE POLICY "Brand manages own campaigns"
     )
   );
 
--- Reps can read a campaign only if they have a campaign_reps row for
+-- Talents can read a campaign only if they have a campaign_talents row for
 -- it AND (their parent doesn't require approval on that row, OR
 -- approval has already been granted). This is Build Prompt 2's
--- required addition: block rep access at the RLS layer -- not just in
+-- required addition: block talent access at the RLS layer -- not just in
 -- application code -- to a campaign where
--- campaign_reps.parent_approval_status = 'pending' (approval required,
+-- campaign_talents.parent_approval_status = 'pending' (approval required,
 -- not yet given). 'blocked' is likewise excluded (parent said no);
--- 'not_required' and 'approved' both pass. See rls.rep_can_see_campaign()
+-- 'not_required' and 'approved' both pass. See rls.talent_can_see_campaign()
 -- above for why this is a function call rather than an inline EXISTS.
-CREATE POLICY "Rep reads own campaigns not pending parent approval"
+CREATE POLICY   "Talent reads own campaigns not pending parent approval"
   ON public.campaigns FOR SELECT
-  USING (rls.rep_can_see_campaign(campaigns.id, rls.rep_id_for_user(auth.uid())));
+  USING (rls.talent_can_see_campaign(campaigns.id, rls.talent_id_for_user(auth.uid())));
 
 -- ──────────────────────────────────────────────────────────────────
--- campaign_reps
+-- campaign_talents
 -- ──────────────────────────────────────────────────────────────────
 
--- Uses rls.rep_id_for_user() (SECURITY DEFINER, bypasses RLS
--- internally) rather than an inline EXISTS(... rep_profiles ...) so
--- this policy can't re-enter rep_profiles' own RLS evaluation --
--- consistent with how the rep_profiles/campaigns policies above break
+-- Uses rls.talent_id_for_user() (SECURITY DEFINER, bypasses RLS
+-- internally) rather than an inline EXISTS(... talent_profiles ...) so
+-- this policy can't re-enter talent_profiles' own RLS evaluation --
+-- consistent with how the talent_profiles/campaigns policies above break
 -- their own cross-table cycles.
-CREATE POLICY "Rep reads/updates own campaign_reps rows"
-  ON public.campaign_reps FOR ALL
-  USING (campaign_reps.rep_id = rls.rep_id_for_user(auth.uid()));
+CREATE POLICY   "Talent reads/updates own campaign_talents rows"
+  ON public.campaign_talents FOR ALL
+  USING (campaign_talents.talent_id = rls.talent_id_for_user(auth.uid()));
 
-CREATE POLICY "Brand reads/updates campaign_reps on own campaigns"
-  ON public.campaign_reps FOR ALL
-  USING (rls.brand_owns_campaign(campaign_reps.campaign_id, auth.uid()));
+CREATE POLICY "Brand reads/updates campaign_talents on own campaigns"
+  ON public.campaign_talents FOR ALL
+  USING (rls.brand_owns_campaign(campaign_talents.campaign_id, auth.uid()));
 
 -- ──────────────────────────────────────────────────────────────────
 -- recruiter_profiles / recruiter_contacts / recruiter_saved_profiles
@@ -220,7 +220,7 @@ CREATE POLICY "Recruiter manages own saved profiles"
 -- Parents have no Supabase auth.uid() of their own (Section 9A) -- they
 -- authenticate via a magic-link flow that issues a stateless, signed
 -- HS256 session token (PARENT_SESSION_SECRET) carrying
--- {parent_record_id, rep_id, exp}, verified entirely in the FastAPI
+-- {parent_record_id, talent_id, exp}, verified entirely in the FastAPI
 -- layer (Prompt 4A), never by Supabase's PostgREST JWT path. That
 -- means the *service-role* Postgres connection (which bypasses RLS) is
 -- what the API uses on a parent's behalf -- but we still want RLS to
@@ -256,12 +256,12 @@ $$;
 CREATE POLICY "Parent reads/updates only their own parent_records row"
   ON public.parent_records FOR ALL
   USING (parent_id = public.parent_record_id());
--- The rep cannot read or write parent_records directly: there is no
--- policy here matching rep_profiles.user_id = auth.uid(), so a rep's
+-- The talent cannot read or write parent_records directly: there is no
+-- policy here matching talent_profiles.user_id = auth.uid(), so a talent's
 -- normal (Supabase-JWT) connection has no clause it can satisfy and
--- default-deny applies. Reps' onboarding wizard writes parent_email by
+-- default-deny applies. Talents' onboarding wizard writes parent_email by
 -- calling a server-side API endpoint that creates the record using the
--- service-role key, never a rep-scoped client credential.
+-- service-role key, never a talent-scoped client credential.
 
 -- parent_auth_tokens: no user-facing policy at all (rows are only ever
 -- read/written by the service-role key during the magic-link

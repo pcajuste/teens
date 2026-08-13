@@ -30,7 +30,11 @@ export default function RecruiterSavedPage() {
       const rows = await api.get<RecruiterSavedProfile[]>("/recruiters/saved");
       setSaved(rows);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not load saved profiles.");
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : "Could not load saved profiles.",
+      );
     } finally {
       setLoading(false);
     }
@@ -48,20 +52,31 @@ export default function RecruiterSavedPage() {
   async function handleUnsave(repId: string) {
     setNotice(null);
     try {
-      await api.delete(`/recruiters/reps/${repId}/save`);
-      setSaved((prev) => (prev ? prev.filter((r) => r.rep_id !== repId) : prev));
+      await api.delete(`/recruiters/talents/${repId}/save`);
+      setSaved((prev) =>
+        prev ? prev.filter((r) => r.talent_id !== repId) : prev,
+      );
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not remove this rep.");
+      setError(
+        err instanceof ApiError ? err.message : "Could not remove this talent.",
+      );
     }
   }
 
   async function handleMoveToList(repId: string, listName: string) {
     setNotice(null);
     try {
-      const updated = await api.post<RecruiterSavedProfile>(`/recruiters/reps/${repId}/save`, { list_name: listName });
-      setSaved((prev) => (prev ? prev.map((r) => (r.rep_id === repId ? updated : r)) : prev));
+      const updated = await api.post<RecruiterSavedProfile>(
+        `/recruiters/talents/${repId}/save`,
+        { list_name: listName },
+      );
+      setSaved((prev) =>
+        prev ? prev.map((r) => (r.talent_id === repId ? updated : r)) : prev,
+      );
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not move this rep.");
+      setError(
+        err instanceof ApiError ? err.message : "Could not move this talent.",
+      );
     }
   }
 
@@ -79,24 +94,40 @@ export default function RecruiterSavedPage() {
     }
     // No dedicated "rename list" endpoint exists -- a list is just a label
     // (list_name) on each saved-profile row, not a separate resource, per
-    // recruiter_saved_profiles_repository.py. Renaming re-saves every rep
+    // recruiter_saved_profiles_repository.py. Renaming re-saves every talent
     // currently in that list under the new label.
     const rows = lists.get(oldName) ?? [];
     setError(null);
     try {
-      await Promise.all(rows.map((r) => api.post(`/recruiters/reps/${r.rep_id}/save`, { list_name: newName })));
+      await Promise.all(
+        rows.map((r) =>
+          api.post(`/recruiters/talents/${r.talent_id}/save`, {
+            list_name: newName,
+          }),
+        ),
+      );
       setNotice(`Renamed "${oldName}" to "${newName}".`);
       setRenaming(null);
       await load();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not rename this list.");
+      setError(
+        err instanceof ApiError ? err.message : "Could not rename this list.",
+      );
     }
   }
 
   return (
     <RecruiterShell title="Saved profiles">
-      {error ? <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p> : null}
-      {notice ? <p className="rounded-lg bg-success/15 px-3 py-2 text-sm text-success">{notice}</p> : null}
+      {error ? (
+        <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {error}
+        </p>
+      ) : null}
+      {notice ? (
+        <p className="rounded-lg bg-success/15 px-3 py-2 text-sm text-success">
+          {notice}
+        </p>
+      ) : null}
 
       {loading ? (
         <div className="flex flex-col gap-4">
@@ -105,8 +136,8 @@ export default function RecruiterSavedPage() {
         </div>
       ) : !saved || saved.length === 0 ? (
         <EmptyState
-          title="No saved reps yet"
-          description="Save reps from search results to organize them into lists for later outreach."
+          title="No saved talents yet"
+          description="Save talents from search results to organize them into lists for later outreach."
           action={
             <a href="/recruiter">
               <Button type="button" size="sm">
@@ -128,10 +159,19 @@ export default function RecruiterSavedPage() {
                         onChange={(e) => setRenameValue(e.target.value)}
                         className="h-8 w-48"
                       />
-                      <Button type="button" size="sm" onClick={() => submitRename(listName)}>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => submitRename(listName)}
+                      >
                         Save
                       </Button>
-                      <Button type="button" size="sm" variant="ghost" onClick={() => setRenaming(null)}>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setRenaming(null)}
+                      >
                         Cancel
                       </Button>
                     </div>
@@ -142,7 +182,12 @@ export default function RecruiterSavedPage() {
                     </div>
                   )}
                   {renaming !== listName ? (
-                    <Button type="button" size="sm" variant="ghost" onClick={() => startRename(listName)}>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => startRename(listName)}
+                    >
                       Rename list
                     </Button>
                   ) : null}
@@ -150,22 +195,36 @@ export default function RecruiterSavedPage() {
 
                 <div className="mt-3 flex flex-col divide-y divide-border">
                   {rows.map((row: RecruiterSavedProfile) => (
-                    <div key={row.rep_id} className="flex flex-wrap items-center justify-between gap-2 py-2">
-                      <span className="text-sm text-muted-foreground">Rep #{row.rep_id.slice(0, 8)}</span>
+                    <div
+                      key={row.talent_id}
+                      className="flex flex-wrap items-center justify-between gap-2 py-2"
+                    >
+                      <span className="text-sm text-muted-foreground">
+                       talent #{row.talent_id.slice(0, 8)}
+                      </span>
                       <div className="flex items-center gap-2">
                         <select
                           className="h-8 rounded-md border border-input bg-background px-2 text-xs"
                           value={listName}
-                          onChange={(e) => handleMoveToList(row.rep_id, e.target.value)}
+                          onChange={(e) =>
+                            handleMoveToList(row.talent_id, e.target.value)
+                          }
                         >
-                          {Array.from(new Set([...Array.from(lists.keys()), listName])).map((name) => (
+                          {Array.from(
+                            new Set([...Array.from(lists.keys()), listName]),
+                          ).map((name) => (
                             <option key={name} value={name}>
                               {name}
                             </option>
                           ))}
                           <option value="Default">Default</option>
                         </select>
-                        <Button type="button" size="sm" variant="destructive" onClick={() => handleUnsave(row.rep_id)}>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => handleUnsave(row.talent_id)}
+                        >
                           Remove
                         </Button>
                       </div>

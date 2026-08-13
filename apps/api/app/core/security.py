@@ -4,7 +4,7 @@ enforcement, and the separate parent-session mechanism.
 Two distinct token types flow through this module:
 
 1. Supabase JWTs (HS256, signed with SUPABASE_JWT_SECRET) — issued to
-   reps/brands/recruiters/admins on login. `role` and `account_status`
+   talents/brands/recruiters/admins on login. `role` and `account_status`
    are read from the token's `app_metadata` claim, which
    app/services/supabase_auth_client.py sets directly via Supabase's
    Auth Admin API at account creation and updates the same way
@@ -19,7 +19,7 @@ Two distinct token types flow through this module:
    email (Prompt 4A). Parents have no `auth.users` row (Section 7), so
    they are never issued a Supabase-signed JWT; this is a
    purpose-built, short-lived session token carrying only
-   `parent_id`/`rep_id`, verified by `get_parent_session` and never
+   `parent_id`/`talent_id`, verified by `get_parent_session` and never
    accepted by `get_current_user`.
 """
 from __future__ import annotations
@@ -38,7 +38,7 @@ from pydantic import BaseModel
 from app.core.config import Settings, get_settings
 from app.db.pool import get_connection
 
-Role = Literal["rep", "brand", "recruiter", "admin"]
+Role = Literal["talent", "brand", "recruiter", "admin"]
 AccountStatus = Literal["pending", "active", "suspended", "rejected"]
 
 _supabase_bearer = HTTPBearer(auto_error=False)
@@ -68,7 +68,7 @@ class AuthenticatedUser(BaseModel):
 
 class ParentSession(BaseModel):
     parent_id: str
-    rep_id: str
+    talent_id: str
 
 
 def _unauthorized(code: str, message: str) -> HTTPException:
@@ -205,11 +205,11 @@ async def get_parent_session(
         raise _unauthorized("invalid_parent_session", "Parent session token is invalid or expired.") from exc
 
     parent_id = payload.get("parent_id")
-    rep_id = payload.get("rep_id")
-    if not parent_id or not rep_id:
+    talent_id = payload.get("talent_id")
+    if not parent_id or not talent_id:
         raise _unauthorized("malformed_parent_session", "Token is missing required parent-session claims.")
 
-    return ParentSession(parent_id=parent_id, rep_id=rep_id)
+    return ParentSession(parent_id=parent_id, talent_id=talent_id)
 
 
 async def get_active_parent_session(
@@ -218,7 +218,7 @@ async def get_active_parent_session(
 ) -> ParentSession:
     """Re-checks portal_expires_at on every /parent/* request, not just
     at magic-link verification (Prompt 4A deliverable 8) -- a session
-    token issued the day before a rep's 18th birthday is still a valid
+    token issued the day before a talent's 18th birthday is still a valid
     JWT the day after, so expiry has to be enforced against current
     parent_records state on every call, not baked into the token."""
     from app.repositories.parent_records_repository import get_parent_by_id

@@ -23,7 +23,7 @@ async function parseError(res: Response): Promise<never> {
       message = body.error.message ?? message;
     }
   } catch {
-    // response body wasn't JSON -- fall back to the generic message above
+    // response  body wasn't JSON -- fall back to the generic message above
   }
   if (res.status === 401) {
     // Session missing/expired/invalid on the backend -- clear the

@@ -31,25 +31,25 @@ def _seed_recruiter_user(db, *, account_status: str = "active") -> None:
 
 def _seed_rep(db, *, recruiter_visible: bool = True, categories=None, city="Austin", state="TX", graduation_year=2027,
               total_campaigns_completed=0, average_rating=None) -> str:
-    rep_user_id = str(uuid.uuid4())
-    rep_id = str(uuid.uuid4())
-    rep_email = f"rep-{rep_user_id}@example.com"
-    db.execute("INSERT INTO auth.users (id, email) VALUES ($1, $2)", rep_user_id, rep_email)
+    talent_user_id = str(uuid.uuid4())
+    talent_id = str(uuid.uuid4())
+    talent_email = f"talent-{talent_user_id}@example.com"
+    db.execute("INSERT INTO auth.users (id, email) VALUES ($1, $2)", talent_user_id, talent_email)
     db.execute(
         "INSERT INTO public.users (id, email, role, account_status, date_of_birth) "
-        "VALUES ($1, $2, 'rep', 'active', '2008-06-01')",
-        rep_user_id,
-        rep_email,
+        "VALUES ($1, $2, 'talent', 'active', '2008-06-01')",
+        talent_user_id,
+        talent_email,
     )
     db.execute(
         """
-        INSERT INTO public.rep_profiles
+        INSERT INTO public.talent_profiles
             (id, user_id, display_name, school_name, city, state, graduation_year, categories,
              recruiter_visible, total_campaigns_completed, average_rating, instagram_handle)
-        VALUES ($1, $2, 'Test Rep', 'Test High', $3, $4, $5, $6, $7, $8, $9, 'test_rep_ig')
+        VALUES ($1, $2, 'Test Talent', 'Test High', $3, $4, $5, $6, $7, $8, $9, 'test_talent_ig')
         """,
-        rep_id,
-        rep_user_id,
+        talent_id,
+        talent_user_id,
         city,
         state,
         graduation_year,
@@ -58,7 +58,7 @@ def _seed_rep(db, *, recruiter_visible: bool = True, categories=None, city="Aust
         total_campaigns_completed,
         average_rating,
     )
-    return rep_id
+    return talent_id
 
 
 @pytest.fixture()
@@ -69,9 +69,9 @@ def recruiter_headers(auth_headers_factory):
 @pytest.fixture()
 def onboarded_recruiter(client, db, recruiter_headers):
     _seed_recruiter_user(db)
-    response = client.put("/recruiters/me", json=_BASE_PROFILE_BODY, headers=recruiter_headers)
-    assert response.status_code == 200
-    return response.json()
+    response  = client.put("/recruiters/me", json=_BASE_PROFILE_BODY, headers=recruiter_headers)
+    assert response .status_code == 200
+    return response .json()
 
 
 def _grant_credits(db, recruiter_id: str, *, credits: int = 5) -> None:
@@ -141,9 +141,9 @@ def test_put_me_creates_then_updates_profile(client, db, recruiter_headers):
 
 def test_get_me_requires_onboarding_first(client, recruiter_headers):
     _ = recruiter_headers  # no seed -- account exists via JWT claims only, no DB row
-    response = client.get("/recruiters/me", headers=recruiter_headers)
-    assert response.status_code == 404
-    assert response.json()["error"]["code"] == "recruiter_profile_not_found"
+    response  = client.get("/recruiters/me", headers=recruiter_headers)
+    assert response .status_code == 404
+    assert response .json()["error"]["code"] == "recruiter_profile_not_found"
 
 
 def test_pending_recruiter_can_reach_put_me(client, db, auth_headers_factory):
@@ -152,20 +152,20 @@ def test_pending_recruiter_can_reach_put_me(client, db, auth_headers_factory):
     profile, mirroring brands.py's PUT /brands/me fix."""
     _seed_recruiter_user(db, account_status="pending")
     headers = auth_headers_factory("recruiter", account_status="pending")
-    response = client.put("/recruiters/me", json=_BASE_PROFILE_BODY, headers=headers)
-    assert response.status_code == 200
+    response  = client.put("/recruiters/me", json=_BASE_PROFILE_BODY, headers=headers)
+    assert response .status_code == 200
 
 
 # ---------------------------------------------------------------------
-# GET /recruiters/reps/search -- no credit cost, no PII
+# GET /recruiters/talents/search -- no credit cost, no PII
 # ---------------------------------------------------------------------
 
 
 def test_search_never_returns_pii_fields(client, db, recruiter_headers, onboarded_recruiter):
     _seed_rep(db, city="Austin", state="TX", categories=["gaming"])
-    response = client.get("/recruiters/reps/search", headers=recruiter_headers)
-    assert response.status_code == 200
-    results = response.json()
+    response  = client.get("/recruiters/talents/search", headers=recruiter_headers)
+    assert response .status_code == 200
+    results = response .json()
     assert len(results) == 1
     card = results[0]
     assert "display_name" not in card
@@ -178,7 +178,7 @@ def test_search_does_not_cost_a_credit(client, db, recruiter_headers, onboarded_
     _seed_rep(db)
     recruiter_id = _recruiter_id(db)
     _grant_credits(db, recruiter_id, credits=3)
-    client.get("/recruiters/reps/search", headers=recruiter_headers)
+    client.get("/recruiters/talents/search", headers=recruiter_headers)
     after = client.get("/recruiters/credits", headers=recruiter_headers).json()
     assert after["contact_credits_remaining"] == 3
 
@@ -187,70 +187,70 @@ def test_search_filters_by_params(client, db, recruiter_headers, onboarded_recru
     _seed_rep(db, city="Austin", state="TX", graduation_year=2027, categories=["gaming"])
     _seed_rep(db, city="Dallas", state="TX", graduation_year=2028, categories=["fashion"])
 
-    response = client.get("/recruiters/reps/search", params={"city": "Austin"}, headers=recruiter_headers)
-    assert len(response.json()) == 1
-    assert response.json()[0]["city"] == "Austin"
+    response  = client.get("/recruiters/talents/search", params={"city": "Austin"}, headers=recruiter_headers)
+    assert len(response .json()) == 1
+    assert response .json()[0]["city"] == "Austin"
 
-    response = client.get("/recruiters/reps/search", params={"categories": "fashion"}, headers=recruiter_headers)
-    assert len(response.json()) == 1
-    assert response.json()[0]["city"] == "Dallas"
+    response  = client.get("/recruiters/talents/search", params={"categories": "fashion"}, headers=recruiter_headers)
+    assert len(response .json()) == 1
+    assert response .json()[0]["city"] == "Dallas"
 
-    response = client.get("/recruiters/reps/search", params={"graduation_year": 2027}, headers=recruiter_headers)
-    assert len(response.json()) == 1
+    response  = client.get("/recruiters/talents/search", params={"graduation_year": 2027}, headers=recruiter_headers)
+    assert len(response .json()) == 1
 
 
 def test_search_excludes_non_recruiter_visible_reps(client, db, recruiter_headers, onboarded_recruiter):
     _seed_rep(db, recruiter_visible=False)
-    response = client.get("/recruiters/reps/search", headers=recruiter_headers)
-    assert response.json() == []
+    response  = client.get("/recruiters/talents/search", headers=recruiter_headers)
+    assert response .json() == []
 
 
 # ---------------------------------------------------------------------
-# GET /recruiters/reps/:id -- costs 1 credit
+# GET /recruiters/talents/:id -- costs 1 credit
 # ---------------------------------------------------------------------
 
 
 def test_view_profile_deducts_one_credit(client, db, recruiter_headers, onboarded_recruiter):
-    rep_id = _seed_rep(db)
+    talent_id = _seed_rep(db)
     recruiter_id = _recruiter_id(db)
     _grant_credits(db, recruiter_id, credits=2)
 
-    response = client.get(f"/recruiters/reps/{rep_id}", headers=recruiter_headers)
-    assert response.status_code == 200
-    body = response.json()
-    assert body["display_name"] == "Test Rep"
-    assert body["instagram_handle"] == "test_rep_ig"
+    response  = client.get(f"/recruiters/talents/{talent_id}", headers=recruiter_headers)
+    assert response .status_code == 200
+    body = response .json()
+    assert body["display_name"] == "Test Talent"
+    assert body["instagram_handle"] == "test_talent_ig"
 
     credits = client.get("/recruiters/credits", headers=recruiter_headers).json()
     assert credits["contact_credits_remaining"] == 1
 
 
 def test_view_profile_at_zero_credits_returns_402(client, db, recruiter_headers, onboarded_recruiter):
-    rep_id = _seed_rep(db)
+    talent_id = _seed_rep(db)
     recruiter_id = _recruiter_id(db)
     _grant_credits(db, recruiter_id, credits=0)
 
-    response = client.get(f"/recruiters/reps/{rep_id}", headers=recruiter_headers)
-    assert response.status_code == 402
-    assert response.json()["error"]["code"] == "insufficient_credits"
+    response  = client.get(f"/recruiters/talents/{talent_id}", headers=recruiter_headers)
+    assert response .status_code == 402
+    assert response .json()["error"]["code"] == "insufficient_credits"
 
 
 def test_view_profile_requires_active_subscription(client, db, recruiter_headers, onboarded_recruiter):
-    rep_id = _seed_rep(db)
+    talent_id = _seed_rep(db)
     recruiter_id = _recruiter_id(db)
     # Credits present but no stripe_subscription_id set (default state
     # after onboarding, before any subscription webhook lands).
     db.execute("UPDATE public.recruiter_profiles SET contact_credits_remaining = 5 WHERE id = $1", recruiter_id)
 
-    response = client.get(f"/recruiters/reps/{rep_id}", headers=recruiter_headers)
-    assert response.status_code == 403
-    assert response.json()["error"]["code"] == "subscription_inactive"
+    response  = client.get(f"/recruiters/talents/{talent_id}", headers=recruiter_headers)
+    assert response .status_code == 403
+    assert response .json()["error"]["code"] == "subscription_inactive"
 
 
 def test_view_profile_concurrent_requests_with_exactly_one_credit(client, db, recruiter_headers, onboarded_recruiter):
     """Build Prompt 11 acceptance criterion: concurrent requests with
     exactly 1 credit -> exactly one success, one 'insufficient credits'."""
-    rep_id = _seed_rep(db)
+    talent_id = _seed_rep(db)
     recruiter_id = _recruiter_id(db)
     _grant_credits(db, recruiter_id, credits=1)
 
@@ -258,9 +258,9 @@ def test_view_profile_concurrent_requests_with_exactly_one_credit(client, db, re
     lock = threading.Lock()
 
     def _call():
-        response = client.get(f"/recruiters/reps/{rep_id}", headers=recruiter_headers)
+        response  = client.get(f"/recruiters/talents/{talent_id}", headers=recruiter_headers)
         with lock:
-            results.append(response.status_code)
+            results.append(response .status_code)
 
     threads = [threading.Thread(target=_call) for _ in range(8)]
     for t in threads:
@@ -276,39 +276,39 @@ def test_view_profile_concurrent_requests_with_exactly_one_credit(client, db, re
 
 
 # ---------------------------------------------------------------------
-# POST /recruiters/reps/:id/contact
+# POST /recruiters/talents/:id/contact
 # ---------------------------------------------------------------------
 
 
-def test_contact_rep_deducts_credit_and_notifies_rep_inbox(client, db, recruiter_headers, onboarded_recruiter):
-    rep_id = _seed_rep(db)
+def test_contact_talent_deducts_credit_and_notifies_talent_inbox(client, db, recruiter_headers, onboarded_recruiter):
+    talent_id = _seed_rep(db)
     recruiter_id = _recruiter_id(db)
     _grant_credits(db, recruiter_id, credits=2)
 
-    response = client.post(
-        f"/recruiters/reps/{rep_id}/contact", json={"message_text": "Interested in your work!"}, headers=recruiter_headers
+    response  = client.post(
+        f"/recruiters/talents/{talent_id}/contact", json={"message_text": "Interested in your work!"}, headers=recruiter_headers
     )
-    assert response.status_code == 200
-    body = response.json()
-    assert body["rep_id"] == rep_id
+    assert response .status_code == 200
+    body = response .json()
+    assert body["talent_id"] == talent_id
 
     credits = client.get("/recruiters/credits", headers=recruiter_headers).json()
     assert credits["contact_credits_remaining"] == 1
 
-    row = db.fetch("SELECT read_at FROM public.recruiter_contacts WHERE rep_id = $1", rep_id)
+    row = db.fetch("SELECT read_at FROM public.recruiter_contacts WHERE talent_id = $1", talent_id)
     assert len(row) == 1
     assert row[0]["read_at"] is None
 
 
-def test_second_contact_to_same_rep_is_rejected(client, db, recruiter_headers, onboarded_recruiter):
-    rep_id = _seed_rep(db)
+def test_second_contact_to_same_talent_is_rejected(client, db, recruiter_headers, onboarded_recruiter):
+    talent_id = _seed_rep(db)
     recruiter_id = _recruiter_id(db)
     _grant_credits(db, recruiter_id, credits=5)
 
-    first = client.post(f"/recruiters/reps/{rep_id}/contact", json={"message_text": "Hi!"}, headers=recruiter_headers)
+    first = client.post(f"/recruiters/talents/{talent_id}/contact", json={"message_text": "Hi!"}, headers=recruiter_headers)
     assert first.status_code == 200
 
-    second = client.post(f"/recruiters/reps/{rep_id}/contact", json={"message_text": "Hi again!"}, headers=recruiter_headers)
+    second = client.post(f"/recruiters/talents/{talent_id}/contact", json={"message_text": "Hi again!"}, headers=recruiter_headers)
     assert second.status_code == 409
     assert second.json()["error"]["code"] == "already_contacted"
 
@@ -318,79 +318,79 @@ def test_second_contact_to_same_rep_is_rejected(client, db, recruiter_headers, o
 
 
 def test_contact_at_zero_credits_returns_402(client, db, recruiter_headers, onboarded_recruiter):
-    rep_id = _seed_rep(db)
+    talent_id = _seed_rep(db)
     recruiter_id = _recruiter_id(db)
     _grant_credits(db, recruiter_id, credits=0)
 
-    response = client.post(f"/recruiters/reps/{rep_id}/contact", json={"message_text": "Hi!"}, headers=recruiter_headers)
-    assert response.status_code == 402
+    response  = client.post(f"/recruiters/talents/{talent_id}/contact", json={"message_text": "Hi!"}, headers=recruiter_headers)
+    assert response .status_code == 402
 
 
 # ---------------------------------------------------------------------
-# GET /reps/inbox, POST /reps/inbox/:id/read
+# GET /talents/inbox, POST /talents/inbox/:id/read
 # ---------------------------------------------------------------------
 
 
-def test_rep_inbox_shows_recruiter_message_and_can_be_marked_read(client, db, recruiter_headers, onboarded_recruiter, auth_headers_factory):
-    rep_user_id = str(uuid.uuid4())
-    rep_id = str(uuid.uuid4())
-    db.execute("INSERT INTO auth.users (id, email) VALUES ($1, $2)", rep_user_id, "rep-inbox@example.com")
+def test_talent_inbox_shows_recruiter_message_and_can_be_marked_read(client, db, recruiter_headers, onboarded_recruiter, auth_headers_factory):
+    talent_user_id = str(uuid.uuid4())
+    talent_id = str(uuid.uuid4())
+    db.execute("INSERT INTO auth.users (id, email) VALUES ($1, $2)", talent_user_id, "talent-inbox@example.com")
     db.execute(
         "INSERT INTO public.users (id, email, role, account_status, date_of_birth) "
-        "VALUES ($1, 'rep-inbox@example.com', 'rep', 'active', '2008-06-01')",
-        rep_user_id,
+        "VALUES ($1, 'talent-inbox@example.com', 'talent', 'active', '2008-06-01')",
+        talent_user_id,
     )
     db.execute(
-        "INSERT INTO public.rep_profiles (id, user_id, display_name, school_name, city, state, graduation_year, categories, recruiter_visible) "
-        "VALUES ($1, $2, 'Inbox Rep', 'Test High', 'Austin', 'TX', 2027, $3, TRUE)",
-        rep_id,
-        rep_user_id,
+        "INSERT INTO public.talent_profiles (id, user_id, display_name, school_name, city, state, graduation_year, categories, recruiter_visible) "
+        "VALUES ($1, $2, 'Inbox Talent', 'Test High', 'Austin', 'TX', 2027, $3, TRUE)",
+        talent_id,
+        talent_user_id,
         ["gaming"],
     )
     recruiter_id = _recruiter_id(db)
     _grant_credits(db, recruiter_id, credits=2)
-    client.post(f"/recruiters/reps/{rep_id}/contact", json={"message_text": "Hi there!"}, headers=recruiter_headers)
+    client.post(f"/recruiters/talents/{talent_id}/contact", json={"message_text": "Hi there!"}, headers=recruiter_headers)
 
     # auth_headers_factory always signs sub=RECRUITER_USER_ID's constant
     # -- but that's a *fixed* subject id shared by every role fixture in
-    # conftest.py, not scoped to this rep_id. Point the rep row's user_id
-    # at that same fixed id so /reps/inbox's own-profile lookup resolves.
-    db.execute("UPDATE public.rep_profiles SET user_id = $1 WHERE id = $2", RECRUITER_USER_ID, rep_id)
-    rep_headers = auth_headers_factory("rep")
+    # conftest.py, not scoped to this talent_id. Point the talent row's user_id
+    # at that same fixed id so /talents/inbox's own-profile lookup resolves.
+    db.execute("UPDATE public.talent_profiles SET user_id = $1 WHERE id = $2", RECRUITER_USER_ID, talent_id)
+    talent_headers = auth_headers_factory("talent")
 
-    inbox = client.get("/reps/inbox", headers=rep_headers)
+    inbox = client.get("/talents/inbox", headers=talent_headers)
     assert inbox.status_code == 200
     messages = inbox.json()
     assert len(messages) == 1
     assert messages[0]["message_text"] == "Hi there!"
     assert messages[0]["read_at"] is None
 
-    marked = client.post(f"/reps/inbox/{messages[0]['id']}/read", headers=rep_headers)
+    marked = client.post(f"/talents/inbox/{messages[0]['id']}/read", headers=talent_headers)
     assert marked.status_code == 200
     assert marked.json()["read_at"] is not None
 
     # Idempotent re-mark.
-    again = client.post(f"/reps/inbox/{messages[0]['id']}/read", headers=rep_headers)
+    again = client.post(f"/talents/inbox/{messages[0]['id']}/read", headers=talent_headers)
     assert again.status_code == 200
 
 
 # ---------------------------------------------------------------------
-# POST/DELETE /recruiters/reps/:id/save, GET /recruiters/saved
+# POST/DELETE /recruiters/talents/:id/save, GET /recruiters/saved
 # ---------------------------------------------------------------------
 
 
 def test_save_unsave_and_list_saved(client, db, recruiter_headers, onboarded_recruiter):
-    rep_id = _seed_rep(db)
+    talent_id = _seed_rep(db)
 
-    saved = client.post(f"/recruiters/reps/{rep_id}/save", json={"list_name": "Shortlist"}, headers=recruiter_headers)
+    saved = client.post(f"/recruiters/talents/{talent_id}/save", json={"list_name": "Shortlist"}, headers=recruiter_headers)
     assert saved.status_code == 200
     assert saved.json()["list_name"] == "Shortlist"
 
     listed = client.get("/recruiters/saved", headers=recruiter_headers)
     assert len(listed.json()) == 1
-    assert listed.json()[0]["rep_id"] == rep_id
+    assert listed.json()[0]["talent_id"] == talent_id
 
-    deleted = client.delete(f"/recruiters/reps/{rep_id}/save", headers=recruiter_headers)
+    deleted = client.delete(f"/recruiters/talents/{talent_id}/save", headers=recruiter_headers)
     assert deleted.status_code == 204
 
     listed_after = client.get("/recruiters/saved", headers=recruiter_headers)
@@ -398,10 +398,10 @@ def test_save_unsave_and_list_saved(client, db, recruiter_headers, onboarded_rec
 
 
 def test_saving_does_not_cost_a_credit(client, db, recruiter_headers, onboarded_recruiter):
-    rep_id = _seed_rep(db)
+    talent_id = _seed_rep(db)
     recruiter_id = _recruiter_id(db)
     _grant_credits(db, recruiter_id, credits=3)
-    client.post(f"/recruiters/reps/{rep_id}/save", headers=recruiter_headers)
+    client.post(f"/recruiters/talents/{talent_id}/save", headers=recruiter_headers)
     credits = client.get("/recruiters/credits", headers=recruiter_headers).json()
     assert credits["contact_credits_remaining"] == 3
 
@@ -431,9 +431,9 @@ def test_low_credit_warning_flag(client, db, recruiter_headers, onboarded_recrui
 
 
 def test_top_up_creates_payment_intent_tagged_for_credits(client, db, recruiter_headers, onboarded_recruiter, fake_stripe, settings):
-    response = client.post("/recruiters/credits/top-up", json={"credits": 10}, headers=recruiter_headers)
-    assert response.status_code == 200
-    assert "stripe_payment_intent_client_secret" in response.json()
+    response  = client.post("/recruiters/credits/top-up", json={"credits": 10}, headers=recruiter_headers)
+    assert response .status_code == 200
+    assert "stripe_payment_intent_client_secret" in response .json()
 
     name, kwargs = [c for c in fake_stripe.calls if c[0] == "PaymentIntent.create"][0]
     assert kwargs["amount"] == settings.recruiter_credit_topup_price_cents * 10
@@ -452,8 +452,8 @@ def test_payment_intent_succeeded_webhook_credits_recruiter(client, db, monkeypa
     from app.services import stripe_service as svc
 
     monkeypatch.setattr(svc, "verify_webhook_signature", lambda settings, *, payload, signature_header: event)
-    response = client.post("/webhooks/stripe", content=b"{}", headers={"Stripe-Signature": "test"})
-    assert response.status_code == 200
+    response  = client.post("/webhooks/stripe", content=b"{}", headers={"Stripe-Signature": "test"})
+    assert response .status_code == 200
 
     credits = client.get("/recruiters/credits", headers=recruiter_headers).json()
     assert credits["contact_credits_remaining"] == 12
@@ -493,8 +493,8 @@ def test_subscription_created_activates_verified_recruiter(client, db, monkeypat
     from app.services import stripe_service as svc
 
     monkeypatch.setattr(svc, "verify_webhook_signature", lambda settings, *, payload, signature_header: event)
-    response = client.post("/webhooks/stripe", content=b"{}", headers={"Stripe-Signature": "test"})
-    assert response.status_code == 200
+    response  = client.post("/webhooks/stripe", content=b"{}", headers={"Stripe-Signature": "test"})
+    assert response .status_code == 200
 
     credits = client.get("/recruiters/credits", headers=recruiter_headers).json()
     assert credits["contact_credits_remaining"] == settings.recruiter_plan_credits_allotment
@@ -572,7 +572,7 @@ def test_duplicated_subscription_updated_event_resets_exactly_once(client, db, m
 
 
 def test_subscription_deleted_deactivates_and_blocks_credit_spend(client, db, monkeypatch, recruiter_headers, onboarded_recruiter):
-    rep_id = _seed_rep(db)
+    talent_id = _seed_rep(db)
     recruiter_id = _recruiter_id(db)
     db.execute(
         "UPDATE public.recruiter_profiles SET stripe_customer_id = 'cus_sub5', stripe_subscription_id = 'sub5', "
@@ -581,16 +581,16 @@ def test_subscription_deleted_deactivates_and_blocks_credit_spend(client, db, mo
     )
     db.execute("UPDATE public.users SET account_status = 'active' WHERE id = $1", RECRUITER_USER_ID)
 
-    # Recruiter saves and contacts a rep before the subscription is cancelled.
+    # Recruiter saves and contacts a talent before the subscription is cancelled.
     _grant_credits(db, recruiter_id, credits=5)
-    client.post(f"/recruiters/reps/{rep_id}/save", headers=recruiter_headers)
+    client.post(f"/recruiters/talents/{talent_id}/save", headers=recruiter_headers)
 
     event = _webhook_payload("customer.subscription.deleted", {"id": "sub5", "customer": "cus_sub5"})
     from app.services import stripe_service as svc
 
     monkeypatch.setattr(svc, "verify_webhook_signature", lambda settings, *, payload, signature_header: event)
-    response = client.post("/webhooks/stripe", content=b"{}", headers={"Stripe-Signature": "test"})
-    assert response.status_code == 200
+    response  = client.post("/webhooks/stripe", content=b"{}", headers={"Stripe-Signature": "test"})
+    assert response .status_code == 200
 
     status_row = db.fetch("SELECT account_status FROM public.users WHERE id = $1", RECRUITER_USER_ID)
     assert status_row[0]["account_status"] == "pending"
@@ -600,7 +600,7 @@ def test_subscription_deleted_deactivates_and_blocks_credit_spend(client, db, mo
     assert len(saved.json()) == 1
 
     # Credit-spending endpoint now rejects.
-    rejected = client.get(f"/recruiters/reps/{rep_id}", headers=recruiter_headers)
+    rejected = client.get(f"/recruiters/talents/{talent_id}", headers=recruiter_headers)
     assert rejected.status_code == 403
     assert rejected.json()["error"]["code"] == "subscription_inactive"
 
@@ -622,36 +622,36 @@ def test_subscribe_returns_checkout_url(client, db, recruiter_headers, onboarded
     fake = SimpleNamespace(checkout=SimpleNamespace(Session=_Session), Customer=SimpleNamespace(create=lambda **kw: SimpleNamespace(id="cus_fake_sub")))
     monkeypatch.setattr(stripe_service, "stripe", fake)
 
-    response = client.post("/recruiters/subscribe", json={"plan": "monthly"}, headers=recruiter_headers)
-    assert response.status_code == 200
-    assert response.json()["checkout_url"] == "https://checkout.stripe.example.com/session_test"
+    response  = client.post("/recruiters/subscribe", json={"plan": "monthly"}, headers=recruiter_headers)
+    assert response .status_code == 200
+    assert response .json()["checkout_url"] == "https://checkout.stripe.example.com/session_test"
 
 
 def test_subscribe_rejects_unconfigured_plan(client, db, recruiter_headers, onboarded_recruiter, settings, monkeypatch):
     monkeypatch.setattr(settings, "recruiter_price_id_annual", None)
-    response = client.post("/recruiters/subscribe", json={"plan": "annual"}, headers=recruiter_headers)
-    assert response.status_code == 500
-    assert response.json()["error"]["code"] == "plan_not_configured"
+    response  = client.post("/recruiters/subscribe", json={"plan": "annual"}, headers=recruiter_headers)
+    assert response .status_code == 500
+    assert response .json()["error"]["code"] == "plan_not_configured"
 
 
 def test_subscribe_role_enforcement_rejects_non_recruiter(client, auth_headers_factory):
-    response = client.post("/recruiters/subscribe", json={"plan": "monthly"}, headers=auth_headers_factory("rep"))
-    assert response.status_code == 403
-    assert response.json()["error"]["code"] == "role_mismatch"
+    response  = client.post("/recruiters/subscribe", json={"plan": "monthly"}, headers=auth_headers_factory("talent"))
+    assert response .status_code == 403
+    assert response .json()["error"]["code"] == "role_mismatch"
 
 
 def test_messages_lists_sent_contact(client, db, recruiter_headers, onboarded_recruiter):
-    rep_id = _seed_rep(db)
+    talent_id = _seed_rep(db)
     recruiter_id = _recruiter_id(db)
     _grant_credits(db, recruiter_id, credits=2)
-    client.post(f"/recruiters/reps/{rep_id}/contact", json={"message_text": "Hi!"}, headers=recruiter_headers)
+    client.post(f"/recruiters/talents/{talent_id}/contact", json={"message_text": "Hi!"}, headers=recruiter_headers)
 
-    response = client.get("/recruiters/messages", headers=recruiter_headers)
-    assert response.status_code == 200
-    assert response.json()[0]["rep_id"] == rep_id
+    response  = client.get("/recruiters/messages", headers=recruiter_headers)
+    assert response .status_code == 200
+    assert response .json()[0]["talent_id"] == talent_id
 
 
 def test_messages_role_enforcement_rejects_non_recruiter(client, auth_headers_factory):
-    response = client.get("/recruiters/messages", headers=auth_headers_factory("brand"))
-    assert response.status_code == 403
-    assert response.json()["error"]["code"] == "role_mismatch"
+    response  = client.get("/recruiters/messages", headers=auth_headers_factory("brand"))
+    assert response .status_code == 403
+    assert response .json()["error"]["code"] == "role_mismatch"

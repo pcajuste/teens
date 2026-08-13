@@ -4,7 +4,7 @@ const COLUMNS: { title: string; links: { href: string; label: string }[] }[] = [
   {
     title: "Platform",
     links: [
-      { href: "/reps", label: "For reps" },
+      { href: "/talents", label: "For talents" },
       { href: "/brands", label: "For brands" },
       { href: "/recruiters", label: "For recruiters" },
       { href: "/schools", label: "For schools" },
@@ -15,7 +15,7 @@ const COLUMNS: { title: string; links: { href: string; label: string }[] }[] = [
     links: [
       { href: "/parents", label: "For parents" },
       { href: "/trust", label: "Trust & compliance" },
-      { href: "/demo/rep", label: "See a rep profile" },
+      { href: "/demo/talent", label: "See a talent profile" },
     ],
   },
   {
@@ -40,7 +40,9 @@ export function SiteFooter() {
           </div>
           {COLUMNS.map((col) => (
             <div key={col.title}>
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{col.title}</p>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                {col.title}
+              </p>
               <ul className="mt-3 flex flex-col gap-2">
                 {col.links.map((link) => (
                   <li key={link.href}>
@@ -57,8 +59,13 @@ export function SiteFooter() {
           ))}
         </div>
         <div className="mt-10 flex flex-col gap-2 border-t border-border pt-6 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-          <p>&copy; {new Date().getFullYear()} Teenure. All rights reserved.</p>
-          <p>No public feed. No profile photos. No rep-to-rep contact — by design.</p>
+          <p>
+            &copy; {new Date().getFullYear()} Teenure. All rights reserved.
+          </p>
+          <p>
+            No public feed. No profile photos. No talent-to-talent contact — by
+            design.
+          </p>
         </div>
       </div>
     </footer>

@@ -1,4 +1,4 @@
-"""Request/response schemas for Category Exclusivity (Build Prompt 8C)."""
+"""Request/response  schemas for Category Exclusivity (Build Prompt 8C)."""
 from __future__ import annotations
 
 from datetime import datetime

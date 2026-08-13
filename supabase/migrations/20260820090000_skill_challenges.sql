@@ -37,16 +37,16 @@ CREATE TABLE public.challenges (
 CREATE TABLE public.challenge_submissions (
   id                          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   challenge_id                UUID NOT NULL REFERENCES public.challenges(id) ON DELETE RESTRICT,
-  rep_id                      UUID NOT NULL REFERENCES public.rep_profiles(id) ON DELETE RESTRICT,
+  talent_id                      UUID NOT NULL REFERENCES public.talent_profiles(id) ON DELETE RESTRICT,
   submission_text             TEXT,
   submission_file_urls        TEXT[] NOT NULL DEFAULT '{}',
   status                      challenge_submission_status NOT NULL DEFAULT 'submitted',
-  -- Internal only -- never returned in any rep-facing endpoint
-  -- response. Enforced twice over: RLS below (no rep-facing policy
+  -- Internal only -- never returned in any talent-facing endpoint
+  -- response . Enforced twice over: RLS below (no talent-facing policy
   -- exposes this column to any role but the owning brand/service
   -- role) AND, per the spec's explicit instruction, as an application-
   -- layer serializer exclusion (see app/repositories/challenges_repository.py
-  -- -- the rep-facing dataclass simply has no field for it, so there
+  -- -- the talent-facing dataclass simply has no field for it, so there
   -- is no code path that could leak it even by omission-bug).
   brand_note                  TEXT,
   converted_to_campaign_id    UUID REFERENCES public.campaigns(id),
@@ -57,10 +57,10 @@ CREATE TABLE public.challenge_submissions (
   reviewed_at                 TIMESTAMPTZ,
   converted_at                TIMESTAMPTZ,
   paid_at                     TIMESTAMPTZ,
-  UNIQUE (challenge_id, rep_id)
+  UNIQUE (challenge_id, talent_id)
 );
 
-ALTER TABLE public.rep_profiles
+ALTER TABLE public.talent_profiles
   ADD COLUMN challenges_submitted_count  INTEGER NOT NULL DEFAULT 0,
   ADD COLUMN challenges_converted_count  INTEGER NOT NULL DEFAULT 0;
 -- challenge_conversion_rate is NEVER stored -- always derived at the
@@ -74,7 +74,7 @@ CREATE INDEX idx_challenges_status_category
 CREATE INDEX idx_challenges_brand
   ON public.challenges (brand_id, status);
 CREATE INDEX idx_challenge_submissions_rep
-  ON public.challenge_submissions (rep_id, status);
+  ON public.challenge_submissions (talent_id, status);
 CREATE INDEX idx_challenge_submissions_challenge
   ON public.challenge_submissions (challenge_id, status);
 CREATE INDEX idx_challenge_submissions_payout
@@ -103,23 +103,23 @@ CREATE POLICY "Brand manages own challenges"
     )
   );
 
--- Reps read only active challenges -- no rep can read draft or closed
--- challenges (spec: "No rep can read draft or closed challenges").
-CREATE POLICY "Rep reads active challenges"
+-- Talents read only active challenges -- no talent can read draft or closed
+-- challenges (spec: "No talent can read draft or closed challenges").
+CREATE POLICY   "Talent reads active challenges"
   ON public.challenges FOR SELECT
   USING (challenges.status = 'active');
 
--- challenge_submissions: a rep reads/writes only their own rows.
-CREATE POLICY "Rep reads/writes own challenge_submissions rows"
+-- challenge_submissions: a talent reads/writes only their own rows.
+CREATE POLICY   "Talent reads/writes own challenge_submissions rows"
   ON public.challenge_submissions FOR ALL
-  USING (challenge_submissions.rep_id = rls.rep_id_for_user(auth.uid()));
+  USING (challenge_submissions.talent_id = rls.talent_id_for_user(auth.uid()));
 
 -- Brands read all submissions for challenges they own. Not FOR ALL --
 -- brand-side mutation happens through service-role application code
 -- (review/convert/decline all run server-side, e.g. to guarantee
 -- brand_note is only ever written by the endpoint that's supposed to
 -- write it, not directly settable by a raw client UPDATE even from
--- the owning brand) -- matches how campaign_reps' own brand policy is
+-- the owning brand) -- matches how campaign_talents' own brand policy is
 -- scoped in 20260811210400_rls.sql (also FOR ALL there, but every
 -- brand-side mutation in this codebase already goes through
 -- application code regardless of the USING clause's own permissiveness;

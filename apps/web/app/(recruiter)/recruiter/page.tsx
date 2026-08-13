@@ -13,8 +13,16 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { api, ApiError } from "@/lib/api";
 import { trackEvent } from "@/lib/analytics";
-import { BASE_CATEGORIES, CATEGORY_LABELS, type Category } from "@/lib/categories";
-import type { RecruiterCredits, RecruiterRepDetail, RecruiterSearchCard } from "@/lib/types";
+import {
+  BASE_CATEGORIES,
+  CATEGORY_LABELS,
+  type Category,
+} from "@/lib/categories";
+import type {
+  RecruiterCredits,
+  RecruiterRepDetail,
+  RecruiterSearchCard,
+} from "@/lib/types";
 
 interface Filters {
   graduation_year: string;
@@ -36,10 +44,12 @@ const EMPTY_FILTERS: Filters = {
 
 function buildQuery(filters: Filters): string {
   const params = new URLSearchParams();
-  if (filters.graduation_year) params.set("graduation_year", filters.graduation_year);
+  if (filters.graduation_year)
+    params.set("graduation_year", filters.graduation_year);
   if (filters.city) params.set("city", filters.city);
   if (filters.state) params.set("state", filters.state);
-  if (filters.categories.length) params.set("categories", filters.categories.join(","));
+  if (filters.categories.length)
+    params.set("categories", filters.categories.join(","));
   if (filters.min_campaigns) params.set("min_campaigns", filters.min_campaigns);
   if (filters.min_rating) params.set("min_rating", filters.min_rating);
   return params.toString();
@@ -82,10 +92,14 @@ export default function RecruiterSearchPage() {
     setError(null);
     try {
       const query = buildQuery(filters);
-      const cards = await api.get<RecruiterSearchCard[]>(`/recruiters/reps/search${query ? `?${query}` : ""}`);
+      const cards = await api.get<RecruiterSearchCard[]>(
+        `/recruiters/talents/search${query ? `?${query}` : ""}`,
+      );
       setResults(cards);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not run this search.");
+      setError(
+        err instanceof ApiError ? err.message : "Could not run this search.",
+      );
     } finally {
       setSearching(false);
     }
@@ -94,7 +108,9 @@ export default function RecruiterSearchPage() {
   function toggleCategory(c: Category) {
     setFilters((prev) => ({
       ...prev,
-      categories: prev.categories.includes(c) ? prev.categories.filter((x) => x !== c) : [...prev.categories, c],
+      categories: prev.categories.includes(c)
+        ? prev.categories.filter((x) => x !== c)
+        : [...prev.categories, c],
     }));
   }
 
@@ -107,17 +123,23 @@ export default function RecruiterSearchPage() {
   async function confirmViewProfile() {
     if (!pendingRepId) return;
     try {
-      // The response is the sole source of truth for the new credit
+      // The response  is the sole source of truth for the new credit
       // balance -- no local decrement anywhere in this flow.
-      const rep = await api.get<RecruiterRepDetail>(`/recruiters/reps/${pendingRepId}`);
-      // Aggregate-safe properties only -- no rep identity (name, id,
+      const talent = await api.get<RecruiterRepDetail>(
+        `/recruiters/talents/${pendingRepId}`,
+      );
+      // Aggregate-safe properties only -- no talent identity (name, id,
       // school) in the event payload, per Prompt 19 deliverable 3.
-      trackEvent("recruiter_profile_viewed", { categories: rep.categories ?? undefined });
-      setDetail(rep);
+      trackEvent("recruiter_profile_viewed", {
+        categories: talent.categories ?? undefined,
+      });
+      setDetail(talent);
       setPendingRepId(null);
       await loadCredits();
     } catch (err) {
-      throw new Error(err instanceof ApiError ? err.message : "Could not load this profile.");
+      throw new Error(
+        err instanceof ApiError ? err.message : "Could not load this profile.",
+      );
     }
   }
 
@@ -133,17 +155,21 @@ export default function RecruiterSearchPage() {
       throw new Error("Write a message before sending.");
     }
     try {
-      await api.post(`/recruiters/reps/${detail.rep_id}/contact`, { message_text: messageText });
-      // Opaque event only -- no rep id/identity in properties.
+      await api.post(`/recruiters/talents/${detail.talent_id}/contact`, {
+        message_text: messageText,
+      });
+      // Opaque event only -- no talent id/identity in properties.
       trackEvent("recruiter_profile_contacted", {});
       setContactOpen(false);
-      setContactNotice("Message sent. The rep will see it in their inbox and get an alert email.");
+      setContactNotice(
+        "Message sent. The talent will see it in their inbox and get an alert email.",
+      );
       await loadCredits();
     } catch (err) {
       const message =
         err instanceof ApiError
           ? err.code === "already_contacted"
-            ? "You've already contacted this rep."
+            ? "You've already contacted this talent."
             : err.message
           : "Could not send this message.";
       throw new Error(message);
@@ -152,24 +178,32 @@ export default function RecruiterSearchPage() {
 
   async function handleSave(repId: string) {
     try {
-      await api.post(`/recruiters/reps/${repId}/save`, {});
+      await api.post(`/recruiters/talents/${repId}/save`, {});
       setContactNotice("Saved to your default list.");
     } catch (err) {
-      setDetailError(err instanceof ApiError ? err.message : "Could not save this rep.");
+      setDetailError(
+        err instanceof ApiError ? err.message : "Could not save this talent.",
+      );
     }
   }
 
   return (
     <RecruiterShell
-      title="Search reps"
+      title="Search talents"
       action={
         credits ? (
           <div className="flex items-center gap-2">
-            <Badge variant={credits.low_credit_warning ? "warning" : "secondary"}>
-              {credits.contact_credits_remaining} credit{credits.contact_credits_remaining === 1 ? "" : "s"} left
+            <Badge
+              variant={credits.low_credit_warning ? "warning" : "secondary"}
+            >
+              {credits.contact_credits_remaining} credit
+              {credits.contact_credits_remaining === 1 ? "" : "s"} left
             </Badge>
             {credits.low_credit_warning ? (
-              <a href="/recruiter/subscription" className="text-xs font-medium text-primary hover:underline">
+              <a
+                href="/recruiter/subscription"
+                className="text-xs font-medium text-primary hover:underline"
+              >
                 Top up
               </a>
             ) : null}
@@ -187,7 +221,12 @@ export default function RecruiterSearchPage() {
                 type="number"
                 inputMode="numeric"
                 value={filters.graduation_year}
-                onChange={(e) => setFilters((prev) => ({ ...prev, graduation_year: e.target.value }))}
+                onChange={(e) =>
+                  setFilters((prev) => ({
+                    ...prev,
+                    graduation_year: e.target.value,
+                  }))
+                }
               />
             </div>
             <div className="flex flex-col gap-1.5">
@@ -195,7 +234,9 @@ export default function RecruiterSearchPage() {
               <Input
                 id="city"
                 value={filters.city}
-                onChange={(e) => setFilters((prev) => ({ ...prev, city: e.target.value }))}
+                onChange={(e) =>
+                  setFilters((prev) => ({ ...prev, city: e.target.value }))
+                }
               />
             </div>
             <div className="flex flex-col gap-1.5">
@@ -203,7 +244,9 @@ export default function RecruiterSearchPage() {
               <Input
                 id="state"
                 value={filters.state}
-                onChange={(e) => setFilters((prev) => ({ ...prev, state: e.target.value }))}
+                onChange={(e) =>
+                  setFilters((prev) => ({ ...prev, state: e.target.value }))
+                }
               />
             </div>
             <div className="flex flex-col gap-1.5">
@@ -213,7 +256,12 @@ export default function RecruiterSearchPage() {
                 type="number"
                 inputMode="numeric"
                 value={filters.min_campaigns}
-                onChange={(e) => setFilters((prev) => ({ ...prev, min_campaigns: e.target.value }))}
+                onChange={(e) =>
+                  setFilters((prev) => ({
+                    ...prev,
+                    min_campaigns: e.target.value,
+                  }))
+                }
               />
             </div>
             <div className="flex flex-col gap-1.5">
@@ -226,7 +274,12 @@ export default function RecruiterSearchPage() {
                 max={5}
                 inputMode="decimal"
                 value={filters.min_rating}
-                onChange={(e) => setFilters((prev) => ({ ...prev, min_rating: e.target.value }))}
+                onChange={(e) =>
+                  setFilters((prev) => ({
+                    ...prev,
+                    min_rating: e.target.value,
+                  }))
+                }
               />
             </div>
           </div>
@@ -268,9 +321,15 @@ export default function RecruiterSearchPage() {
         </CardContent>
       </Card>
 
-      {error ? <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p> : null}
+      {error ? (
+        <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {error}
+        </p>
+      ) : null}
       {contactNotice ? (
-        <p className="rounded-lg bg-success/15 px-3 py-2 text-sm text-success">{contactNotice}</p>
+        <p className="rounded-lg bg-success/15 px-3 py-2 text-sm text-success">
+          {contactNotice}
+        </p>
       ) : null}
 
       {searching && results === null ? (
@@ -281,22 +340,26 @@ export default function RecruiterSearchPage() {
         </div>
       ) : results && results.length === 0 ? (
         <EmptyState
-          title="No reps match these filters"
+          title="No talents match these filters"
           description="Try widening your graduation year range, clearing city/state, or removing a category."
         />
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {results?.map((card) => (
-            <Card key={card.rep_id} className="hover:shadow-md">
+            <Card key={card.talent_id} className="hover:shadow-md">
               <CardContent>
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <p className="font-semibold">
                       {card.city}, {card.state}
                     </p>
-                    <p className="text-sm text-muted-foreground">Class of {card.graduation_year}</p>
+                    <p className="text-sm text-muted-foreground">
+                      Class of {card.graduation_year}
+                    </p>
                   </div>
-                  {card.school_type ? <Badge variant="outline">{card.school_type}</Badge> : null}
+                  {card.school_type ? (
+                    <Badge variant="outline">{card.school_type}</Badge>
+                  ) : null}
                 </div>
                 <div className="mt-2 flex flex-wrap gap-1">
                   {card.categories.map((c) => (
@@ -307,14 +370,27 @@ export default function RecruiterSearchPage() {
                 </div>
                 <div className="mt-3 flex items-center gap-4 text-sm text-muted-foreground">
                   <span>{card.total_campaigns_completed} campaigns</span>
-                  <span>{card.average_rating != null ? `${card.average_rating.toFixed(1)}★` : "No rating yet"}</span>
+                  <span>
+                    {card.average_rating != null
+                      ? `${card.average_rating.toFixed(1)}★`
+                      : "No rating yet"}
+                  </span>
                   <span>{card.profile_completeness_score}% complete</span>
                 </div>
                 <div className="mt-4 flex gap-2">
-                  <Button type="button" size="sm" onClick={() => handleViewProfile(card.rep_id)}>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => handleViewProfile(card.talent_id)}
+                  >
                     View full profile
                   </Button>
-                  <Button type="button" size="sm" variant="outline" onClick={() => handleSave(card.rep_id)}>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleSave(card.talent_id)}
+                  >
                     Save
                   </Button>
                 </div>
@@ -328,17 +404,23 @@ export default function RecruiterSearchPage() {
       <CreditConfirmDialog
         open={pendingRepId !== null}
         title="View full profile"
-        description="This will use 1 contact credit and reveal this rep's name, school, and social handles."
+        description="This will use 1 contact credit and reveal this talent's name, school, and social handles."
         onCancel={() => setPendingRepId(null)}
         onConfirm={confirmViewProfile}
       />
 
       {detail ? (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true">
+        <div
+          className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4"
+          role="dialog"
+          aria-modal="true"
+        >
           <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-border bg-card p-6 shadow-md">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h2 className="text-lg font-semibold tracking-tight">{detail.display_name}</h2>
+                <h2 className="text-lg font-semibold tracking-tight">
+                  {detail.display_name}
+                </h2>
                 <p className="text-sm text-muted-foreground">
                   {detail.school_name} · Class of {detail.graduation_year}
                 </p>
@@ -346,7 +428,12 @@ export default function RecruiterSearchPage() {
                   {detail.city}, {detail.state}
                 </p>
               </div>
-              <Button type="button" variant="ghost" size="sm" onClick={() => setDetail(null)}>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setDetail(null)}
+              >
                 Close
               </Button>
             </div>
@@ -362,21 +449,37 @@ export default function RecruiterSearchPage() {
             </div>
 
             <div className="mt-3 flex flex-col gap-1 text-sm text-muted-foreground">
-              {detail.instagram_handle ? <span>Instagram: @{detail.instagram_handle}</span> : null}
-              {detail.tiktok_handle ? <span>TikTok: @{detail.tiktok_handle}</span> : null}
-              <span>{detail.total_campaigns_completed} campaigns completed</span>
-              <span>{detail.average_rating != null ? `${detail.average_rating.toFixed(1)}★ average rating` : "No rating yet"}</span>
+              {detail.instagram_handle ? (
+                <span>Instagram: @{detail.instagram_handle}</span>
+              ) : null}
+              {detail.tiktok_handle ? (
+                <span>TikTok: @{detail.tiktok_handle}</span>
+              ) : null}
+              <span>
+                {detail.total_campaigns_completed} campaigns completed
+              </span>
+              <span>
+                {detail.average_rating != null
+                  ? `${detail.average_rating.toFixed(1)}★ average rating`
+                  : "No rating yet"}
+              </span>
             </div>
 
             {detailError ? (
-              <p className="mt-3 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{detailError}</p>
+              <p className="mt-3 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {detailError}
+              </p>
             ) : null}
 
             <div className="mt-5 flex gap-2">
               <Button type="button" onClick={openContactDialog}>
-                Message this rep
+                Message this talent
               </Button>
-              <Button type="button" variant="outline" onClick={() => handleSave(detail.rep_id)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => handleSave(detail.talent_id)}
+              >
                 Save
               </Button>
             </div>
@@ -389,7 +492,7 @@ export default function RecruiterSearchPage() {
       <CreditConfirmDialog
         open={contactOpen}
         title="Send message"
-        description="This will use 1 contact credit. You can only message each rep once."
+        description="This will use 1 contact credit. You can only message each talent once."
         confirmLabel="Use 1 credit & send"
         confirmDisabled={!messageText.trim()}
         onCancel={() => setContactOpen(false)}

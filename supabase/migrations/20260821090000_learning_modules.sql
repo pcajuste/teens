@@ -1,6 +1,6 @@
 -- ──────────────────────────────────────────────────────────────────
 -- Learning Modules and Verified Badges (Build Prompt 8H) -- short,
--- platform-curated educational content that reps complete to earn
+-- platform-curated educational content that talents complete to earn
 -- verified profile badges. Modules are admin-created only; badges are
 -- issued by Teenure, never self-reported. See
 -- Teenure_Build_Prompts.md's "8H. Learning Modules and Verified
@@ -18,7 +18,7 @@ CREATE TABLE public.learning_modules (
   -- Ordered array of content blocks. Quiz question objects within
   -- contain a correct_index field that is stored/evaluated
   -- server-side only -- it must NEVER appear in any client-facing API
-  -- response, including admin preview mode. RLS cannot protect a jsonb
+  -- response , including admin preview mode. RLS cannot protect a jsonb
   -- sub-field, so this is enforced at the serializer layer (see
   -- ModulePublicSerializer in app/repositories/learning_modules_repository.py),
   -- not here.
@@ -34,9 +34,9 @@ CREATE TABLE public.learning_modules (
   updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE public.rep_module_completions (
+CREATE TABLE public.talent_module_completions (
   id                          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  rep_id                      UUID NOT NULL REFERENCES public.rep_profiles(id) ON DELETE RESTRICT,
+  talent_id                      UUID NOT NULL REFERENCES public.talent_profiles(id) ON DELETE RESTRICT,
   module_id                   UUID NOT NULL REFERENCES public.learning_modules(id) ON DELETE RESTRICT,
   status                      TEXT NOT NULL DEFAULT 'in_progress' CHECK (status IN ('in_progress', 'passed', 'failed')),
   quiz_score                  INTEGER,
@@ -53,19 +53,19 @@ CREATE TABLE public.rep_module_completions (
   payout_cents                INTEGER,
   payout_status               TEXT CHECK (payout_status IN ('pending', 'processing', 'paid', 'failed')),
   stripe_transfer_id          TEXT UNIQUE,
-  UNIQUE (rep_id, module_id)
+  UNIQUE (talent_id, module_id)
 );
 
-ALTER TABLE public.rep_profiles
+ALTER TABLE public.talent_profiles
   ADD COLUMN badges JSONB NOT NULL DEFAULT '[]',
   ADD COLUMN badges_earned_count INTEGER NOT NULL DEFAULT 0;
 
 CREATE INDEX idx_learning_modules_status
   ON public.learning_modules (status) WHERE status = 'active';
-CREATE INDEX idx_rep_module_completions_rep
-  ON public.rep_module_completions (rep_id, status);
-CREATE INDEX idx_rep_module_completions_ftc
-  ON public.rep_module_completions (module_id, rep_id, status)
+CREATE INDEX idx_talent_module_completions_rep
+  ON public.talent_module_completions (talent_id, status);
+CREATE INDEX idx_talent_module_completions_ftc
+  ON public.talent_module_completions (module_id, talent_id, status)
   WHERE status = 'passed';
 
 -- ──────────────────────────────────────────────────────────────────
@@ -73,7 +73,7 @@ CREATE INDEX idx_rep_module_completions_ftc
 -- ──────────────────────────────────────────────────────────────────
 
 ALTER TABLE public.learning_modules ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.rep_module_completions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.talent_module_completions ENABLE ROW LEVEL SECURITY;
 
 -- All authenticated users can read active modules. Draft/archived
 -- modules are readable only via the service-role connection (admin
@@ -84,16 +84,16 @@ CREATE POLICY "Authenticated users read active modules"
   TO authenticated
   USING (learning_modules.status = 'active');
 
--- rep_module_completions: reps read/insert/update only their own rows.
+-- talent_module_completions: talents read/insert/update only their own rows.
 -- No other role has direct table access (admin uses service role).
-CREATE POLICY "Rep reads own module completions"
-  ON public.rep_module_completions FOR SELECT
-  USING (rep_module_completions.rep_id = rls.rep_id_for_user(auth.uid()));
+CREATE POLICY   "Talent reads own module completions"
+  ON public.talent_module_completions FOR SELECT
+  USING (talent_module_completions.talent_id = rls.talent_id_for_user(auth.uid()));
 
-CREATE POLICY "Rep inserts own module completions"
-  ON public.rep_module_completions FOR INSERT
-  WITH CHECK (rep_module_completions.rep_id = rls.rep_id_for_user(auth.uid()));
+CREATE POLICY   "Talent inserts own module completions"
+  ON public.talent_module_completions FOR INSERT
+  WITH CHECK (talent_module_completions.talent_id = rls.talent_id_for_user(auth.uid()));
 
-CREATE POLICY "Rep updates own module completions"
-  ON public.rep_module_completions FOR UPDATE
-  USING (rep_module_completions.rep_id = rls.rep_id_for_user(auth.uid()));
+CREATE POLICY   "Talent updates own module completions"
+  ON public.talent_module_completions FOR UPDATE
+  USING (talent_module_completions.talent_id = rls.talent_id_for_user(auth.uid()));

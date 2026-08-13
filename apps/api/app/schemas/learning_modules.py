@@ -12,7 +12,7 @@ CompletionStatus = Literal["in_progress", "passed", "failed"]
 
 class QuizQuestionInput(BaseModel):
     """Admin-authored quiz question -- correct_index is write-only:
-    accepted here, stored, but never present on any response schema in
+    accepted here, stored, but never present on any response  schema in
     this file."""
 
     question: str
@@ -90,7 +90,7 @@ class ModuleCreateRequest(BaseModel):
 
 
 class ModuleAdminResponse(BaseModel):
-    """Write-only-answers response for admin create/update/get/list --
+    """Write-only-answers response  for admin create/update/get/list --
     content_blocks here NEVER contains correct_index (see
     ModulePublicSerializer / strip_correct_index)."""
 
@@ -115,7 +115,7 @@ class ModuleAdminResponse(BaseModel):
     in_progress_count: int = 0
 
 
-class RepProgressResponse(BaseModel):
+class TalentProgressResponse(BaseModel):
     status: CompletionStatus
     attempts: int
     quiz_score: int | None
@@ -123,7 +123,7 @@ class RepProgressResponse(BaseModel):
 
 
 class ModuleAvailableResponse(BaseModel):
-    """GET /reps/modules/available entries."""
+    """GET /talents/modules/available entries."""
 
     id: str
     title: str
@@ -135,11 +135,11 @@ class ModuleAvailableResponse(BaseModel):
     badge_icon: str | None
     estimated_minutes: int
     passing_score: int | None
-    rep_progress: RepProgressResponse | None
+    talent_progress: TalentProgressResponse | None
 
 
 class ModuleCompletedResponse(BaseModel):
-    """GET /reps/modules/completed entries -- source of truth for badge
+    """GET /talents/modules/completed entries -- source of truth for badge
     history."""
 
     module_id: str
@@ -154,7 +154,7 @@ class ModuleCompletedResponse(BaseModel):
 
 
 class ModuleContentResponse(BaseModel):
-    """GET /reps/modules/:id and POST /reps/modules/:id/start's module
+    """GET /talents/modules/:id and POST /talents/modules/:id/start's module
     portion -- content_blocks NEVER contains correct_index."""
 
     id: str
@@ -177,7 +177,7 @@ class ModuleStartRequest(BaseModel):
 
 class ModuleStartResponse(BaseModel):
     module: ModuleContentResponse
-    completion: RepProgressResponse
+    completion: TalentProgressResponse
 
 
 class ModuleCompleteRequest(BaseModel):
@@ -187,7 +187,7 @@ class ModuleCompleteRequest(BaseModel):
 class WrongAnswerEntry(BaseModel):
     question_index: int
     correct_index: int
-    rep_answer_index: int
+    talent_answer_index: int
 
 
 class BadgeSummary(BaseModel):

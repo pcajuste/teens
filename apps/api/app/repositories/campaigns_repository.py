@@ -1,7 +1,7 @@
 """Data access for public.campaigns itself (brief/targeting fields).
-Rep-side campaign *participation* state (campaign_reps rows) lives in
-campaign_reps_repository.py -- this module is for reading campaign
-definitions, used by GET /reps/campaigns/available's matching query and
+Talent-side campaign *participation* state (campaign_talents rows) lives in
+campaign_talents_repository.py -- this module is for reading campaign
+definitions, used by GET /talents/campaigns/available's matching query and
 by the accept/decline/submit/withdraw routes to validate campaign
 existence/status.
 """
@@ -15,8 +15,8 @@ import asyncpg
 _COLUMNS = (
     "id, brand_id, title, status, product_name, campaign_goal, key_messaging, "
     "prohibited_content, deliverables_description, target_categories, target_cities, "
-    "max_reps, reps_accepted_count, budget_cents, platform_fee_cents, rep_pool_cents, "
-    "payout_per_rep_cents, start_date, end_date, stripe_payment_intent_id, payment_type, created_at, updated_at"
+    "max_talents, talents_accepted_count, budget_cents, platform_fee_cents, talent_pool_cents, "
+    "payout_per_talent_cents, start_date, end_date, stripe_payment_intent_id, payment_type, created_at, updated_at"
 )
 
 # Statuses from which a brand may still cancel (Build Prompt 8
@@ -46,12 +46,12 @@ class Campaign:
     deliverables_description: str
     target_categories: list[str]
     target_cities: list[str]
-    max_reps: int
-    reps_accepted_count: int
+    max_talents: int
+    talents_accepted_count: int
     budget_cents: int
     platform_fee_cents: int
-    rep_pool_cents: int
-    payout_per_rep_cents: int | None
+    talent_pool_cents: int
+    payout_per_talent_cents: int | None
     start_date: date
     end_date: date
     stripe_payment_intent_id: str | None
@@ -73,12 +73,12 @@ class Campaign:
             deliverables_description=row["deliverables_description"],
             target_categories=list(row["target_categories"] or []),
             target_cities=list(row["target_cities"] or []),
-            max_reps=row["max_reps"],
-            reps_accepted_count=row["reps_accepted_count"],
+            max_talents=row["max_talents"],
+            talents_accepted_count=row["talents_accepted_count"],
             budget_cents=row["budget_cents"],
             platform_fee_cents=row["platform_fee_cents"],
-            rep_pool_cents=row["rep_pool_cents"],
-            payout_per_rep_cents=row["payout_per_rep_cents"],
+            talent_pool_cents=row["talent_pool_cents"],
+            payout_per_talent_cents=row["payout_per_talent_cents"],
             start_date=row["start_date"],
             end_date=row["end_date"],
             stripe_payment_intent_id=row["stripe_payment_intent_id"],
@@ -119,11 +119,11 @@ async def create_campaign(
     deliverables_description: str,
     target_categories: list[str],
     target_cities: list[str],
-    max_reps: int,
+    max_talents: int,
     budget_cents: int,
     platform_fee_cents: int,
-    rep_pool_cents: int,
-    payout_per_rep_cents: int,
+    talent_pool_cents: int,
+    payout_per_talent_cents: int,
     start_date: date,
     end_date: date,
     payment_type: str = "flat",
@@ -132,8 +132,8 @@ async def create_campaign(
         f"""
         INSERT INTO public.campaigns
             (brand_id, title, product_name, campaign_goal, key_messaging, prohibited_content,
-             deliverables_description, target_categories, target_cities, max_reps,
-             budget_cents, platform_fee_cents, rep_pool_cents, payout_per_rep_cents,
+             deliverables_description, target_categories, target_cities, max_talents,
+             budget_cents, platform_fee_cents, talent_pool_cents, payout_per_talent_cents,
              start_date, end_date, payment_type)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
         RETURNING {_COLUMNS}
@@ -147,11 +147,11 @@ async def create_campaign(
         deliverables_description,
         target_categories,
         target_cities,
-        max_reps,
+        max_talents,
         budget_cents,
         platform_fee_cents,
-        rep_pool_cents,
-        payout_per_rep_cents,
+        talent_pool_cents,
+        payout_per_talent_cents,
         start_date,
         end_date,
         payment_type,
@@ -172,11 +172,11 @@ async def update_campaign(
     deliverables_description: str,
     target_categories: list[str],
     target_cities: list[str],
-    max_reps: int,
+    max_talents: int,
     budget_cents: int,
     platform_fee_cents: int,
-    rep_pool_cents: int,
-    payout_per_rep_cents: int,
+    talent_pool_cents: int,
+    payout_per_talent_cents: int,
     start_date: date,
     end_date: date,
 ) -> Campaign | None:
@@ -190,8 +190,8 @@ async def update_campaign(
         UPDATE public.campaigns
         SET title = $3, product_name = $4, campaign_goal = $5, key_messaging = $6,
             prohibited_content = $7, deliverables_description = $8, target_categories = $9,
-            target_cities = $10, max_reps = $11, budget_cents = $12, platform_fee_cents = $13,
-            rep_pool_cents = $14, payout_per_rep_cents = $15, start_date = $16, end_date = $17,
+            target_cities = $10, max_talents = $11, budget_cents = $12, platform_fee_cents = $13,
+            talent_pool_cents = $14, payout_per_talent_cents = $15, start_date = $16, end_date = $17,
             updated_at = now()
         WHERE id = $1 AND brand_id = $2 AND status = 'draft'
         RETURNING {_COLUMNS}
@@ -206,11 +206,11 @@ async def update_campaign(
         deliverables_description,
         target_categories,
         target_cities,
-        max_reps,
+        max_talents,
         budget_cents,
         platform_fee_cents,
-        rep_pool_cents,
-        payout_per_rep_cents,
+        talent_pool_cents,
+        payout_per_talent_cents,
         start_date,
         end_date,
     )
@@ -338,12 +338,12 @@ async def set_cancelled(conn: asyncpg.Connection, campaign_id: str) -> Campaign 
 
 
 async def list_available_for_rep(
-    conn: asyncpg.Connection, *, rep_id: str, categories: list[str], city: str
+    conn: asyncpg.Connection, *, talent_id: str, categories: list[str], city: str
 ) -> list[Campaign]:
-    """Open campaigns (status='active') matching the rep's categories
-    and city, that the rep does not already have a campaign_reps row
+    """Open campaigns (status='active') matching the talent's categories
+    and city, that the talent does not already have a campaign_talents row
     for. Values-filter exclusion (parent-blocked categories) is applied
-    by the caller (app/routers/reps.py), one apply_values_filter() call
+    by the caller (app/routers/talents.py), one apply_values_filter() call
     per candidate campaign category -- reused from
     app.services.parent_service, not reimplemented here (Build Prompt 5
     deliverable 3's explicit instruction)."""
@@ -357,12 +357,12 @@ async def list_available_for_rep(
                 OR $3 = ANY (c.target_cities)
               )
           AND NOT EXISTS (
-                SELECT 1 FROM public.campaign_reps cr
-                WHERE cr.campaign_id = c.id AND cr.rep_id = $1
+                SELECT 1 FROM public.campaign_talents cr
+                WHERE cr.campaign_id = c.id AND cr.talent_id = $1
               )
         ORDER BY c.created_at DESC
         """,
-        rep_id,
+        talent_id,
         categories,
         city,
     )

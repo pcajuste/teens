@@ -19,24 +19,29 @@ export function DemoPageViewTracker({ demo }: { demo: string }) {
   return null;
 }
 
-// Shared chrome for every screen under /demo/rep. Fully static, no
+// Shared chrome for every screen under /demo/talent. Fully static, no
 // client-side state, no network calls -- this whole route group must
 // render with zero authenticated session and zero dependency on the
 // FastAPI backend.
 export function DemoBanner() {
   return (
     <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-center text-sm font-medium text-amber-800 dark:text-amber-300">
-      Demo — this is example data. &quot;Maya Chen,&quot; her school, and every campaign shown here are fictional.
+      Demo — this is example data. &quot;Maya Chen,&quot; her school, and every
+      campaign shown here are fictional.
     </div>
   );
 }
 
-export function StartBuildingYoursButton({ className }: { className?: string }) {
+export function StartBuildingYoursButton({
+  className,
+}: {
+  className?: string;
+}) {
   return (
     <Link
-      href="/rep/signup"
+      href="/talent/signup"
       className={className}
-      onClick={() => trackEvent("demo_cta_clicked", { demo: "rep" })}
+      onClick={() => trackEvent("demo_cta_clicked", { demo: "talent" })}
     >
       {/* Links straight into the real age-gated signup flow (Build
           Prompt 4) -- no query params, no alternate entry point, no way

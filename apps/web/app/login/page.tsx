@@ -12,14 +12,14 @@ import type { MeResponse } from "@/lib/types";
 
 // Single credentials page for every role. Role is looked up server-side via
 // GET /auth/me after sign-in -- the client never chooses where to land, so a
-// forged redirect/role query param can't send a rep into the brand portal.
+// forged redirect/role query param can't send a talent into the brand portal.
 // Admin deliberately excluded: per Build Prompt 13's auth note, admin
 // must not be reachable via role-detection fallthrough from this
 // shared login page -- it has its own /admin-login route. If an admin
 // credential is entered here, we sign out immediately below rather
 // than routing anywhere.
 const PORTAL_PATH_BY_ROLE: Record<string, string> = {
-  rep: "/rep",
+  talent: "/talent",
   brand: "/brand",
   recruiter: "/recruiter",
 };
@@ -77,8 +77,8 @@ export default function LoginPage() {
         <div className="flex flex-col gap-2">
           <p>
             New here?{" "}
-            <a href="/rep/signup" className="font-medium text-primary hover:underline">
-              Sign up as a rep
+            <a href="/talent/signup" className="font-medium text-primary hover:underline">
+              Sign up as a talent
             </a>
             ,{" "}
             <a href="/brand/signup" className="font-medium text-primary hover:underline">

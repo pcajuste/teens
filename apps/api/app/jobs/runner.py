@@ -14,7 +14,7 @@ Jobs register themselves in JOB_REGISTRY by name. Prompt 3 registers
 one no-op job end-to-end to prove the schedule fires; Prompt 4A adds
 the monthly parent-digest job. The invite-expiry / parent-approval
 48-hour timeout job is Prompt 5's responsibility (it needs
-rep_profiles/campaign matching that doesn't exist yet).
+talent_profiles/campaign matching that doesn't exist yet).
 """
 from __future__ import annotations
 
@@ -27,8 +27,8 @@ from datetime import datetime, timedelta, timezone
 
 from app.core.config import get_settings
 from app.db.pool import get_pool
-from app.repositories import campaign_milestones_repository, campaign_reps_repository, challenges_repository, exclusivity_repository
-from app.repositories.campaign_reps_repository import auto_decline_expired_parent_approvals
+from app.repositories import campaign_milestones_repository, campaign_talents_repository, challenges_repository, exclusivity_repository
+from app.repositories.campaign_talents_repository import auto_decline_expired_parent_approvals
 from app.repositories.intelligence_repository import insert_events, list_pending_events, mark_written
 from app.repositories.parent_records_repository import list_digest_enabled
 from app.services import payout_service
@@ -66,7 +66,7 @@ async def noop_heartbeat() -> None:
 async def send_monthly_parent_digests() -> None:
     """Runs monthly. One digest per parent_records row with
     digest_enabled=TRUE -- parent_service.send_digest_email builds the
-    allow-listed content (Section 9A) and skips parents whose rep
+    allow-listed content (Section 9A) and skips parents whose talent
     context can't be found."""
     settings = get_settings()
     resend_client = get_resend_client(settings)
@@ -81,11 +81,11 @@ async def send_monthly_parent_digests() -> None:
 async def auto_decline_expired_parent_approvals_job() -> None:
     """Runs frequently (e.g. every 15 minutes via Railway cron). Build
     Prompt 5 deliverable 7: enforces the 48-hour parent-approval window
-    on campaign invitations -- any campaign_reps row still
+    on campaign invitations -- any campaign_talents row still
     status='invited'/parent_approval_status='pending' past its
-    parent_approval_deadline is auto-declined so a non-response doesn't
+    parent_approval_deadline is auto-declined so a non-response  doesn't
     leave an invitation open indefinitely. The DB update itself lives in
-    campaign_reps_repository.auto_decline_expired_parent_approvals so it
+    campaign_talents_repository.auto_decline_expired_parent_approvals so it
     can be unit-tested directly against a real connection without
     waiting on a real clock (Build Prompt 5 acceptance criterion)."""
     pool = get_pool()
@@ -97,12 +97,12 @@ async def auto_decline_expired_parent_approvals_job() -> None:
 async def write_intelligence_events_job() -> None:
     """Runs frequently (e.g. every 15 minutes via Railway cron), same
     cadence as auto_decline_expired_parent_approvals_job above. Build
-    Prompt 14 deliverable 2: fires whenever a campaign_reps row has
+    Prompt 14 deliverable 2: fires whenever a campaign_talents row has
     reached 'confirmed' or 'paid'. The runner is poll-based (Prompt 3
     has no per-row DB trigger into the API), so "fires when a row
     transitions" is implemented as "processes every such row that
     hasn't been processed yet" -- intelligence_repository.list_pending_events
-    filters on campaign_reps.intelligence_event_written_at IS NULL,
+    filters on campaign_talents.intelligence_event_written_at IS NULL,
     which this job sets once its rows are written, so each transition
     is anonymized exactly once. app/services/intelligence_service.anonymize
     does the actual PII-stripping/bucketing; this job only wires the
@@ -114,13 +114,13 @@ async def write_intelligence_events_job() -> None:
             return
         events = [event for source in pending for event in anonymize(source)]
         await insert_events(conn, events)
-        await mark_written(conn, [source.campaign_rep_id for source in pending], at=datetime.now(timezone.utc))
+        await mark_written(conn, [source.campaign_talent_id for source in pending], at=datetime.now(timezone.utc))
 
 
 @register_job("milestone_auto_release")
 async def milestone_auto_release_job() -> None:
     """Runs every 30 minutes (Build Prompt 8B deliverable 6). Finds
-    campaign_rep_milestones rows with verification_method='rep_submission',
+    campaign_talent_milestones rows with verification_method='talent_submission',
     status='submitted', submitted_at older than the 24h review window,
     and dispute_flag=false, then releases payout for each via
     payout_service.release_milestone_payout and advances the row to
@@ -150,13 +150,13 @@ async def milestone_auto_release_job() -> None:
                 # manual confirm/dispute, got there first.
                 continue
             result = await payout_service.release_milestone_payout(conn, settings, crm.id)
-            agg = await campaign_milestones_repository.bump_campaign_rep_milestone_totals(conn, confirmed.campaign_rep_id)
+            agg = await campaign_milestones_repository.bump_campaign_talent_milestone_totals(conn, confirmed.campaign_talent_id)
             if agg["completed_count"] >= agg["total_milestones"]:
-                await campaign_reps_repository.mark_confirmed_via_final_milestone(
-                    conn, confirmed.campaign_rep_id, at=datetime.now(timezone.utc)
+                await campaign_talents_repository.mark_confirmed_via_final_milestone(
+                    conn, confirmed.campaign_talent_id, at=datetime.now(timezone.utc)
                 )
             _logger.info(
-                "milestone_auto_release: campaign_rep_milestone_id=%s outcome=%s stripe_transfer_id=%s",
+                "milestone_auto_release: campaign_talent_milestone_id=%s outcome=%s stripe_transfer_id=%s",
                 crm.id,
                 result.outcome,
                 result.stripe_transfer_id,

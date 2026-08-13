@@ -1,16 +1,16 @@
 """Data access for public.learning_modules and
-public.rep_module_completions (Build Prompt 8H: Learning Modules and
+public.talent_module_completions (Build Prompt 8H: Learning Modules and
 Verified Badges).
 
 The single most important rule enforced in this file: `correct_index`
-within a quiz content block must never reach a client-facing response,
+within a quiz content block must never reach a client-facing response ,
 regardless of role -- including admin preview. That's implemented by
 `strip_correct_index`, applied by `ModulePublicSerializer` (see
 app/schemas/learning_modules.py), and by keeping the *only* function
 that returns raw content_blocks (`get_module_with_answers`) named
 distinctly and used only by the completion-scoring code path in
 app/routers/learning_modules.py, which fetches it via a plain SELECT
-(never exposed as a response body).
+(never exposed as a response  body).
 """
 from __future__ import annotations
 
@@ -35,7 +35,7 @@ def strip_correct_index(content_blocks: list[dict]) -> list[dict]:
     """Returns a deep copy of content_blocks with every quiz question's
     correct_index field removed. This is the ONLY function in this
     codebase that is allowed to turn a raw content_blocks value into
-    something safe to put in a response body -- every route that
+    something safe to put in a response  body -- every route that
     returns module content must route through this (directly or via
     ModulePublicSerializer)."""
     stripped: list[dict] = []
@@ -218,7 +218,7 @@ async def admin_module_stats(conn: asyncpg.Connection) -> dict[str, dict]:
             COUNT(*) FILTER (WHERE status = 'failed') AS failed_count,
             COUNT(*) FILTER (WHERE status = 'in_progress') AS in_progress_count,
             AVG(attempts) AS average_attempts
-        FROM public.rep_module_completions
+        FROM public.talent_module_completions
         GROUP BY module_id
         """
     )
@@ -237,11 +237,11 @@ async def admin_module_stats(conn: asyncpg.Connection) -> dict[str, dict]:
 
 
 # ══════════════════════════════════════════════════════════════════
-# rep_module_completions
+# talent_module_completions
 # ══════════════════════════════════════════════════════════════════
 
 _COMPLETION_COLUMNS = """
-    id, rep_id, module_id, status, quiz_score, attempts, last_attempt_at, passed_at,
+    id, talent_id, module_id, status, quiz_score, attempts, last_attempt_at, passed_at,
     badge_issued_at, disclosure_acknowledged_at, payout_cents, payout_status,
     stripe_transfer_id
 """
@@ -250,7 +250,7 @@ _COMPLETION_COLUMNS = """
 @dataclass(frozen=True, slots=True)
 class RepModuleCompletion:
     id: str
-    rep_id: str
+    talent_id: str
     module_id: str
     status: str
     quiz_score: int | None
@@ -267,7 +267,7 @@ class RepModuleCompletion:
     def from_row(cls, row: asyncpg.Record) -> "RepModuleCompletion":
         return cls(
             id=str(row["id"]),
-            rep_id=str(row["rep_id"]),
+            talent_id=str(row["talent_id"]),
             module_id=str(row["module_id"]),
             status=row["status"],
             quiz_score=row["quiz_score"],
@@ -282,68 +282,68 @@ class RepModuleCompletion:
         )
 
 
-async def get_for_rep_and_module(conn: asyncpg.Connection, rep_id: str, module_id: str) -> RepModuleCompletion | None:
+async def get_for_talent_and_module(conn: asyncpg.Connection, talent_id: str, module_id: str) -> RepModuleCompletion | None:
     row = await conn.fetchrow(
-        f"SELECT {_COMPLETION_COLUMNS} FROM public.rep_module_completions WHERE rep_id = $1 AND module_id = $2",
-        rep_id,
+        f"SELECT {_COMPLETION_COLUMNS} FROM public.talent_module_completions WHERE talent_id = $1 AND module_id = $2",
+        talent_id,
         module_id,
     )
     return RepModuleCompletion.from_row(row) if row else None
 
 
-async def list_for_rep(conn: asyncpg.Connection, rep_id: str) -> list[RepModuleCompletion]:
+async def list_for_rep(conn: asyncpg.Connection, talent_id: str) -> list[RepModuleCompletion]:
     rows = await conn.fetch(
-        f"SELECT {_COMPLETION_COLUMNS} FROM public.rep_module_completions WHERE rep_id = $1",
-        rep_id,
+        f"SELECT {_COMPLETION_COLUMNS} FROM public.talent_module_completions WHERE talent_id = $1",
+        talent_id,
     )
     return [RepModuleCompletion.from_row(r) for r in rows]
 
 
-async def has_passed(conn: asyncpg.Connection, rep_id: str, module_id: str) -> bool:
+async def has_passed(conn: asyncpg.Connection, talent_id: str, module_id: str) -> bool:
     """FTC gate check (spec deliverable 2) -- uses
-    idx_rep_module_completions_ftc, which exists specifically to
+    idx_talent_module_completions_ftc, which exists specifically to
     optimize this query on every campaign accept action."""
     row = await conn.fetchval(
         """
         SELECT EXISTS (
-            SELECT 1 FROM public.rep_module_completions
-            WHERE rep_id = $1 AND module_id = $2 AND status = 'passed'
+            SELECT 1 FROM public.talent_module_completions
+            WHERE talent_id = $1 AND module_id = $2 AND status = 'passed'
         )
         """,
-        rep_id,
+        talent_id,
         module_id,
     )
     return bool(row)
 
 
-async def start_new(conn: asyncpg.Connection, *, rep_id: str, module_id: str, at: datetime) -> RepModuleCompletion:
+async def start_new(conn: asyncpg.Connection, *, talent_id: str, module_id: str, at: datetime) -> RepModuleCompletion:
     row = await conn.fetchrow(
         f"""
-        INSERT INTO public.rep_module_completions
-            (rep_id, module_id, status, attempts, last_attempt_at, disclosure_acknowledged_at)
+        INSERT INTO public.talent_module_completions
+            (talent_id, module_id, status, attempts, last_attempt_at, disclosure_acknowledged_at)
         VALUES ($1, $2, 'in_progress', 1, $3, $3)
         RETURNING {_COMPLETION_COLUMNS}
         """,
-        rep_id,
+        talent_id,
         module_id,
         at,
     )
     return RepModuleCompletion.from_row(row)
 
 
-async def start_retake(conn: asyncpg.Connection, *, rep_id: str, module_id: str, at: datetime) -> RepModuleCompletion | None:
+async def start_retake(conn: asyncpg.Connection, *, talent_id: str, module_id: str, at: datetime) -> RepModuleCompletion | None:
     """Legal only from status='failed' (spec deliverable 4: "If row
     exists with status 'failed': UPDATE status -> 'in_progress',
     increment attempts, set last_attempt_at = now()")."""
     row = await conn.fetchrow(
         f"""
-        UPDATE public.rep_module_completions
+        UPDATE public.talent_module_completions
         SET status = 'in_progress', attempts = attempts + 1, last_attempt_at = $3,
             disclosure_acknowledged_at = $3
-        WHERE rep_id = $1 AND module_id = $2 AND status = 'failed'
+        WHERE talent_id = $1 AND module_id = $2 AND status = 'failed'
         RETURNING {_COMPLETION_COLUMNS}
         """,
-        rep_id,
+        talent_id,
         module_id,
         at,
     )
@@ -354,12 +354,12 @@ async def mark_passed(
     conn: asyncpg.Connection, completion_id: str, *, quiz_score: int | None, at: datetime
 ) -> RepModuleCompletion | None:
     """Legal only from status='in_progress'. Called inside the same
-    transaction as the rep_profiles.badges append -- see
+    transaction as the talent_profiles.badges append -- see
     app/routers/learning_modules.py's complete_module for the full
     atomic sequence."""
     row = await conn.fetchrow(
         f"""
-        UPDATE public.rep_module_completions
+        UPDATE public.talent_module_completions
         SET status = 'passed', quiz_score = $2, passed_at = $3, badge_issued_at = $3
         WHERE id = $1 AND status = 'in_progress'
         RETURNING {_COMPLETION_COLUMNS}
@@ -376,7 +376,7 @@ async def mark_failed(
 ) -> RepModuleCompletion | None:
     row = await conn.fetchrow(
         f"""
-        UPDATE public.rep_module_completions
+        UPDATE public.talent_module_completions
         SET status = 'failed', quiz_score = $2, last_attempt_at = $3
         WHERE id = $1 AND status = 'in_progress'
         RETURNING {_COMPLETION_COLUMNS}
@@ -410,7 +410,7 @@ async def admin_analytics(conn: asyncpg.Connection, *, ftc_module_id: str | None
             COUNT(*) FILTER (WHERE status = 'in_progress') AS in_progress,
             COUNT(*) FILTER (WHERE status = 'passed') AS passed,
             COUNT(*) FILTER (WHERE status = 'failed') AS failed
-        FROM public.rep_module_completions
+        FROM public.talent_module_completions
         """
     )
     per_module_rows = await conn.fetch(
@@ -421,7 +421,7 @@ async def admin_analytics(conn: asyncpg.Connection, *, ftc_module_id: str | None
             COUNT(c.id) FILTER (WHERE c.status = 'failed') AS failed_count,
             AVG(c.attempts) AS average_attempts
         FROM public.learning_modules m
-        LEFT JOIN public.rep_module_completions c ON c.module_id = m.id
+        LEFT JOIN public.talent_module_completions c ON c.module_id = m.id
         GROUP BY m.id, m.title, m.category
         """
     )
@@ -446,7 +446,7 @@ async def admin_analytics(conn: asyncpg.Connection, *, ftc_module_id: str | None
     badge_distribution = await conn.fetch(
         """
         SELECT m.badge_title, m.category, COUNT(c.id) AS earned_count
-        FROM public.rep_module_completions c
+        FROM public.talent_module_completions c
         JOIN public.learning_modules m ON m.id = c.module_id
         WHERE c.status = 'passed'
         GROUP BY m.badge_title, m.category
@@ -456,20 +456,20 @@ async def admin_analytics(conn: asyncpg.Connection, *, ftc_module_id: str | None
 
     ftc_readiness = None
     if ftc_module_id:
-        # Launch readiness metric: of reps who have ever attempted to
-        # accept a campaign (i.e. have a campaign_reps row), what
+        # Launch readiness metric: of talents who have ever attempted to
+        # accept a campaign (i.e. have a campaign_talents row), what
         # percentage have passed the FTC module?
         row = await conn.fetchrow(
             """
             SELECT
-                COUNT(DISTINCT cr.rep_id) AS attempted_reps,
-                COUNT(DISTINCT cr.rep_id) FILTER (
+                COUNT(DISTINCT cr.talent_id) AS attempted_reps,
+                COUNT(DISTINCT cr.talent_id) FILTER (
                     WHERE EXISTS (
-                        SELECT 1 FROM public.rep_module_completions rmc
-                        WHERE rmc.rep_id = cr.rep_id AND rmc.module_id = $1 AND rmc.status = 'passed'
+                        SELECT 1 FROM public.talent_module_completions rmc
+                        WHERE rmc.talent_id = cr.talent_id AND rmc.module_id = $1 AND rmc.status = 'passed'
                     )
                 ) AS passed_reps
-            FROM public.campaign_reps cr
+            FROM public.campaign_talents cr
             """,
             ftc_module_id,
         )
@@ -504,7 +504,7 @@ async def admin_analytics(conn: asyncpg.Connection, *, ftc_module_id: str | None
 # ══════════════════════════════════════════════════════════════════
 
 
-async def parent_dashboard_activity(conn: asyncpg.Connection, rep_id: str, *, ftc_module_id: str | None) -> dict:
+async def parent_dashboard_activity(conn: asyncpg.Connection, talent_id: str, *, ftc_module_id: str | None) -> dict:
     """GET /parent/dashboard's module_activity block. Parents never see
     quiz_score or which questions were answered incorrectly -- only
     completion status and badges earned (spec: "the outcome, not the
@@ -515,19 +515,19 @@ async def parent_dashboard_activity(conn: asyncpg.Connection, rep_id: str, *, ft
             COUNT(*) AS total_started,
             COUNT(*) FILTER (WHERE status = 'passed') AS total_passed,
             COUNT(*) FILTER (WHERE status = 'failed') AS total_failed
-        FROM public.rep_module_completions
-        WHERE rep_id = $1
+        FROM public.talent_module_completions
+        WHERE talent_id = $1
         """,
-        rep_id,
+        talent_id,
     )
-    badges_row = await conn.fetchrow("SELECT badges FROM public.rep_profiles WHERE id = $1", rep_id)
+    badges_row = await conn.fetchrow("SELECT badges FROM public.talent_profiles WHERE id = $1", talent_id)
     badges_raw = badges_row["badges"] if badges_row else "[]"
     badges = json.loads(badges_raw) if isinstance(badges_raw, str) else (badges_raw or [])
     badges_earned = [{"badge_title": b["badge_title"], "earned_at": b["earned_at"]} for b in badges]
 
     ftc_passed = False
     if ftc_module_id:
-        ftc_passed = await has_passed(conn, rep_id, ftc_module_id)
+        ftc_passed = await has_passed(conn, talent_id, ftc_module_id)
 
     return {
         "total_started": totals["total_started"],

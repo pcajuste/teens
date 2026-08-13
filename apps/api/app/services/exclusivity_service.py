@@ -46,7 +46,7 @@ async def check_exclusivity_conflict(
     [starts_at, ends_at) for `category` at `city` or platform-wide
     (city IS NULL on the agreement), else None. Only the brand_id is
     ever returned -- never agreement details -- so a caller-facing
-    response built from this can never leak which agreement or its
+    response  built from this can never leak which agreement or its
     dates/price to the checking brand (Section 8C: "Returns the
     brand_id rather than the agreement details to avoid leaking
     competitive intelligence")."""

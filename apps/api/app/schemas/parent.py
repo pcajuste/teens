@@ -74,7 +74,7 @@ class PendingCampaignResponse(BaseModel):
     key_messaging: str
     prohibited_content: str | None
     deliverables_description: str
-    payout_per_rep_cents: int | None
+    payout_per_talent_cents: int | None
     start_date: str
     end_date: str
     requires_in_person_activation: bool

@@ -32,38 +32,55 @@ export default function AdminPaymentsPage() {
       await api.post(`/admin/payments/${transferId}/release`);
       await load();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not release payout.");
+      setError(
+        err instanceof ApiError ? err.message : "Could not release payout.",
+      );
     } finally {
       setReleasing(null);
     }
   }
 
   return (
-    <AdminShell title="Stuck payments" action={<Badge variant="outline">processing &gt; 48h</Badge>}>
+    <AdminShell
+      title="Stuck payments"
+      action={<Badge variant="outline">processing &gt; 48h</Badge>}
+    >
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
       {rows === null ? (
         <Skeleton className="h-32 w-full" />
       ) : rows.length === 0 ? (
-        <EmptyState title="Nothing stuck" description="Every in-flight payout is under 48 hours old." />
+        <EmptyState
+          title="Nothing stuck"
+          description="Every in-flight payout is under 48 hours old."
+        />
       ) : (
         <div className="flex flex-col gap-3">
           {rows.map((r) => (
-            <Card key={r.campaign_rep_id}>
+            <Card key={r.campaign_talent_id}>
               <CardContent className="flex items-center justify-between gap-4 p-4">
                 <div>
                   <p className="text-sm font-medium">
-                    ${r.payout_cents ? (r.payout_cents / 100).toFixed(2) : "0.00"} -- {r.payout_status}
+                    $
+                    {r.payout_cents
+                      ? (r.payout_cents / 100).toFixed(2)
+                      : "0.00"}{" "}
+                    -- {r.payout_status}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Stuck for {r.hours_stuck.toFixed(1)}h -- transfer {r.stripe_transfer_id ?? "n/a"}
+                    Stuck for {r.hours_stuck.toFixed(1)}h -- transfer{" "}
+                    {r.stripe_transfer_id ?? "n/a"}
                   </p>
                 </div>
                 <Button
                   size="sm"
-                  disabled={!r.stripe_transfer_id || releasing === r.stripe_transfer_id}
+                  disabled={
+                    !r.stripe_transfer_id || releasing === r.stripe_transfer_id
+                  }
                   onClick={() => release(r.stripe_transfer_id)}
                 >
-                  {releasing === r.stripe_transfer_id ? "Releasing..." : "Release payout"}
+                  {releasing === r.stripe_transfer_id
+                    ? "Releasing..."
+                    : "Release payout"}
                 </Button>
               </CardContent>
             </Card>

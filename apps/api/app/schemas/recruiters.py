@@ -33,10 +33,10 @@ class CreditsResponse(BaseModel):
 
 
 class RecruiterSearchCardResponse(BaseModel):
-    """GET /recruiters/reps/search -- no PII, no credit cost. See
-    rep_profiles_repository.RecruiterSearchCard's docstring."""
+    """GET /recruiters/talents/search -- no PII, no credit cost. See
+    talent_profiles_repository.RecruiterSearchCard's docstring."""
 
-    rep_id: str
+    talent_id: str
     city: str
     state: str
     graduation_year: int
@@ -52,10 +52,10 @@ class RecruiterSearchCardResponse(BaseModel):
 
 
 class RecruiterRepDetailResponse(BaseModel):
-    """GET /recruiters/reps/:id -- full identifying profile, costs 1
+    """GET /recruiters/talents/:id -- full identifying profile, costs 1
     credit (deducted server-side before this is ever returned)."""
 
-    rep_id: str
+    talent_id: str
     display_name: str
     school_name: str
     school_type: str | None
@@ -84,7 +84,7 @@ class ContactRequest(BaseModel):
 
 class ContactResponse(BaseModel):
     id: str
-    rep_id: str
+    talent_id: str
     message_text: str
     messaged_at: datetime
 
@@ -94,14 +94,14 @@ class SaveRequest(BaseModel):
 
 
 class SavedProfileResponse(BaseModel):
-    rep_id: str
+    talent_id: str
     list_name: str | None
     saved_at: datetime
 
 
 class InboxMessageResponse(BaseModel):
-    """GET /reps/inbox -- the rep-facing view of a recruiter_contacts
-    row. Never the recruiter's identity beyond what the rep already has
+    """GET /talents/inbox -- the talent-facing view of a recruiter_contacts
+    row. Never the recruiter's identity beyond what the talent already has
     a legitimate reason to see once contacted (Build Prompt 11
     deliverable 4)."""
 
@@ -147,8 +147,8 @@ class RecruiterMessageResponse(BaseModel):
     messages with read-receipt status (Build Prompt 12 deliverable 4)."""
 
     id: str
-    rep_id: str
-    rep_display_name: str
+    talent_id: str
+    talent_display_name: str
     message_text: str
     read_at: datetime | None
     messaged_at: datetime

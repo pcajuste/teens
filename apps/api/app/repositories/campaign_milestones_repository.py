@@ -1,11 +1,11 @@
 """Data access for public.campaign_milestones (campaign-level milestone
-definitions) and public.campaign_rep_milestones (per-rep milestone
+definitions) and public.campaign_talent_milestones (per-talent milestone
 progress) -- Build Prompt 8B.
 
 Kept as its own module rather than folded into campaigns_repository.py
-/campaign_reps_repository.py: milestone rows have a materially
+/campaign_talents_repository.py: milestone rows have a materially
 different lifecycle (per-milestone submit/confirm/dispute state
-machine, layered underneath the existing campaign_reps state machine
+machine, layered underneath the existing campaign_talents state machine
 those two modules already own) and this keeps that new surface area
 from bloating the existing, already-large files.
 """
@@ -107,12 +107,12 @@ async def get_by_id_and_campaign(conn: asyncpg.Connection, milestone_id: str, ca
 
 
 # ══════════════════════════════════════════════════════════════════
-# campaign_rep_milestones -- per-rep milestone progress
+# campaign_talent_milestones -- per-talent milestone progress
 # ══════════════════════════════════════════════════════════════════
 
 _CRM_COLUMNS = """
-    id, campaign_rep_id, campaign_milestone_id, status, rep_submission_text,
-    rep_submission_file_urls, brand_confirmation_note, payout_cents,
+    id, campaign_talent_id, campaign_milestone_id, status, talent_submission_text,
+    talent_submission_file_urls, brand_confirmation_note, payout_cents,
     stripe_transfer_id, payout_status, dispute_flag, current_count, submitted_at, confirmed_at, paid_at
 """
 
@@ -121,8 +121,8 @@ _CRM_COLUMNS = """
 # column (campaign_milestones does), since an unqualified `id` in the
 # SELECT list is otherwise ambiguous.
 _CRM_COLUMNS_QUALIFIED = """
-    crm.id, crm.campaign_rep_id, crm.campaign_milestone_id, crm.status, crm.rep_submission_text,
-    crm.rep_submission_file_urls, crm.brand_confirmation_note, crm.payout_cents,
+    crm.id, crm.campaign_talent_id, crm.campaign_milestone_id, crm.status, crm.talent_submission_text,
+    crm.talent_submission_file_urls, crm.brand_confirmation_note, crm.payout_cents,
     crm.stripe_transfer_id, crm.payout_status, crm.dispute_flag, crm.current_count, crm.submitted_at, crm.confirmed_at, crm.paid_at
 """
 
@@ -130,11 +130,11 @@ _CRM_COLUMNS_QUALIFIED = """
 @dataclass(frozen=True, slots=True)
 class CampaignRepMilestone:
     id: str
-    campaign_rep_id: str
+    campaign_talent_id: str
     campaign_milestone_id: str
     status: str
-    rep_submission_text: str | None
-    rep_submission_file_urls: list[str]
+    talent_submission_text: str | None
+    talent_submission_file_urls: list[str]
     brand_confirmation_note: str | None
     payout_cents: int | None
     stripe_transfer_id: str | None
@@ -149,11 +149,11 @@ class CampaignRepMilestone:
     def from_row(cls, row: asyncpg.Record) -> "CampaignRepMilestone":
         return cls(
             id=str(row["id"]),
-            campaign_rep_id=str(row["campaign_rep_id"]),
+            campaign_talent_id=str(row["campaign_talent_id"]),
             campaign_milestone_id=str(row["campaign_milestone_id"]),
             status=row["status"],
-            rep_submission_text=row["rep_submission_text"],
-            rep_submission_file_urls=list(row["rep_submission_file_urls"] or []),
+            talent_submission_text=row["talent_submission_text"],
+            talent_submission_file_urls=list(row["talent_submission_file_urls"] or []),
             brand_confirmation_note=row["brand_confirmation_note"],
             payout_cents=row["payout_cents"],
             stripe_transfer_id=row["stripe_transfer_id"],
@@ -166,36 +166,36 @@ class CampaignRepMilestone:
         )
 
 
-async def initialize_for_accept(conn: asyncpg.Connection, campaign_rep_id: str, campaign_id: str) -> list[CampaignRepMilestone]:
-    """Creates one campaign_rep_milestones row (status='pending') per
+async def initialize_for_accept(conn: asyncpg.Connection, campaign_talent_id: str, campaign_id: str) -> list[CampaignRepMilestone]:
+    """Creates one campaign_talent_milestones row (status='pending') per
     campaign_milestones row on this campaign. Called by POST
-    /campaigns/:id/accept immediately after campaign_reps_repository.accept
+    /campaigns/:id/accept immediately after campaign_talents_repository.accept
     succeeds, inside the same transaction, for milestone-payment-type
     campaigns only -- a no-op (returns []) for a flat campaign, which
     has no campaign_milestones rows to iterate."""
     rows = await conn.fetch(
         f"""
-        INSERT INTO public.campaign_rep_milestones (campaign_rep_id, campaign_milestone_id)
+        INSERT INTO public.campaign_talent_milestones (campaign_talent_id, campaign_milestone_id)
         SELECT $1, cm.id FROM public.campaign_milestones cm WHERE cm.campaign_id = $2
         RETURNING {_CRM_COLUMNS}
         """,
-        campaign_rep_id,
+        campaign_talent_id,
         campaign_id,
     )
     return [CampaignRepMilestone.from_row(r) for r in rows]
 
 
-async def list_for_campaign_rep(conn: asyncpg.Connection, campaign_rep_id: str) -> list[CampaignRepMilestone]:
+async def list_for_campaign_rep(conn: asyncpg.Connection, campaign_talent_id: str) -> list[CampaignRepMilestone]:
     rows = await conn.fetch(
-        f"SELECT {_CRM_COLUMNS} FROM public.campaign_rep_milestones WHERE campaign_rep_id = $1",
-        campaign_rep_id,
+        f"SELECT {_CRM_COLUMNS} FROM public.campaign_talent_milestones WHERE campaign_talent_id = $1",
+        campaign_talent_id,
     )
     return [CampaignRepMilestone.from_row(r) for r in rows]
 
 
-async def get_by_id(conn: asyncpg.Connection, campaign_rep_milestone_id: str) -> CampaignRepMilestone | None:
+async def get_by_id(conn: asyncpg.Connection, campaign_talent_milestone_id: str) -> CampaignRepMilestone | None:
     row = await conn.fetchrow(
-        f"SELECT {_CRM_COLUMNS} FROM public.campaign_rep_milestones WHERE id = $1", campaign_rep_milestone_id
+        f"SELECT {_CRM_COLUMNS} FROM public.campaign_talent_milestones WHERE id = $1", campaign_talent_milestone_id
     )
     return CampaignRepMilestone.from_row(row) if row else None
 
@@ -207,7 +207,7 @@ def compute_actionable_map(
     actionable (sequence_required milestone where all prior milestones
     are confirmed, or a non-sequential milestone [once all
     sequence_required milestones are confirmed])." Pure function (no DB
-    access) so it can be shared by GET /reps/campaigns/active (display)
+    access) so it can be shared by GET /talents/campaigns/active (display)
     and POST .../milestones/:milestone_id/submit (server-side
     enforcement) without those two ever disagreeing about what's
     actionable. Only a 'pending' milestone can ever be actionable --
@@ -231,52 +231,52 @@ def compute_actionable_map(
     return result
 
 
-async def compute_payout_cents(conn: asyncpg.Connection, campaign_rep_milestone_id: str) -> int | None:
+async def compute_payout_cents(conn: asyncpg.Connection, campaign_talent_milestone_id: str) -> int | None:
     """Build Prompt 8B deliverable 5's rounding rule: payout_cents =
-    floor(payout_percentage / 100 * payout_per_rep_cents) for every
+    floor(payout_percentage / 100 * payout_per_talent_cents) for every
     milestone except the one with the highest milestone_number on its
     campaign (the "final milestone"), which instead gets
-    payout_per_rep_cents minus the sum of every other already-
+    payout_per_talent_cents minus the sum of every other already-
     confirmed-or-paid milestone's payout_cents for this campaign_rep --
     guaranteeing total_milestone_payout_cents can never exceed
-    payout_per_rep_cents regardless of how unevenly the percentages
+    payout_per_talent_cents regardless of how unevenly the percentages
     divide. Shared by both confirmation paths (POST .../confirm in
     app/routers/brands.py, and the milestone_auto_release job in
     app/jobs/runner.py) so the two can never compute this differently.
     Returns None if the row/campaign can't be found."""
     row = await conn.fetchrow(
         """
-        SELECT cm.milestone_number, cm.payout_percentage, c.payout_per_rep_cents,
+        SELECT cm.milestone_number, cm.payout_percentage, c.payout_per_talent_cents,
                (SELECT MAX(m2.milestone_number) FROM public.campaign_milestones m2
                   WHERE m2.campaign_id = cm.campaign_id) AS max_milestone_number,
-               (SELECT COALESCE(SUM(crm2.payout_cents), 0) FROM public.campaign_rep_milestones crm2
-                  WHERE crm2.campaign_rep_id = crm.campaign_rep_id AND crm2.id <> crm.id
+               (SELECT COALESCE(SUM(crm2.payout_cents), 0) FROM public.campaign_talent_milestones crm2
+                  WHERE crm2.campaign_talent_id = crm.campaign_talent_id AND crm2.id <> crm.id
                     AND crm2.status IN ('confirmed', 'paid')) AS other_payout_cents
-        FROM public.campaign_rep_milestones crm
+        FROM public.campaign_talent_milestones crm
         JOIN public.campaign_milestones cm ON cm.id = crm.campaign_milestone_id
-        JOIN public.campaign_reps cr ON cr.id = crm.campaign_rep_id
+        JOIN public.campaign_talents cr ON cr.id = crm.campaign_talent_id
         JOIN public.campaigns c ON c.id = cr.campaign_id
         WHERE crm.id = $1
         """,
-        campaign_rep_milestone_id,
+        campaign_talent_milestone_id,
     )
     if row is None:
         return None
-    payout_per_rep_cents = row["payout_per_rep_cents"] or 0
+    payout_per_talent_cents = row["payout_per_talent_cents"] or 0
     if row["milestone_number"] == row["max_milestone_number"]:
-        return payout_per_rep_cents - row["other_payout_cents"]
-    return (payout_per_rep_cents * row["payout_percentage"]) // 100
+        return payout_per_talent_cents - row["other_payout_cents"]
+    return (payout_per_talent_cents * row["payout_percentage"]) // 100
 
 
-async def get_by_campaign_rep_and_milestone(
-    conn: asyncpg.Connection, campaign_rep_id: str, campaign_milestone_id: str
+async def get_by_campaign_talent_and_milestone(
+    conn: asyncpg.Connection, campaign_talent_id: str, campaign_milestone_id: str
 ) -> CampaignRepMilestone | None:
     row = await conn.fetchrow(
         f"""
-        SELECT {_CRM_COLUMNS} FROM public.campaign_rep_milestones
-        WHERE campaign_rep_id = $1 AND campaign_milestone_id = $2
+        SELECT {_CRM_COLUMNS} FROM public.campaign_talent_milestones
+        WHERE campaign_talent_id = $1 AND campaign_milestone_id = $2
         """,
-        campaign_rep_id,
+        campaign_talent_id,
         campaign_milestone_id,
     )
     return CampaignRepMilestone.from_row(row) if row else None
@@ -284,31 +284,31 @@ async def get_by_campaign_rep_and_milestone(
 
 async def get_by_stripe_transfer_id(conn: asyncpg.Connection, stripe_transfer_id: str) -> CampaignRepMilestone | None:
     row = await conn.fetchrow(
-        f"SELECT {_CRM_COLUMNS} FROM public.campaign_rep_milestones WHERE stripe_transfer_id = $1", stripe_transfer_id
+        f"SELECT {_CRM_COLUMNS} FROM public.campaign_talent_milestones WHERE stripe_transfer_id = $1", stripe_transfer_id
     )
     return CampaignRepMilestone.from_row(row) if row else None
 
 
 async def submit(
     conn: asyncpg.Connection,
-    campaign_rep_milestone_id: str,
+    campaign_talent_milestone_id: str,
     *,
     submission_text: str,
     submission_file_urls: list[str],
     at: datetime,
 ) -> CampaignRepMilestone | None:
     """Legal only from 'pending'. Sequence-actionability is checked by
-    the caller (app/routers/reps.py) before this is called, since it
+    the caller (app/routers/talents.py) before this is called, since it
     needs to look across every milestone on the campaign, not just this
     row."""
     row = await conn.fetchrow(
         f"""
-        UPDATE public.campaign_rep_milestones
-        SET status = 'submitted', submitted_at = $2, rep_submission_text = $3, rep_submission_file_urls = $4
+        UPDATE public.campaign_talent_milestones
+        SET status = 'submitted', submitted_at = $2, talent_submission_text = $3, talent_submission_file_urls = $4
         WHERE id = $1 AND status = 'pending'
         RETURNING {_CRM_COLUMNS}
         """,
-        campaign_rep_milestone_id,
+        campaign_talent_milestone_id,
         at,
         submission_text,
         submission_file_urls,
@@ -318,7 +318,7 @@ async def submit(
 
 async def submit_increment(
     conn: asyncpg.Connection,
-    campaign_rep_milestone_id: str,
+    campaign_talent_milestone_id: str,
     *,
     threshold_count: int,
     submission_text: str,
@@ -329,10 +329,10 @@ async def submit_increment(
     campaign_milestones.threshold_count set (e.g. "publish 3 pieces of
     content" -- Teenure_Build_Prompts.md 8B FRONTEND ADDITIONS > UX
     guidance). Each call is one increment, not a full submission:
-    rep_submission_file_urls accumulates (extends the existing TEXT[]
+    talent_submission_file_urls accumulates (extends the existing TEXT[]
     column, the same multi-file-evidence pattern already used
     elsewhere in this codebase, rather than overwriting it) and
-    rep_submission_text accumulates as a newline-delimited log entry
+    talent_submission_text accumulates as a newline-delimited log entry
     per submission, since that column is a single TEXT rather than an
     array. current_count only ever increments by exactly 1 per call.
 
@@ -340,32 +340,32 @@ async def submit_increment(
     guarded entirely in the UPDATE...WHERE clause (matching how
     submit()/confirm() above guard every other milestone transition),
     so a call once current_count == threshold_count is a no-op (returns
-    None), which the caller (routers/reps.py) turns into a 409 -- the
+    None), which the caller (routers/talents.py) turns into a 409 -- the
     same "already done" idempotency shape used for a plain milestone
     already submitted.
 
     Status flips to 'submitted' (and submitted_at is stamped) only on
     the increment that brings current_count up to threshold_count --
     every prior increment leaves status at 'pending', which is exactly
-    the "leave status pending, count incremented" behavior the rep-
+    the "leave status pending, count incremented" behavior the talent-
     facing 'X of Y' progress UI needs. Once 'submitted', the existing
-    brand_confirmation/rep_submission/auto-release flow (unchanged)
+    brand_confirmation/talent_submission/auto-release flow (unchanged)
     takes over."""
     row = await conn.fetchrow(
         f"""
-        UPDATE public.campaign_rep_milestones
+        UPDATE public.campaign_talent_milestones
         SET current_count = current_count + 1,
-            rep_submission_text = CASE
-                WHEN rep_submission_text IS NULL OR rep_submission_text = '' THEN $3
-                ELSE rep_submission_text || E'\\n---\\n' || $3
+            talent_submission_text = CASE
+                WHEN talent_submission_text IS NULL OR talent_submission_text = '' THEN $3
+                ELSE talent_submission_text || E'\\n---\\n' || $3
             END,
-            rep_submission_file_urls = rep_submission_file_urls || $4::text[],
-            status = (CASE WHEN current_count + 1 >= $5 THEN 'submitted' ELSE 'pending' END)::campaign_rep_milestone_status,
+            talent_submission_file_urls = talent_submission_file_urls || $4::text[],
+            status = (CASE WHEN current_count + 1 >= $5 THEN 'submitted' ELSE 'pending' END)::campaign_talent_milestone_status,
             submitted_at = CASE WHEN current_count + 1 >= $5 THEN $2 ELSE submitted_at END
         WHERE id = $1 AND status = 'pending' AND current_count < $5
         RETURNING {_CRM_COLUMNS}
         """,
-        campaign_rep_milestone_id,
+        campaign_talent_milestone_id,
         at,
         submission_text,
         submission_file_urls,
@@ -375,104 +375,104 @@ async def submit_increment(
 
 
 async def confirm(
-    conn: asyncpg.Connection, campaign_rep_milestone_id: str, *, payout_cents: int, at: datetime
+    conn: asyncpg.Connection, campaign_talent_milestone_id: str, *, payout_cents: int, at: datetime
 ) -> CampaignRepMilestone | None:
     """Legal only from 'submitted'. Does not touch payout_status/
     stripe_transfer_id -- that's payout_service.release_milestone_payout's
     job, called right after this by the router (mirrors how
-    campaign_reps_repository.confirm/payout_service.release_payout are
+    campaign_talents_repository.confirm/payout_service.release_payout are
     split for flat campaigns)."""
     row = await conn.fetchrow(
         f"""
-        UPDATE public.campaign_rep_milestones
+        UPDATE public.campaign_talent_milestones
         SET status = 'confirmed', payout_cents = $2, confirmed_at = $3
         WHERE id = $1 AND status = 'submitted'
         RETURNING {_CRM_COLUMNS}
         """,
-        campaign_rep_milestone_id,
+        campaign_talent_milestone_id,
         payout_cents,
         at,
     )
     return CampaignRepMilestone.from_row(row) if row else None
 
 
-async def set_dispute_flag(conn: asyncpg.Connection, campaign_rep_milestone_id: str) -> CampaignRepMilestone | None:
+async def set_dispute_flag(conn: asyncpg.Connection, campaign_talent_milestone_id: str) -> CampaignRepMilestone | None:
     row = await conn.fetchrow(
         f"""
-        UPDATE public.campaign_rep_milestones SET dispute_flag = TRUE
+        UPDATE public.campaign_talent_milestones SET dispute_flag = TRUE
         WHERE id = $1 AND status = 'submitted'
         RETURNING {_CRM_COLUMNS}
         """,
-        campaign_rep_milestone_id,
+        campaign_talent_milestone_id,
     )
     return CampaignRepMilestone.from_row(row) if row else None
 
 
-async def reset_to_submitted(conn: asyncpg.Connection, campaign_rep_milestone_id: str) -> CampaignRepMilestone | None:
+async def reset_to_submitted(conn: asyncpg.Connection, campaign_talent_milestone_id: str) -> CampaignRepMilestone | None:
     """Admin dispute decline: milestone goes back to 'submitted'
     (dispute_flag cleared) so the auto-release/confirm path can run
     again -- never left in a permanently disputed dead end."""
     row = await conn.fetchrow(
         f"""
-        UPDATE public.campaign_rep_milestones SET dispute_flag = FALSE
+        UPDATE public.campaign_talent_milestones SET dispute_flag = FALSE
         WHERE id = $1
         RETURNING {_CRM_COLUMNS}
         """,
-        campaign_rep_milestone_id,
+        campaign_talent_milestone_id,
     )
     return CampaignRepMilestone.from_row(row) if row else None
 
 
-async def set_payout_processing(conn: asyncpg.Connection, campaign_rep_milestone_id: str, *, stripe_transfer_id: str) -> CampaignRepMilestone | None:
+async def set_payout_processing(conn: asyncpg.Connection, campaign_talent_milestone_id: str, *, stripe_transfer_id: str) -> CampaignRepMilestone | None:
     row = await conn.fetchrow(
         f"""
-        UPDATE public.campaign_rep_milestones
+        UPDATE public.campaign_talent_milestones
         SET payout_status = 'processing', stripe_transfer_id = $2
         WHERE id = $1 AND status = 'confirmed' AND payout_status = 'pending'
         RETURNING {_CRM_COLUMNS}
         """,
-        campaign_rep_milestone_id,
+        campaign_talent_milestone_id,
         stripe_transfer_id,
     )
     return CampaignRepMilestone.from_row(row) if row else None
 
 
-async def set_payout_paid(conn: asyncpg.Connection, campaign_rep_milestone_id: str, *, at: datetime) -> CampaignRepMilestone | None:
+async def set_payout_paid(conn: asyncpg.Connection, campaign_talent_milestone_id: str, *, at: datetime) -> CampaignRepMilestone | None:
     row = await conn.fetchrow(
         f"""
-        UPDATE public.campaign_rep_milestones
+        UPDATE public.campaign_talent_milestones
         SET status = 'paid', payout_status = 'paid', paid_at = $2
         WHERE id = $1 AND payout_status = 'processing'
         RETURNING {_CRM_COLUMNS}
         """,
-        campaign_rep_milestone_id,
+        campaign_talent_milestone_id,
         at,
     )
     return CampaignRepMilestone.from_row(row) if row else None
 
 
-async def set_payout_failed(conn: asyncpg.Connection, campaign_rep_milestone_id: str) -> CampaignRepMilestone | None:
+async def set_payout_failed(conn: asyncpg.Connection, campaign_talent_milestone_id: str) -> CampaignRepMilestone | None:
     row = await conn.fetchrow(
         f"""
-        UPDATE public.campaign_rep_milestones SET payout_status = 'failed'
+        UPDATE public.campaign_talent_milestones SET payout_status = 'failed'
         WHERE id = $1 AND payout_status = 'processing'
         RETURNING {_CRM_COLUMNS}
         """,
-        campaign_rep_milestone_id,
+        campaign_talent_milestone_id,
     )
     return CampaignRepMilestone.from_row(row) if row else None
 
 
 async def list_eligible_for_auto_release(conn: asyncpg.Connection, *, older_than: datetime) -> list[CampaignRepMilestone]:
-    """milestone_auto_release job (every 30 min): rep_submission
+    """milestone_auto_release job (every 30 min): talent_submission
     milestones sitting in 'submitted', older than the 24h review
     window, with no dispute raised."""
     rows = await conn.fetch(
         f"""
         SELECT {_CRM_COLUMNS_QUALIFIED}
-        FROM public.campaign_rep_milestones crm
+        FROM public.campaign_talent_milestones crm
         JOIN public.campaign_milestones cm ON cm.id = crm.campaign_milestone_id
-        WHERE cm.verification_method = 'rep_submission'
+        WHERE cm.verification_method = 'talent_submission'
           AND crm.status = 'submitted'
           AND crm.submitted_at < $1
           AND crm.dispute_flag = FALSE
@@ -483,14 +483,14 @@ async def list_eligible_for_auto_release(conn: asyncpg.Connection, *, older_than
 
 
 # ══════════════════════════════════════════════════════════════════
-# campaign_reps aggregate columns (milestones_completed_count,
+# campaign_talents aggregate columns (milestones_completed_count,
 # total_milestone_payout_cents)
 # ══════════════════════════════════════════════════════════════════
 
 
-async def bump_campaign_rep_milestone_totals(conn: asyncpg.Connection, campaign_rep_id: str) -> asyncpg.Record:
+async def bump_campaign_talent_milestone_totals(conn: asyncpg.Connection, campaign_talent_id: str) -> asyncpg.Record:
     """Recomputes milestones_completed_count/total_milestone_payout_cents
-    from scratch off campaign_rep_milestones (COUNT/SUM of confirmed-or-
+    from scratch off campaign_talent_milestones (COUNT/SUM of confirmed-or-
     later rows) rather than a bare increment -- makes this call
     idempotent-safe against being invoked twice for the same milestone
     (confirm() above is itself guarded to run once, but recompute-from-
@@ -506,15 +506,15 @@ async def bump_campaign_rep_milestone_totals(conn: asyncpg.Connection, campaign_
                 COUNT(*) FILTER (WHERE status IN ('confirmed', 'paid')) AS completed_count,
                 COALESCE(SUM(payout_cents) FILTER (WHERE status IN ('confirmed', 'paid')), 0) AS total_payout_cents,
                 COUNT(*) AS total_milestones
-            FROM public.campaign_rep_milestones
-            WHERE campaign_rep_id = $1
+            FROM public.campaign_talent_milestones
+            WHERE campaign_talent_id = $1
         )
-        UPDATE public.campaign_reps cr
+        UPDATE public.campaign_talents cr
         SET milestones_completed_count = agg.completed_count,
             total_milestone_payout_cents = agg.total_payout_cents
         FROM agg
         WHERE cr.id = $1
         RETURNING agg.completed_count, agg.total_payout_cents, agg.total_milestones
         """,
-        campaign_rep_id,
+        campaign_talent_id,
     )

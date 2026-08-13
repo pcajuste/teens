@@ -66,7 +66,7 @@ class HttpSupabaseAuthClient:
 
     async def create_user(self, *, email: str, password: str, app_metadata: dict) -> AuthUser:
         async with httpx.AsyncClient() as client:
-            response = await client.post(
+            response  = await client.post(
                 f"{self._base_url}/auth/v1/admin/users",
                 headers=self._headers(),
                 json={
@@ -76,20 +76,20 @@ class HttpSupabaseAuthClient:
                     "app_metadata": app_metadata,
                 },
             )
-        if response.status_code in (400, 422):
+        if response .status_code in (400, 422):
             raise EmailAlreadyRegisteredError(email)
-        response.raise_for_status()
-        body = response.json()
+        response .raise_for_status()
+        body = response .json()
         return AuthUser(id=body["id"], email=body["email"])
 
     async def update_app_metadata(self, user_id: str, app_metadata: dict) -> None:
         async with httpx.AsyncClient() as client:
-            response = await client.put(
+            response  = await client.put(
                 f"{self._base_url}/auth/v1/admin/users/{user_id}",
                 headers=self._headers(),
                 json={"app_metadata": app_metadata},
             )
-        response.raise_for_status()
+        response .raise_for_status()
 
 
 class LocalDevSupabaseAuthClient:

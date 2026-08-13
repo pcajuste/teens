@@ -2,9 +2,9 @@
 submission surface distinct from campaigns -- unpaid, no FTC
 disclosure, no parent-approval gate (see Teenure_Build_Prompts.md's
 "THE FUNDAMENTAL DISTINCTION FROM CAMPAIGNS" for the full rationale).
-Two routers, matching reps.py's split: brand-side CRUD/review lives on
-`/brands/challenges/...`, rep-side discovery/submission on
-`/reps/challenges/...` -- both included from app/main.py.
+Two routers, matching talents.py's split: brand-side CRUD/review lives on
+`/brands/challenges/...`, talent-side discovery/submission on
+`/talents/challenges/...` -- both included from app/main.py.
 """
 from __future__ import annotations
 
@@ -18,22 +18,22 @@ from app.core.security import AuthenticatedUser, require_role
 from app.db.pool import get_connection
 from app.repositories import (
     brand_profiles_repository,
-    campaign_reps_repository,
+    campaign_talents_repository,
     campaigns_repository,
     challenges_repository,
-    rep_profiles_repository,
+    talent_profiles_repository,
     users_repository,
 )
 from app.schemas.challenges import (
     ChallengeCreateRequest,
     ChallengeResponse,
-    ChallengeSubmissionRepCardResponse,
+    ChallengeSubmissionTalentCardResponse,
     BrandSubmissionResponse,
     ConvertSubmissionRequest,
     ConvertSubmissionResponse,
-    RepChallengeAvailableResponse,
-    RepChallengeSubmissionResponse,
-    RepChallengeSubmittedResponse,
+    TalentChallengeAvailableResponse,
+    TalentChallengeSubmissionResponse,
+    TalentChallengeSubmittedResponse,
     ReviewSubmissionRequest,
     SubmitChallengeRequest,
 )
@@ -43,7 +43,7 @@ from app.services.parent_service import determine_parent_approval, send_campaign
 from app.services.resend_client import ResendClient, resend_client_dependency
 
 brands_challenges_router = APIRouter(prefix="/brands/challenges", tags=["challenges"])
-reps_challenges_router = APIRouter(prefix="/reps/challenges", tags=["challenges"])
+talents_challenges_router = APIRouter(prefix="/talents/challenges", tags=["challenges"])
 
 STANDARD_INVITE_WINDOW_HOURS = 48
 
@@ -213,9 +213,9 @@ async def close_challenge(
     return _to_challenge_response(updated or challenge)
 
 
-def _to_rep_card_response(card: challenges_repository.ChallengeSubmissionRepCard) -> ChallengeSubmissionRepCardResponse:
-    return ChallengeSubmissionRepCardResponse(
-        rep_id=card.rep_id,
+def _to_talent_card_response(card: challenges_repository.ChallengeSubmissionTalentCard) -> ChallengeSubmissionTalentCardResponse:
+    return ChallengeSubmissionTalentCardResponse(
+        talent_id=card.talent_id,
         display_name=card.display_name,
         city=card.city,
         categories=card.categories,
@@ -246,14 +246,14 @@ async def list_submissions(
     rows = await challenges_repository.list_for_challenge(conn, challenge_id)
     result: list[BrandSubmissionResponse] = []
     for s in rows:
-        card = await challenges_repository.get_submission_rep_card(conn, s.rep_id)
+        card = await challenges_repository.get_submission_talent_card(conn, s.talent_id)
         if card is None:
             continue
         result.append(
             BrandSubmissionResponse(
                 id=s.id,
                 challenge_id=s.challenge_id,
-                rep=_to_rep_card_response(card),
+                talent=_to_talent_card_response(card),
                 submission_text=s.submission_text,
                 submission_file_urls=s.submission_file_urls,
                 status=_brand_facing_status(s.status),
@@ -292,13 +292,13 @@ async def review_submission(
     challenge, submission = await _require_owned_submission(conn, challenge_id, submission_id, brand.id)
     updated = await challenges_repository.mark_reviewed(conn, submission_id, brand_note=body.brand_note, at=datetime.now(timezone.utc))
     final = updated or submission  # idempotent -- already-reviewed is not an error
-    card = await challenges_repository.get_submission_rep_card(conn, final.rep_id)
+    card = await challenges_repository.get_submission_talent_card(conn, final.talent_id)
     return BrandSubmissionResponse(
         id=final.id,
         challenge_id=final.challenge_id,
-        rep=_to_rep_card_response(card) if card else _to_rep_card_response(
-            challenges_repository.ChallengeSubmissionRepCard(
-                rep_id=final.rep_id, display_name="", city="", categories=[], profile_completeness_score=0,
+        talent=_to_talent_card_response(card) if card else _to_talent_card_response(
+            challenges_repository.ChallengeSubmissionTalentCard(
+                talent_id=final.talent_id, display_name="", city="", categories=[], profile_completeness_score=0,
                 campaigns_completed=0, average_rating=None, challenges_converted_count=0, challenge_conversion_rate=None,
             )
         ),
@@ -328,13 +328,13 @@ async def convert_submission(
     than a failed conversion. Idempotent: a submission already
     'converted' is not re-processed -- the second call returns the
     current converted state with 200, never a 500 or a duplicate
-    payout/campaign_reps row."""
+    payout/campaign_talents row."""
     brand = await _get_own_brand_profile(conn, user)
     challenge, submission = await _require_owned_submission(conn, challenge_id, submission_id, brand.id)
 
     if submission.status == "converted":
         # Idempotent replay -- return current state without touching
-        # anything again (no second campaign_reps row, no second
+        # anything again (no second campaign_talents row, no second
         # Transfer). release_challenge_conversion_bonus below is itself
         # idempotent too, so calling it again here is also safe, but
         # short-circuiting avoids the extra campaign lookup/email noise
@@ -365,35 +365,35 @@ async def convert_submission(
             detail={"code": "campaign_not_active", "message": "Only an active campaign can receive a challenge conversion invitation."},
         )
 
-    existing_invite = await campaign_reps_repository.get_for_rep_and_campaign(conn, submission.rep_id, campaign.id)
+    existing_invite = await campaign_talents_repository.get_for_talent_and_campaign(conn, submission.talent_id, campaign.id)
     if existing_invite is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail={"code": "already_invited", "message": "This rep already has a campaign_reps row on that campaign."},
+            detail={"code": "already_invited", "message": "This talent already has a campaign_talents row on that campaign."},
         )
 
-    current_count = await campaign_reps_repository.count_non_declined_for_campaign(conn, campaign.id)
-    if current_count >= campaign.max_reps:
+    current_count = await campaign_talents_repository.count_non_declined_for_campaign(conn, campaign.id)
+    if current_count >= campaign.max_talents:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail={"code": "campaign_full", "message": "This campaign has no available rep slots."},
+            detail={"code": "campaign_full", "message": "This campaign has no available talent slots."},
         )
 
     payout_cents = settings.challenge_conversion_bonus_cents
-    parent_approval_status, parent_approval_deadline = await determine_parent_approval(conn, submission.rep_id)
+    parent_approval_status, parent_approval_deadline = await determine_parent_approval(conn, submission.talent_id)
 
     async with conn.transaction():
-        # (c) Create the campaign_reps invitation -- identical in
+        # (c) Create the campaign_talents invitation -- identical in
         # structure to a direct brand invitation (Prompt 8's
         # create_invite), so it's indistinguishable from that path
         # anywhere downstream (RLS, payout engine, campaign lifecycle).
         # Still runs through the normal under-16 parent-approval gate --
         # this is a real paid campaign invitation, unlike the challenge
         # submission itself.
-        invite = await campaign_reps_repository.create_invite(
+        invite = await campaign_talents_repository.create_invite(
             conn,
             campaign_id=campaign.id,
-            rep_id=submission.rep_id,
+            talent_id=submission.talent_id,
             parent_approval_status=parent_approval_status,
             parent_approval_deadline=parent_approval_deadline,
         )
@@ -408,10 +408,10 @@ async def convert_submission(
             )
         # (i)-(j) Update aggregate counters.
         await challenges_repository.increment_conversion_count(conn, challenge_id)
-        await rep_profiles_repository.increment_challenges_converted_count(conn, submission.rep_id)
+        await talent_profiles_repository.increment_challenges_converted_count(conn, submission.talent_id)
 
     if parent_approval_status == "pending":
-        await send_campaign_approval_request(conn, resend_client, rep_id=submission.rep_id, campaign_id=campaign.id)
+        await send_campaign_approval_request(conn, resend_client, talent_id=submission.talent_id, campaign_id=campaign.id)
 
     # (h) Release the conversion bonus -- outside the transaction (a
     # Stripe API call has no business holding a DB transaction open),
@@ -420,14 +420,14 @@ async def convert_submission(
     # confirm_milestone).
     result = await payout_service.release_challenge_conversion_bonus(conn, settings, submission_id)
 
-    # (k) Notify the rep -- bonus amount formatted from config, never
+    # (k) Notify the talent -- bonus amount formatted from config, never
     # hardcoded.
-    rep = await rep_profiles_repository.get_by_id(conn, submission.rep_id)
-    if rep is not None:
-        rep_user = await users_repository.get_user_by_id(conn, rep.user_id)
-        if rep_user is not None:
+    talent = await talent_profiles_repository.get_by_id(conn, submission.talent_id)
+    if talent is not None:
+        talent_user = await users_repository.get_user_by_id(conn, talent.user_id)
+        if talent_user is not None:
             await send_challenge_converted_email(
-                rep_user.email, campaign_title=campaign.title, bonus_cents=payout_cents, client=resend_client
+                talent_user.email, campaign_title=campaign.title, bonus_cents=payout_cents, client=resend_client
             )
 
     final = await challenges_repository.get_submission_by_id(conn, submission_id)
@@ -448,20 +448,20 @@ async def decline_submission(
     user: AuthenticatedUser = Depends(require_role("brand")),
     conn: asyncpg.Connection = Depends(get_connection),
 ) -> BrandSubmissionResponse:
-    """Idempotent. No rep notification -- declined submissions are
-    silently archived (spec deliverable 3: protects rep confidence,
+    """Idempotent. No talent notification -- declined submissions are
+    silently archived (spec deliverable 3: protects talent confidence,
     especially for younger users)."""
     brand = await _get_own_brand_profile(conn, user)
     challenge, submission = await _require_owned_submission(conn, challenge_id, submission_id, brand.id)
     updated = await challenges_repository.mark_declined(conn, submission_id)
     final = updated or submission
-    card = await challenges_repository.get_submission_rep_card(conn, final.rep_id)
+    card = await challenges_repository.get_submission_talent_card(conn, final.talent_id)
     return BrandSubmissionResponse(
         id=final.id,
         challenge_id=final.challenge_id,
-        rep=_to_rep_card_response(card) if card else _to_rep_card_response(
-            challenges_repository.ChallengeSubmissionRepCard(
-                rep_id=final.rep_id, display_name="", city="", categories=[], profile_completeness_score=0,
+        talent=_to_talent_card_response(card) if card else _to_talent_card_response(
+            challenges_repository.ChallengeSubmissionTalentCard(
+                talent_id=final.talent_id, display_name="", city="", categories=[], profile_completeness_score=0,
                 campaigns_completed=0, average_rating=None, challenges_converted_count=0, challenge_conversion_rate=None,
             )
         ),
@@ -477,39 +477,39 @@ async def decline_submission(
 
 
 # ══════════════════════════════════════════════════════════════════
-# /reps/challenges -- rep discovery + submission (deliverable 4)
+# /talents/challenges -- talent discovery + submission (deliverable 4)
 # ══════════════════════════════════════════════════════════════════
 
 
-async def _get_own_rep_profile(conn: asyncpg.Connection, user: AuthenticatedUser) -> rep_profiles_repository.RepProfile:
-    profile = await rep_profiles_repository.get_by_user_id(conn, user.id)
+async def _get_own_talent_profile(conn: asyncpg.Connection, user: AuthenticatedUser) -> talent_profiles_repository.TalentProfile:
+    profile = await talent_profiles_repository.get_by_user_id(conn, user.id)
     if profile is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail={"code": "rep_profile_not_found", "message": "Complete onboarding via PUT /reps/me first."},
+            detail={"code": "talent_profile_not_found", "message": "Complete onboarding via PUT /talents/me first."},
         )
     return profile
 
 
-@reps_challenges_router.get("/available", response_model=list[RepChallengeAvailableResponse])
+@talents_challenges_router.get("/available", response_model=list[TalentChallengeAvailableResponse])
 async def available_challenges(
-    user: AuthenticatedUser = Depends(require_role("rep")),
+    user: AuthenticatedUser = Depends(require_role("talent")),
     conn: asyncpg.Connection = Depends(get_connection),
-) -> list[RepChallengeAvailableResponse]:
+) -> list[TalentChallengeAvailableResponse]:
     """No parent values_filter is applied here -- challenges are unpaid,
     involve no brand relationship, and require no parent approval
     (spec deliverable 4's explicit instruction). This is a deliberate
-    scope decision, distinct from GET /reps/campaigns/available's own
-    apply_values_filter loop: a rep under 16 whose parent has
+    scope decision, distinct from GET /talents/campaigns/available's own
+    apply_values_filter loop: a talent under 16 whose parent has
     campaign_approval_required=TRUE still sees every matching challenge
     -- that gate is specific to paid campaigns, not to challenges, which
     involve no financial transaction with a minor at submission time."""
-    profile = await _get_own_rep_profile(conn, user)
+    profile = await _get_own_talent_profile(conn, user)
     rows = await challenges_repository.list_available_for_rep(
-        conn, rep_id=profile.id, categories=profile.categories, city=profile.city
+        conn, talent_id=profile.id, categories=profile.categories, city=profile.city
     )
     return [
-        RepChallengeAvailableResponse(
+        TalentChallengeAvailableResponse(
             id=c.id,
             title=c.title,
             brief=c.brief,
@@ -523,18 +523,18 @@ async def available_challenges(
     ]
 
 
-@reps_challenges_router.get("/submitted", response_model=list[RepChallengeSubmittedResponse])
+@talents_challenges_router.get("/submitted", response_model=list[TalentChallengeSubmittedResponse])
 async def submitted_challenges(
-    user: AuthenticatedUser = Depends(require_role("rep")),
+    user: AuthenticatedUser = Depends(require_role("talent")),
     conn: asyncpg.Connection = Depends(get_connection),
-) -> list[RepChallengeSubmittedResponse]:
+) -> list[TalentChallengeSubmittedResponse]:
     """Status remap per spec deliverable 4: 'submitted'/'reviewed' both
-    surface as 'submitted' (a rep never learns whether a brand has
+    surface as 'submitted' (a talent never learns whether a brand has
     looked yet); 'declined' rows are excluded entirely -- never
     returned by this endpoint under any circumstances."""
-    profile = await _get_own_rep_profile(conn, user)
+    profile = await _get_own_talent_profile(conn, user)
     rows = await challenges_repository.list_for_rep(conn, profile.id)
-    result: list[RepChallengeSubmittedResponse] = []
+    result: list[TalentChallengeSubmittedResponse] = []
     for s in rows:
         if s.status == "declined":
             continue
@@ -544,7 +544,7 @@ async def submitted_challenges(
         if s.status == "converted":
             campaign = await campaigns_repository.get_by_id(conn, s.converted_to_campaign_id) if s.converted_to_campaign_id else None
             result.append(
-                RepChallengeSubmittedResponse(
+                TalentChallengeSubmittedResponse(
                     challenge_id=s.challenge_id,
                     challenge_title=challenge.title,
                     category=challenge.category,
@@ -552,13 +552,13 @@ async def submitted_challenges(
                     status="converted",
                     campaign_id=campaign.id if campaign else None,
                     campaign_title=campaign.title if campaign else None,
-                    payout_per_rep_cents=campaign.payout_per_rep_cents if campaign else None,
+                    payout_per_talent_cents=campaign.payout_per_talent_cents if campaign else None,
                     bonus_cents=s.payout_cents,
                 )
             )
         else:
             result.append(
-                RepChallengeSubmittedResponse(
+                TalentChallengeSubmittedResponse(
                     challenge_id=s.challenge_id,
                     challenge_title=challenge.title,
                     category=challenge.category,
@@ -569,14 +569,14 @@ async def submitted_challenges(
     return result
 
 
-@reps_challenges_router.post("/{challenge_id}/submit", response_model=RepChallengeSubmissionResponse, status_code=status.HTTP_201_CREATED)
+@talents_challenges_router.post("/{challenge_id}/submit", response_model=TalentChallengeSubmissionResponse, status_code=status.HTTP_201_CREATED)
 async def submit_challenge(
     challenge_id: str,
     body: SubmitChallengeRequest,
-    user: AuthenticatedUser = Depends(require_role("rep")),
+    user: AuthenticatedUser = Depends(require_role("talent")),
     conn: asyncpg.Connection = Depends(get_connection),
-) -> RepChallengeSubmissionResponse:
-    profile = await _get_own_rep_profile(conn, user)
+) -> TalentChallengeSubmissionResponse:
+    profile = await _get_own_talent_profile(conn, user)
     challenge = await challenges_repository.get_by_id(conn, challenge_id)
     if challenge is None:
         raise HTTPException(
@@ -594,7 +594,7 @@ async def submit_challenge(
             detail={"code": "challenge_full", "message": "This challenge has reached its maximum number of submissions."},
         )
 
-    existing = await challenges_repository.get_for_rep_and_challenge(conn, profile.id, challenge_id)
+    existing = await challenges_repository.get_for_talent_and_challenge(conn, profile.id, challenge_id)
     if existing is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -620,11 +620,11 @@ async def submit_challenge(
         )
 
     # Server-side enforcement of the pre-challenge disclosure (spec
-    # deliverable 4e) -- a rep calling this endpoint via direct API,
+    # deliverable 4e) -- a talent calling this endpoint via direct API,
     # without ever seeing the disclosure UI, must still acknowledge the
     # terms, or the submission is rejected. This is the technical gate,
     # not a UI hint, mirroring how FTC disclosure is enforced for
-    # campaigns (app/routers/reps.py's submit_campaign).
+    # campaigns (app/routers/talents.py's submit_campaign).
     if not body.disclosure_acknowledged:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -642,13 +642,13 @@ async def submit_challenge(
         created = await challenges_repository.create_submission(
             conn,
             challenge_id=challenge_id,
-            rep_id=profile.id,
+            talent_id=profile.id,
             submission_text=body.submission_text,
             submission_file_urls=body.submission_file_urls,
         )
         await challenges_repository.increment_submissions_count(conn, challenge_id)
-        await rep_profiles_repository.increment_challenges_submitted_count(conn, profile.id)
+        await talent_profiles_repository.increment_challenges_submitted_count(conn, profile.id)
 
-    # Neutral confirmation only -- no estimated response time, no
+    # Neutral confirmation only -- no estimated response  time, no
     # implication the brand will respond (spec deliverable 4i).
-    return RepChallengeSubmissionResponse(id=created.id, challenge_id=created.challenge_id, status="submitted", submitted_at=created.submitted_at)
+    return TalentChallengeSubmissionResponse(id=created.id, challenge_id=created.challenge_id, status="submitted", submitted_at=created.submitted_at)

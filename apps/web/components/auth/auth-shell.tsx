@@ -7,7 +7,7 @@ interface AuthShellProps {
   footer?: React.ReactNode;
 }
 
-/** Shared shell for every auth screen (rep/brand/recruiter signup &
+/** Shared shell for every auth screen (talent/brand/recruiter signup &
  * login) so the platform reads as one product from the very first
  * screen a user sees, per Section 0A's acceptance criterion. */
 export function AuthShell({ title, subtitle, children, footer }: AuthShellProps) {

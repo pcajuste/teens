@@ -1,5 +1,5 @@
 // Must stay in sync with apps/api/app/core/categories.py BASE_CATEGORIES.
-// Reps self-select only from this set -- the parent-only-blockable
+// Talents self-select only from this set -- the parent-only-blockable
 // categories (alcohol_adjacent, political, etc.) never appear here.
 export const BASE_CATEGORIES = [
   "athletics",

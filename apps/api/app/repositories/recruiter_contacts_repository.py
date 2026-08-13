@@ -1,12 +1,12 @@
 """Data access for public.recruiter_contacts (Build Prompt 11). One
-row per recruiter->rep message, one-directional by design -- no reply
+row per recruiter->talent message, one-directional by design -- no reply
 column, no reply endpoint (deliverable 4). The UNIQUE(recruiter_id,
-rep_id) constraint enforces "you've already contacted this rep" on a
+talent_id) constraint enforces "you've already contacted this talent" on a
 second contact attempt; create_contact surfaces that as a return of
 None (caught via asyncpg.UniqueViolationError) rather than letting the
 IntegrityError bubble up raw, matching this codebase's "None ->
 caller raises HTTPException" convention used throughout
-campaigns_repository/campaign_reps_repository."""
+campaigns_repository/campaign_talents_repository."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -14,14 +14,14 @@ from datetime import datetime
 
 import asyncpg
 
-_COLUMNS = "id, recruiter_id, rep_id, message_text, read_at, messaged_at"
+_COLUMNS = "id, recruiter_id, talent_id, message_text, read_at, messaged_at"
 
 
 @dataclass(frozen=True, slots=True)
 class RecruiterContact:
     id: str
     recruiter_id: str
-    rep_id: str
+    talent_id: str
     message_text: str
     read_at: datetime | None
     messaged_at: datetime
@@ -31,34 +31,34 @@ class RecruiterContact:
         return cls(
             id=str(row["id"]),
             recruiter_id=str(row["recruiter_id"]),
-            rep_id=str(row["rep_id"]),
+            talent_id=str(row["talent_id"]),
             message_text=row["message_text"],
             read_at=row["read_at"],
             messaged_at=row["messaged_at"],
         )
 
 
-async def get_for_recruiter_and_rep(conn: asyncpg.Connection, recruiter_id: str, rep_id: str) -> RecruiterContact | None:
+async def get_for_recruiter_and_rep(conn: asyncpg.Connection, recruiter_id: str, talent_id: str) -> RecruiterContact | None:
     row = await conn.fetchrow(
-        f"SELECT {_COLUMNS} FROM public.recruiter_contacts WHERE recruiter_id = $1 AND rep_id = $2",
+        f"SELECT {_COLUMNS} FROM public.recruiter_contacts WHERE recruiter_id = $1 AND talent_id = $2",
         recruiter_id,
-        rep_id,
+        talent_id,
     )
     return RecruiterContact.from_row(row) if row else None
 
 
 async def create_contact(
-    conn: asyncpg.Connection, *, recruiter_id: str, rep_id: str, message_text: str
+    conn: asyncpg.Connection, *, recruiter_id: str, talent_id: str, message_text: str
 ) -> RecruiterContact | None:
     try:
         row = await conn.fetchrow(
             f"""
-            INSERT INTO public.recruiter_contacts (recruiter_id, rep_id, message_text)
+            INSERT INTO public.recruiter_contacts (recruiter_id, talent_id, message_text)
             VALUES ($1, $2, $3)
             RETURNING {_COLUMNS}
             """,
             recruiter_id,
-            rep_id,
+            talent_id,
             message_text,
         )
     except asyncpg.UniqueViolationError:
@@ -66,27 +66,27 @@ async def create_contact(
     return RecruiterContact.from_row(row)
 
 
-async def list_for_rep(conn: asyncpg.Connection, rep_id: str) -> list[RecruiterContact]:
-    """GET /reps/inbox -- newest first."""
+async def list_for_rep(conn: asyncpg.Connection, talent_id: str) -> list[RecruiterContact]:
+    """GET /talents/inbox -- newest first."""
     rows = await conn.fetch(
-        f"SELECT {_COLUMNS} FROM public.recruiter_contacts WHERE rep_id = $1 ORDER BY messaged_at DESC",
-        rep_id,
+        f"SELECT {_COLUMNS} FROM public.recruiter_contacts WHERE talent_id = $1 ORDER BY messaged_at DESC",
+        talent_id,
     )
     return [RecruiterContact.from_row(row) for row in rows]
 
 
 @dataclass(frozen=True, slots=True)
 class RecruiterContactWithRepName:
-    """list_for_recruiter's row shape: a RecruiterContact plus the rep's
+    """list_for_recruiter's row shape: a RecruiterContact plus the talent's
     display_name. Joining in the name here isn't a new PII disclosure --
     the recruiter already paid the credit that revealed it when they sent
-    this message (get_rep_detail/contact_rep both require and charge for
+    this message (get_talent_detail/contact_rep both require and charge for
     that view first) -- it just saves the frontend a second per-row
-    credit-free lookup against a rep_profiles read path that doesn't
+    credit-free lookup against a talent_profiles read path that doesn't
     otherwise exist for recruiters outside the credit-gated routes."""
 
     contact: RecruiterContact
-    rep_display_name: str
+    talent_display_name: str
 
 
 async def list_for_recruiter(conn: asyncpg.Connection, recruiter_id: str) -> list[RecruiterContactWithRepName]:
@@ -97,36 +97,36 @@ async def list_for_recruiter(conn: asyncpg.Connection, recruiter_id: str) -> lis
     wrote is exposed here (one-directional messaging, no reply)."""
     rows = await conn.fetch(
         f"""
-        SELECT c.id, c.recruiter_id, c.rep_id, c.message_text, c.read_at, c.messaged_at, r.display_name
+        SELECT c.id, c.recruiter_id, c.talent_id, c.message_text, c.read_at, c.messaged_at, r.display_name
         FROM public.recruiter_contacts c
-        JOIN public.rep_profiles r ON r.id = c.rep_id
+        JOIN public.talent_profiles r ON r.id = c.talent_id
         WHERE c.recruiter_id = $1
         ORDER BY c.messaged_at DESC
         """,
         recruiter_id,
     )
-    return [RecruiterContactWithRepName(contact=RecruiterContact.from_row(row), rep_display_name=row["display_name"]) for row in rows]
+    return [RecruiterContactWithRepName(contact=RecruiterContact.from_row(row), talent_display_name=row["display_name"]) for row in rows]
 
 
-async def get_by_id_and_rep(conn: asyncpg.Connection, contact_id: str, rep_id: str) -> RecruiterContact | None:
+async def get_by_id_and_rep(conn: asyncpg.Connection, contact_id: str, talent_id: str) -> RecruiterContact | None:
     row = await conn.fetchrow(
-        f"SELECT {_COLUMNS} FROM public.recruiter_contacts WHERE id = $1 AND rep_id = $2",
+        f"SELECT {_COLUMNS} FROM public.recruiter_contacts WHERE id = $1 AND talent_id = $2",
         contact_id,
-        rep_id,
+        talent_id,
     )
     return RecruiterContact.from_row(row) if row else None
 
 
-async def mark_read(conn: asyncpg.Connection, contact_id: str, rep_id: str) -> RecruiterContact | None:
+async def mark_read(conn: asyncpg.Connection, contact_id: str, talent_id: str) -> RecruiterContact | None:
     row = await conn.fetchrow(
         f"""
         UPDATE public.recruiter_contacts
         SET read_at = now()
-        WHERE id = $1 AND rep_id = $2 AND read_at IS NULL
+        WHERE id = $1 AND talent_id = $2 AND read_at IS NULL
         RETURNING {_COLUMNS}
         """,
         contact_id,
-        rep_id,
+        talent_id,
     )
     if row is not None:
         return RecruiterContact.from_row(row)

@@ -13,7 +13,7 @@ from app.core.age import compute_age
 from app.core.config import Settings, get_settings
 from app.core.security import ParentSession, get_active_parent_session
 from app.db.pool import get_connection
-from app.repositories import campaign_reps_repository, challenges_repository, learning_modules_repository, parent_records_repository
+from app.repositories import campaign_talents_repository, challenges_repository, learning_modules_repository, parent_records_repository
 from app.repositories.users_repository import set_account_status
 from app.schemas.parent import (
     AccountControlResponse,
@@ -48,22 +48,22 @@ async def dashboard(
     session: ParentSession = Depends(get_active_parent_session),
     conn: asyncpg.Connection = Depends(get_connection),
 ) -> DashboardResponse:
-    rep = await parent_records_repository.get_rep_context(conn, session.rep_id)
-    if rep is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"code": "rep_not_found", "message": "Linked rep profile not found."})
-    activity = await challenges_repository.parent_dashboard_activity(conn, session.rep_id)
+    talent = await parent_records_repository.get_talent_context(conn, session.talent_id)
+    if talent is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"code": "talent_not_found", "message": "Linked talent profile not found."})
+    activity = await challenges_repository.parent_dashboard_activity(conn, session.talent_id)
     settings = get_settings()
     module_activity = await learning_modules_repository.parent_dashboard_activity(
-        conn, session.rep_id, ftc_module_id=settings.ftc_module_id or None
+        conn, session.talent_id, ftc_module_id=settings.ftc_module_id or None
     )
     return DashboardResponse(
-        display_name=rep.display_name,
-        school_name=rep.school_name,
-        graduation_year=rep.graduation_year,
-        categories=rep.categories,
-        profile_completeness_score=rep.profile_completeness_score,
-        total_earnings_cents=rep.total_earnings_cents,
-        total_campaigns_completed=rep.total_campaigns_completed,
+        display_name=talent.display_name,
+        school_name=talent.school_name,
+        graduation_year=talent.graduation_year,
+        categories=talent.categories,
+        profile_completeness_score=talent.profile_completeness_score,
+        total_earnings_cents=talent.total_earnings_cents,
+        total_campaigns_completed=talent.total_campaigns_completed,
         challenge_activity=ChallengeActivityResponse(**activity),
         module_activity=ModuleActivityResponse(**module_activity),
     )
@@ -74,7 +74,7 @@ async def pending_campaigns(
     session: ParentSession = Depends(get_active_parent_session),
     conn: asyncpg.Connection = Depends(get_connection),
 ) -> list[PendingCampaignResponse]:
-    briefs = await campaign_reps_repository.list_pending_for_rep(conn, session.rep_id)
+    briefs = await campaign_talents_repository.list_pending_for_rep(conn, session.talent_id)
     return [
         PendingCampaignResponse(
             campaign_id=b.campaign_id,
@@ -85,7 +85,7 @@ async def pending_campaigns(
             key_messaging=b.key_messaging,
             prohibited_content=b.prohibited_content,
             deliverables_description=b.deliverables_description,
-            payout_per_rep_cents=b.payout_per_rep_cents,
+            payout_per_talent_cents=b.payout_per_talent_cents,
             start_date=b.start_date,
             end_date=b.end_date,
             requires_in_person_activation=b.requires_in_person_activation,
@@ -101,7 +101,7 @@ async def approve_campaign(
     session: ParentSession = Depends(get_active_parent_session),
     conn: asyncpg.Connection = Depends(get_connection),
 ) -> CampaignDecisionResponse:
-    ok = await record_campaign_approval(conn, rep_id=session.rep_id, campaign_id=campaign_id)
+    ok = await record_campaign_approval(conn, talent_id=session.talent_id, campaign_id=campaign_id)
     if not ok:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -117,7 +117,7 @@ async def block_campaign(
     conn: asyncpg.Connection = Depends(get_connection),
     resend_client: ResendClient = Depends(_resend_client_dependency),
 ) -> CampaignDecisionResponse:
-    ok = await record_campaign_block(conn, resend_client, rep_id=session.rep_id, campaign_id=campaign_id)
+    ok = await record_campaign_block(conn, resend_client, talent_id=session.talent_id, campaign_id=campaign_id)
     if not ok:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -161,11 +161,11 @@ async def update_approval_required(
     session: ParentSession = Depends(get_active_parent_session),
     conn: asyncpg.Connection = Depends(get_connection),
 ) -> SettingsResponse:
-    rep = await parent_records_repository.get_rep_context(conn, session.rep_id)
-    if rep is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"code": "rep_not_found", "message": "Linked rep profile not found."})
+    talent = await parent_records_repository.get_talent_context(conn, session.talent_id)
+    if talent is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"code": "talent_not_found", "message": "Linked talent profile not found."})
 
-    age = compute_age(rep.date_of_birth, today=date.today())
+    age = compute_age(talent.date_of_birth, today=date.today())
     # 18+ can't reach this route at all -- get_active_parent_session
     # already rejects the session once portal_expires_at has passed.
     if age < MIN_AGE_FOR_PARENT_TOGGLE:
@@ -173,7 +173,7 @@ async def update_approval_required(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
                 "code": "approval_required_locked_under_16",
-                "message": "Campaign approval is always required for reps under 16 and can't be turned off.",
+                "message": "Campaign approval is always required for talents under 16 and can't be turned off.",
             },
         )
 
@@ -205,20 +205,20 @@ async def digest_preview(
     conn: asyncpg.Connection = Depends(get_connection),
 ) -> DigestPreviewResponse:
     parent = await parent_records_repository.get_parent_by_id(conn, session.parent_id)
-    rep = await parent_records_repository.get_rep_context(conn, session.rep_id)
-    if parent is None or rep is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"code": "not_found", "message": "Parent or rep record not found."})
+    talent = await parent_records_repository.get_talent_context(conn, session.talent_id)
+    if parent is None or talent is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"code": "not_found", "message": "Parent or talent record not found."})
 
     since = parent.digest_last_sent_at or datetime(1970, 1, 1, tzinfo=timezone.utc)
-    stats = await campaign_reps_repository.monthly_digest_stats(conn, session.rep_id, since=since)
+    stats = await campaign_talents_repository.monthly_digest_stats(conn, session.talent_id, since=since)
     previous_score = parent.last_digest_profile_completeness_score
-    change = None if previous_score is None else rep.profile_completeness_score - previous_score
+    change = None if previous_score is None else talent.profile_completeness_score - previous_score
 
     return DigestPreviewResponse(
         campaigns_completed_this_month=stats["campaigns_completed_this_month"],
         earnings_this_month_cents=stats["earnings_this_month_cents"],
-        lifetime_earnings_cents=rep.total_earnings_cents,
-        profile_completeness_score=rep.profile_completeness_score,
+        lifetime_earnings_cents=talent.total_earnings_cents,
+        profile_completeness_score=talent.profile_completeness_score,
         profile_completeness_change=change,
         active_categories=stats["active_categories"],
     )
@@ -231,18 +231,18 @@ async def suspend_account(
     conn: asyncpg.Connection = Depends(get_connection),
     resend_client: ResendClient = Depends(_resend_client_dependency),
 ) -> AccountControlResponse:
-    rep = await parent_records_repository.get_rep_context(conn, session.rep_id)
-    if rep is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"code": "rep_not_found", "message": "Linked rep profile not found."})
+    talent = await parent_records_repository.get_talent_context(conn, session.talent_id)
+    if talent is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"code": "talent_not_found", "message": "Linked talent profile not found."})
 
     now = datetime.now(timezone.utc)
-    updated = await set_account_status(conn, rep.rep_user_id, "suspended")
+    updated = await set_account_status(conn, talent.talent_user_id, "suspended")
     await parent_records_repository.set_suspended_by_parent(conn, session.parent_id, at=now)
 
     auth_client = get_supabase_auth_client(settings, conn)
-    await auth_client.update_app_metadata(rep.rep_user_id, {"role": "rep", "account_status": "suspended"})
+    await auth_client.update_app_metadata(talent.talent_user_id, {"role": "talent", "account_status": "suspended"})
 
-    await send_account_suspended_email(rep.rep_email, resend_client)
+    await send_account_suspended_email(talent.talent_email, resend_client)
     # Admin alerting is a Prompt 13 (Admin Portal) concern -- the admin
     # queue can query account_status='suspended' AND
     # parent_records.suspended_by_parent_at IS NOT NULL until then.
@@ -257,12 +257,12 @@ async def unsuspend_account(
     conn: asyncpg.Connection = Depends(get_connection),
 ) -> AccountControlResponse:
     parent = await parent_records_repository.get_parent_by_id(conn, session.parent_id)
-    rep = await parent_records_repository.get_rep_context(conn, session.rep_id)
-    if parent is None or rep is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"code": "not_found", "message": "Parent or rep record not found."})
+    talent = await parent_records_repository.get_talent_context(conn, session.talent_id)
+    if parent is None or talent is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"code": "not_found", "message": "Parent or talent record not found."})
 
-    if rep.rep_account_status != "suspended":
-        return AccountControlResponse(account_status=rep.rep_account_status)
+    if talent.talent_account_status != "suspended":
+        return AccountControlResponse(account_status=talent.talent_account_status)
 
     if parent.suspended_by_parent_at is None:
         raise HTTPException(
@@ -273,10 +273,10 @@ async def unsuspend_account(
             },
         )
 
-    updated = await set_account_status(conn, rep.rep_user_id, "active")
+    updated = await set_account_status(conn, talent.talent_user_id, "active")
     await parent_records_repository.set_suspended_by_parent(conn, session.parent_id, at=None)
 
     auth_client = get_supabase_auth_client(settings, conn)
-    await auth_client.update_app_metadata(rep.rep_user_id, {"role": "rep", "account_status": "active"})
+    await auth_client.update_app_metadata(talent.talent_user_id, {"role": "talent", "account_status": "active"})
 
     return AccountControlResponse(account_status=updated.account_status)

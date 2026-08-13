@@ -42,14 +42,21 @@ export default function RecruiterSignupPage() {
 
       trackEvent("signup_completed", { role: "recruiter" });
 
-      const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
       if (signInError) {
         router.push("/login");
         return;
       }
       router.push("/recruiter/profile");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : "Something went wrong. Please try again.",
+      );
     } finally {
       setPending(false);
     }
@@ -79,7 +86,9 @@ export default function RecruiterSignupPage() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
-          <p className="text-xs text-muted-foreground">A .edu address speeds up verification, but isn&apos;t required.</p>
+          <p className="text-xs text-muted-foreground">
+            A .edu address speeds up verification, but isn&apos;t required.
+          </p>
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="password">Password</Label>
@@ -94,16 +103,23 @@ export default function RecruiterSignupPage() {
         </div>
 
         {error ? (
-          <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>
+          <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {error}
+          </p>
         ) : null}
 
-        <Button type="submit" disabled={pending} size="lg" className="mt-1 w-full">
+        <Button
+          type="submit"
+          disabled={pending}
+          size="lg"
+          className="mt-1 w-full"
+        >
           {pending ? "Creating account..." : "Sign up"}
         </Button>
 
         <p className="text-center text-xs text-muted-foreground">
-          Every recruiter account is verified before you can search or contact reps, and requires an
-          active subscription.
+          Every recruiter account is verified before you can search or contact
+          talents, and requires an active subscription.
         </p>
       </form>
     </AuthShell>

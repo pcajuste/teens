@@ -9,30 +9,30 @@
 ## Table of Contents
 
 0. [Master Context Prompt](#0-master-context-prompt)
-0A. [Design System & UX Standards](#0a-design-system--ux-standards)
+   0A. [Design System & UX Standards](#0a-design-system--ux-standards)
 1. [Repo & Environment Scaffolding](#1-repo--environment-scaffolding)
 2. [Database Schema & Row-Level Security](#2-database-schema--row-level-security)
 3. [FastAPI Core: Config, Security, Auth Scaffolding](#3-fastapi-core-config-security-auth-scaffolding)
 4. [Auth Flows: Signup, Age Gate, Parental Consent](#4-auth-flows-signup-age-gate-parental-consent)
-4A. [Parent Portal](#4a-parent-portal)
+   4A. [Parent Portal](#4a-parent-portal)
 5. [Rep Portal — Backend](#5-rep-portal--backend)
 6. [Rep Portal — Frontend](#6-rep-portal--frontend)
-6A. [Demo Mode — Rep Demo](#6a-demo-mode--rep-demo)
+   6A. [Demo Mode — Talent Demo](#6a-demo-mode--rep-demo)
 7. [Stripe Foundation: Connect Onboarding & Platform Billing](#7-stripe-foundation-connect-onboarding--platform-billing)
 8. [Brand Portal — Backend](#8-brand-portal--backend)
-8B. [Performance Milestone Payments](#8b-performance-milestone-payments)
-8C. [Category Exclusivity](#8c-category-exclusivity)
-8D. [Advance Cohort Reservation](#8d-advance-cohort-reservation)
-8E. [Rep Syndicates](#8e-rep-syndicates)
-8F. [Relationship Continuity Product (Year Two)](#8f-relationship-continuity-product-year-two)
-8G. [Skill Challenges](#8g-skill-challenges)
-8H. [Learning Modules and Verified Badges](#8h-learning-modules-and-verified-badges)
-8I. [Brand Content Templates & Delivery Framework](#8i-brand-content-templates--delivery-framework)
+   8B. [Performance Milestone Payments](#8b-performance-milestone-payments)
+   8C. [Category Exclusivity](#8c-category-exclusivity)
+   8D. [Advance Cohort Reservation](#8d-advance-cohort-reservation)
+   8E. [Rep Syndicates](#8e-rep-syndicates)
+   8F. [Relationship Continuity Product (Year Two)](#8f-relationship-continuity-product-year-two)
+   8G. [Skill Challenges](#8g-skill-challenges)
+   8H. [Learning Modules and Verified Badges](#8h-learning-modules-and-verified-badges)
+   8I. [Brand Content Templates & Delivery Framework](#8i-brand-content-templates--delivery-framework)
 9. [Brand Portal — Frontend](#9-brand-portal--frontend)
 10. [Campaign Lifecycle & Payout Engine](#10-campaign-lifecycle--payout-engine)
 11. [Recruiter Portal — Backend](#11-recruiter-portal--backend)
 12. [Recruiter Portal — Frontend](#12-recruiter-portal--frontend)
-12A. [Demo Mode — Recruiter Preview & Brand Sales Page](#12a-demo-mode--recruiter-preview--brand-sales-page)
+    12A. [Demo Mode — Recruiter Preview & Brand Sales Page](#12a-demo-mode--recruiter-preview--brand-sales-page)
 13. [Admin Portal](#13-admin-portal)
 14. [Intelligence Layer & Anonymization Pipeline](#14-intelligence-layer--anonymization-pipeline)
 15. [Compliance Audit Pass](#15-compliance-audit-pass)
@@ -40,13 +40,13 @@
 17. [Deployment & CI/CD](#17-deployment--cicd)
 18. [Marketing Site](#18-marketing-site)
 19. [Analytics Integration (PostHog)](#19-analytics-integration-posthog)
-20. [Terminology Rename — Rep → Talent](#20-terminology-rename--rep--talent)
-DS. [Design System & Brand Application](#ds-design-system--brand-application)
+20. [Terminology Rename — Talent → Talent](#20-terminology-rename--rep--talent)
+    DS. [Design System & Brand Application](#ds-design-system--brand-application)
 
-> **Note:** As of Prompt 20, the role called "Rep" throughout Prompts
+> **Note:** As of Prompt 20, the role called "talent" throughout Prompts
 > 1–19 (and in `Teenure_MVP_Gameplan.md`) is renamed to "Talent" in
 > code, schema, and routes. Prompts 1–19 are left unedited as a build
-> record — read `rep_` / "Rep" in them as `talent_` / "Talent" for any
+> record — read `talent_` / "talent" in them as `talent_` / "Talent" for any
 > work done after Prompt 20 lands.
 
 ---
@@ -107,7 +107,7 @@ Stack (do not substitute without discussion):
 Monorepo layout (Section 6):
   teenure/
     apps/web/            Next.js — marketing + all portals via route groups:
-                          (marketing) (rep) (brand) (recruiter) (admin)
+                          (marketing) (talent) (brand) (recruiter) (admin)
                           (parent)
     apps/api/             FastAPI — routers per domain, models, schemas,
                           services, core config/security
@@ -144,7 +144,7 @@ the first build prompt.
 
 ## 0A. Design System & UX Standards
 
-> Added post-Prompt-8, after the built Rep Portal frontend (Prompt 6) was
+> Added post-Prompt-8, after the built Talent Portal frontend (Prompt 6) was
 > assessed as functionally correct but visually indistinguishable from an
 > unstyled component library — default shadcn/ui primitives with no color
 > system, type scale, spacing discipline, or motion beyond what Tailwind
@@ -152,8 +152,8 @@ the first build prompt.
 > compliance-sensitive three-sided market (teenagers, brand marketers,
 > college admissions/HR staff) where visual credibility is not cosmetic —
 > a recruiter or brand deciding whether to trust a platform with a minor's
-> data and a campaign budget is making a trust judgment partly *from the
-> UI itself* before they read a word of copy. Paste this section alongside
+> data and a campaign budget is making a trust judgment partly _from the
+> UI itself_ before they read a word of copy. Paste this section alongside
 > Section 0 for every frontend-touching prompt from Prompt 9 onward, and
 > treat Prompt 6/6A's existing screens as due for a retrofit pass against
 > it (tracked, not yet scheduled as its own numbered prompt — see the
@@ -293,7 +293,7 @@ Deliverables:
 2. apps/web: Next.js 14 App Router project, TypeScript strict mode,
    Tailwind CSS configured, shadcn/ui initialized with a neutral base
    theme. Create six route groups as empty shells with a placeholder
-   page each: (marketing), (rep), (brand), (recruiter), (admin),
+   page each: (marketing), (talent), (brand), (recruiter), (admin),
    (parent).
 3. apps/api: FastAPI project on Python 3.11+, with the directory structure
    from Section 6 (routers/, models/, schemas/, services/, core/, tests/).
@@ -339,7 +339,7 @@ Teenure_MVP_Gameplan.md.
 
 Deliverables:
 1. A Supabase migration creating, in order: all ENUM types, then
-   public.users, rep_profiles, brand_profiles, campaigns, campaign_reps,
+   public.users, talent_profiles, brand_profiles, campaigns, campaign_reps,
    recruiter_profiles, recruiter_contacts, recruiter_saved_profiles,
    parent_records — schema verbatim from Section 7, including every
    column, constraint, default, and CHECK.
@@ -347,11 +347,11 @@ Deliverables:
    Key schema notes:
    - campaign_status enum includes pending_payment and payment_failed in
      addition to draft, active, paused, completed, cancelled.
-   - rep_profiles includes school_type (nullable enum:
+   - talent_profiles includes school_type (nullable enum:
      public/private/charter/homeschool) — self-reported, used only in
      anonymized intelligence aggregation, never surfaced individually.
-   - parent_records table: parent_id (UUID PK), rep_id (FK to
-     rep_profiles, unique — one parent record per rep), parent_email
+   - parent_records table: parent_id (UUID PK), talent_id (FK to
+     talent_profiles, unique — one parent record per rep), parent_email
      (text not null), digest_enabled (boolean default true), values_filters
      (jsonb default '[]' — array of blocked campaign category strings),
      campaign_approval_required (boolean — true for under-16, toggleable
@@ -361,22 +361,22 @@ Deliverables:
      flow, not a password account.
 
 2. All indexes listed in Section 7's Indexes block, plus:
-   - idx_parent_records_rep on parent_records(rep_id)
+   - idx_parent_records_rep on parent_records(talent_id)
    - idx_campaigns_status_category on campaigns(status, target_categories)
      (supports parent approval queue filtering)
 
 3. RLS on every table. In addition to the policies in Section 7:
    - parent_records: a parent can read/update only their own row (matched
      via a parent session token, not auth.uid() — document the session
-     mechanism you choose); the rep cannot read or write parent_records
+     mechanism you choose); the talent cannot read or write parent_records
      directly (their onboarding wizard writes the parent_email via an API
      endpoint that creates the record server-side).
-   - campaigns: add a policy blocking rep access to any campaign where
+   - campaigns: add a policy blocking talent access to any campaign where
      parent campaign_approval_required = TRUE and no parent approval
      exists yet for that campaign_reps row — enforce this at the RLS
      layer so it cannot be bypassed by the API.
 
-4. Trigger/scheduled function design note for rep_profiles cached fields
+4. Trigger/scheduled function design note for talent_profiles cached fields
    (total_campaigns_completed, total_earnings_cents, average_rating,
    profile_completeness_score).
 
@@ -386,8 +386,8 @@ Deliverables:
 
 Acceptance criteria:
   - Migration applies cleanly to a fresh database.
-  - RLS: a rep cannot read another rep's row; a recruiter sees only
-    recruiter_visible=TRUE reps; a parent can read only their own
+  - RLS: a talent cannot read another rep's row; a recruiter sees only
+    recruiter_visible=TRUE talents; a parent can read only their own
     parent_records row.
   - Seed script runs idempotently.
 ```
@@ -457,11 +457,11 @@ Deliverables:
        = 'pending'; generate cryptographically random single-use
        consent_token; send consent email; token expires 72 hours from
        creation (checked at verification, not just at generation).
-     - age 16-17 (rep) → account_status = 'active' immediately; create
+     - age 16-17 (talent) → account_status = 'active' immediately; create
        parent_record with parent_email if provided, digest_enabled = true,
        campaign_approval_required = true by default (parent can disable via
        parent portal — see Prompt 4A).
-     - age 18+ (rep) → account_status = 'active'; no parent_record
+     - age 18+ (talent) → account_status = 'active'; no parent_record
        created; parent portal access not available.
      - brand/recruiter → always account_status = 'pending' regardless of
        age, pending admin approval.
@@ -497,7 +497,7 @@ prompt implements.
 
 ```
 Build the Parent Portal: a separate authenticated surface for parents of
-minor reps. Parents are not auth.users — they authenticate via a
+minor talents Parents are not auth.users — they authenticate via a
 magic-link email flow and have a scoped session distinct from rep/brand/
 recruiter JWTs. The portal is intentionally limited in scope: parents see
 what their child does on Teenure, can approve or block campaigns, and can
@@ -509,7 +509,7 @@ Deliverables:
      - POST /parent/auth/request-link: accepts parent_email, looks up the
        parent_record, sends a magic-link email via Resend. Rate-limited.
        Do not confirm whether the email exists (prevents enumeration of
-       minor rep accounts).
+       minor talent accounts).
      - GET /parent/auth/verify/:token: validates token, issues a short-lived
        parent session token (not a Supabase JWT — document the token
        format, signing, and expiry chosen; 24-hour expiry is reasonable for
@@ -525,7 +525,7 @@ Deliverables:
 
 3. Campaign approval queue (for parents with campaign_approval_required
    = TRUE):
-     - GET /parent/campaigns/pending: campaigns the rep has been invited to
+     - GET /parent/campaigns/pending: campaigns the talent has been invited to
        that are awaiting parent approval. Returns full campaign brief —
        brand name, product, messaging, deliverables, prohibited content,
        payout, timeline, whether it requires in-person activation.
@@ -533,28 +533,28 @@ Deliverables:
        allows the rep's invitation flow to proceed. Idempotent.
      - POST /parent/campaigns/:campaign_id/block: records block, auto-
        declines the rep's invitation with a neutral message to the brand
-       ("rep is unavailable") — do not expose the reason to the brand.
+       (  "Talent is unavailable") — do not expose the reason to the brand.
      - Parent approval window: 48 hours from campaign match (same window
-       as rep accept/decline). If parent does not respond within 48 hours,
+       as talent accept/decline). If parent does not respond within 48 hours,
        the campaign auto-declines and the slot frees. The scheduled job
        from Prompt 5 handles this timeout — extend it to also check parent
-       approval state before processing rep invitations.
+       approval state before processing talent invitations.
 
 4. Values filter configuration:
      - GET /parent/settings: returns current values_filters and
        campaign_approval_required toggle.
      - PUT /parent/settings/values-filters: updates the jsonb array of
        blocked campaign categories. Valid category values are the same
-       centrally-defined enum as rep_profiles.categories plus brand/product
+       centrally-defined enum as talent_profiles.categories plus brand/product
        content categories: alcohol_adjacent, political, dating_romantic,
        gambling, dietary_supplements, in_person_travel_required. Blocked
        categories are enforced server-side in Prompt 5's campaign matching
-       — a rep never sees a campaign from a blocked category, the brand
+       — a talent never sees a campaign from a blocked category, the brand
        never knows why.
      - PUT /parent/settings/approval-required: toggle campaign_approval_
-       required. Only legal for reps aged 16-17 (under-16 always required,
+       required. Only legal for talents aged 16-17 (under-16 always required,
        18+ parent portal expired). Returns 403 with explanation if called
-       for an out-of-range rep age.
+       for an out-of-range talent age.
 
 5. Monthly digest:
      - GET /parent/digest/preview: returns what the next monthly digest
@@ -562,7 +562,7 @@ Deliverables:
        since last digest.
      - PUT /parent/settings/digest: toggle digest_enabled.
      - The actual digest send is a scheduled job (register on Prompt 3's
-       runner): runs monthly, generates per-parent digest from rep activity,
+       runner): runs monthly, generates per-parent digest from talent activity,
        sends via Resend. Digest contains: campaigns completed this month,
        earnings this month and lifetime, profile completeness change,
        categories active in. Does NOT contain: recruiter message content,
@@ -576,7 +576,7 @@ Deliverables:
        earned makes the compensation model visible, not just the effort.
 
 6. Account controls:
-     - POST /parent/account/suspend: immediately sets rep account_status
+     - POST /parent/account/suspend: immediately sets talent account_status
        to 'suspended'. Sends notification to rep. Admin is alerted.
        Reversible only by admin or parent via unsuspend.
      - POST /parent/account/unsuspend: reverses suspension if the original
@@ -584,7 +584,7 @@ Deliverables:
 
 7. Parent portal frontend under apps/web/app/(parent)/:
      - Magic-link request screen (email entry only).
-     - Dashboard showing rep summary.
+     - Dashboard showing talent summary.
      - Campaign approval queue with full brief, approve/block actions, and
        48-hour countdown.
      - Values filter configuration screen with plain-language descriptions
@@ -595,12 +595,12 @@ Deliverables:
        platform need context on what each section means, not just data.
      - Added by Prompt 8G: a "Challenge Submissions" section on the
        dashboard — separate from campaign activity — listing which
-       challenges the rep submitted to, conversion status, and any
+       challenges the talent submitted to, conversion status, and any
        conversion bonus earned. Parents need to see this before their
        child submits repeatedly to challenges that never convert, not
        only in the monthly digest.
 
-8. Portal expiry at age 18: when a rep turns 18, portal_expires_at
+8. Portal expiry at age 18: when a talent turns 18, portal_expires_at
    triggers (enforce at login, not just at account creation — add a check
    to the parent session verification step). Parent receives an email
    explaining the portal has closed because their child is now an adult.
@@ -613,8 +613,8 @@ Acceptance criteria:
     exists.
   - A campaign in a blocked category never appears in the rep's available-
     campaigns list — verified by seeding a blocked-category campaign and
-    confirming it is absent from GET /reps/campaigns/available.
-  - A campaign pending parent approval cannot be accepted by the rep —
+    confirming it is absent from GET /talents/campaigns/available.
+  - A campaign pending parent approval cannot be accepted by the talent —
     the accept endpoint returns a clear "awaiting parent approval" error,
     not a generic 403.
   - A parent blocking a campaign results in a neutral auto-decline to the
@@ -629,35 +629,35 @@ Acceptance criteria:
 
 ---
 
-## 5. Rep Portal — Backend
+## 5. Talent Portal — Backend
 
 **Depends on:** Prompt 4A (parent approval gate and values filter must
 exist before campaign matching runs).
 
 ```
-Implement the Rep backend routes from Section 8 ("Rep Routes") and the
+Implement the talent backend routes from Section 8 ("Talent Routes") and the
 Phase 1 feature set from Section 5 of Teenure_MVP_Gameplan.md.
 
 Deliverables:
-1. GET /reps/me, PUT /reps/me — profile read/update. PUT validates:
+1. GET /talents/me, PUT /talents/me — profile read/update. PUT validates:
    categories against the centrally-defined allowed list (athletics,
    gaming, fashion, music, academics, food, beauty, tech), school_type
    against its enum (public/private/charter/homeschool, nullable),
    graduation_year within schema CHECK range. Rejects writes to cached/
    computed fields — those are server-computed only.
-2. GET /reps/me/profile-preview — returns exactly what a brand or
+2. GET /talents/me/profile-preview — returns exactly what a brand or
    recruiter sees. Share the serializer with brand/recruiter-facing views
    — do not maintain two field lists that can drift.
-3. GET /reps/campaigns/available — open campaigns where:
+3. GET /talents/campaigns/available — open campaigns where:
      - target_categories intersects rep's categories, AND
      - target_cities matches rep's city (if campaign specifies cities), AND
      - campaign category is NOT in the rep's parent values_filters (if a
        parent_record exists for this rep), AND
-     - rep does not already have a campaign_reps row for this campaign.
+     - talent does not already have a campaign_reps row for this campaign.
    The values-filter exclusion is applied server-side here, not just in
    the parent portal — this is the enforcement point.
-4. GET /reps/campaigns/active, GET /reps/campaigns/history.
-5. GET /reps/earnings — pending/confirmed/paid breakdown from
+4. GET /talents/campaigns/active, GET /talents/campaigns/history.
+5. GET /talents/earnings — pending/confirmed/paid breakdown from
    campaign_reps, not just the cached total.
 6. Scope decision — rep-facing "recruiters interested" signal: not built
    at MVP. Deliberate cut pending a product decision on count-only vs.
@@ -682,9 +682,9 @@ Deliverables:
     Define scoring rule explicitly (which fields, what weights) in code
     comments.
 11. File upload via Supabase Storage: validate file type/size server-side,
-    scoped so only the rep and relevant brand can read. Only accept uploads
-    for campaigns the rep is actually invited to.
-12. Living Achievement Link — GET /reps/me/achievement-link:
+    scoped so only the talent and relevant brand can read. Only accept uploads
+    for campaigns the talent is actually invited to.
+12. Living Achievement Link — GET /talents/me/achievement-link:
     Generates or retrieves a persistent, shareable verified profile URL
     for the rep. The URL is stable (does not change on profile updates)
     and resolves to a public-facing verified profile page that reflects
@@ -692,7 +692,7 @@ Deliverables:
 
     Implementation:
       - Add achievement_link_token (text, unique, nullable) to
-        rep_profiles. Generated once on first request, never regenerated
+        talent_profiles. Generated once on first request, never regenerated
         (the same URL works forever so bookmarks and application
         submissions never break).
       - Token generation: a cryptographically random 32-character URL-
@@ -709,24 +709,24 @@ Deliverables:
         settings), and a Teenure verification badge confirming the profile
         is real and verified. It does NOT show: Instagram/TikTok handles,
         submission content, recruiter messages, parent information, or
-        any PII beyond what the rep has explicitly made public.
-      - Add a verified_profile_public boolean to rep_profiles (default
+        any PII beyond what the talent has explicitly made public.
+      - Add a verified_profile_public boolean to talent_profiles (default
         true when recruiter_visible = true, default false otherwise).
         The achievement link only resolves if verified_profile_public =
         true. If false, the URL returns a "this profile is not currently
-        public" page — not a 404, because the rep may share the link
+        public" page — not a 404, because the talent may share the link
         before turning on visibility and should be able to explain what
         the recipient will see.
-      - Add earnings_visible_on_public_profile boolean to rep_profiles
+      - Add earnings_visible_on_public_profile boolean to talent_profiles
         (default false — earnings are opt-in for the public profile,
         always visible in the rep's own dashboard).
-      - GET /reps/me/achievement-link returns the full URL, the token,
-        and the current visibility settings so the rep can preview
+      - GET /talents/me/achievement-link returns the full URL, the token,
+        and the current visibility settings so the talent can preview
         before sharing.
 
     RLS: the /verified/:token route bypasses RLS — it is a public
     endpoint. All other achievement link management endpoints require
-    rep authentication. The public endpoint renders only from the
+    talent authentication. The public endpoint renders only from the
     verified_profile_public = true path — it cannot be used to access
     private profile data regardless of authentication state.
 
@@ -737,9 +737,9 @@ Deliverables:
     Schema addition (include in this migration or a separate one —
     document which):
 
-    New table: rep_goals
+    New table: talent_goals
       id (UUID PK)
-      rep_id (FK to rep_profiles)
+      talent_id (FK to talent_profiles)
       goal_type (enum: 'campaigns_completed' | 'earnings_total' |
         'categories_active' | 'badges_earned' | 'profile_completeness')
       target_value (integer — the number to reach:
@@ -757,26 +757,26 @@ Deliverables:
       completed_at (timestamptz, nullable)
       created_at (timestamptz default now())
 
-    Constraints: maximum 3 active goals per rep at any time. A rep
+    Constraints: maximum 3 active goals per talent at any time. A rep
     who wants a fourth goal must abandon one existing goal first.
     This limit is intentional — more than 3 goals dilutes focus and
     reduces the motivational impact of each.
 
     Endpoints:
-    POST /reps/goals — create goal. Validates: goal_type is valid,
+    POST /talents/goals — create goal. Validates: goal_type is valid,
       target_value is positive and appropriate for the goal_type
       (earnings_total minimum $10 = 1000 cents, profile_completeness
       maximum 100), active goal count < 3.
-    DELETE /reps/goals/:id — abandon goal (sets status → 'abandoned').
+    DELETE /talents/goals/:id — abandon goal (sets status → 'abandoned').
       Completed goals cannot be abandoned.
-    GET /reps/goals — all active and recently completed goals with
+    GET /talents/goals — all active and recently completed goals with
       current_value, target_value, progress percentage, and projected
       completion date based on current pace.
 
-    Progress update mechanism: extend the rep_profiles cached-field
+    Progress update mechanism: extend the talent_profiles cached-field
     recompute (Prompt 2's trigger or service-layer mechanism) to also
-    update rep_goals.current_value for all active goals belonging to
-    the rep whenever the relevant underlying metric changes:
+    update talent_goals.current_value for all active goals belonging to
+    the talent whenever the relevant underlying metric changes:
       - Campaign confirmed → update 'campaigns_completed' goals
       - Transfer paid → update 'earnings_total' goals
       - Campaign confirmed in a new category → update 'categories_active'
@@ -787,11 +787,11 @@ Deliverables:
 
     Goal completion check: after each current_value update, if
     current_value >= target_value set status → 'completed', set
-    completed_at. Notify the rep via email: "You hit your goal." No
+    completed_at. Notify the talent via email: "You hit your goal." No
     confetti, no points, no leaderboard — just a clean notification
     that real progress happened.
 
-    GET /reps/goals/suggestions — returns suggested goals based on the
+    GET /talents/goals/suggestions — returns suggested goals based on the
     rep's current profile state. Not personalized AI recommendations —
     simple rule-based suggestions:
       - If campaigns_completed < 5: suggest "Complete 5 campaigns"
@@ -799,17 +799,17 @@ Deliverables:
         completeness"
       - If badges_earned = 0: suggest "Earn your first badge"
       - If categories_active < 2: suggest "Work in 2 categories"
-    Suggestions exclude goal_types the rep already has an active goal
+    Suggestions exclude goal_types the talent already has an active goal
     for. Returns at most 3 suggestions. This endpoint is simple enough
     to be stateless — computed on request, not stored.
 
 Acceptance criteria:
   - A campaign in a parent-blocked category never appears in available
     campaigns for that rep.
-  - A rep cannot accept a campaign without parent approval when approval
+  - A talent cannot accept a campaign without parent approval when approval
     is required — returns distinct "awaiting parent approval" error.
   - Submission rejected if ftc_disclosure_accepted is not TRUE.
-  - Rep cannot read/write another rep's campaign_reps rows.
+  - talent cannot read/write another rep's campaign_reps rows.
   - Auto-decline job transitions expired invitations correctly, tested
     directly against the job function (not by waiting on a real clock).
   - Withdraw endpoint available and functional at any campaign status
@@ -820,13 +820,13 @@ Acceptance criteria:
 
 ---
 
-## 6. Rep Portal — Frontend
+## 6. Talent Portal — Frontend
 
 **Depends on:** Prompt 5. Inbox UI (deliverable 6) depends on Prompt 11
 backend. Build deliverables 1–5 and 7 first; stub inbox or defer until
 Prompt 11 lands — state which you're doing.
 
-**Retrofit: done (partial).** Auth pages (`/rep/login`, `/rep/signup`),
+**Retrofit: done (partial).** Auth pages (`/talent/login`, `/talent/signup`),
 the dashboard, and the campaign detail page were retrofitted against
 Section 0A alongside Prompt 9 — real design tokens, `RepShell`/
 `AuthShell`/`CampaignBrief` shared components, semantic colors
@@ -840,12 +840,12 @@ preserved below for context (0A's own acceptance criterion:
 alone").
 
 **Known issue — login routes and gates need consolidation (not yet
-fixed).** `/rep/login` (this prompt) and `/brand/login` (Prompt 9)
+fixed).** `/talent/login` (this prompt) and `/brand/login` (Prompt 9)
 exist as separate pages under their respective route groups. That's a
 misapplication of the route-group pattern: route groups organize code,
 they shouldn't fragment a single auth surface into per-role URLs.
 Signup genuinely differs by role (age gate + parental consent for
-reps, business verification for brands, institution verification for
+talents, business verification for brands, institution verification for
 recruiters) and should stay split under `/signup/rep`,
 `/signup/brand`, `/signup/recruiter`. Login does not — one set of
 credentials, one page, role read from the account after
@@ -853,7 +853,7 @@ authentication. `/parent/auth` stays separate by design (magic-link,
 not a credentials login) and `/admin` stays separate and should never
 be reachable via role-detection fallthrough from the unified login.
 
-The same copy-paste pattern exists one layer up: `(rep)/rep-gate.tsx`
+The same copy-paste pattern exists one layer up: `(talent)/rep-gate.tsx`
 and `(brand)/brand-gate.tsx` implement near-identical
 loading/redirect/suspended-account-status logic, differing only in
 `PUBLIC_PATHS` and the pending-state copy. This should collapse the
@@ -863,7 +863,8 @@ second one.
 Required fix, to land before Recruiter Portal frontend (Prompt 12)
 adds a third per-role login page and a third per-role gate,
 compounding both:
-- Collapse `/rep/login` and `/brand/login` into a single `/login`
+
+- Collapse `/talent/login` and `/brand/login` into a single `/login`
   page reused by all roles (and by the recruiter login this prompt
   suite has not yet built).
 - Collapse `RepGate` and `BrandGate` into one shared `useRoleGate`
@@ -885,9 +886,9 @@ fix so it isn't independently rediscovered (and re-duplicated) per
 portal.
 
 ```
-Build the Rep Portal under apps/web/app/(rep)/.
+Build the talent Portal under apps/web/app/(talent)/.
 
-Mobile-first throughout — reps use this almost entirely on phones. Every
+Mobile-first throughout — talents use this almost entirely on phones. Every
 screen must be designed and verified at 375px before adapting to larger
 viewports.
 
@@ -914,12 +915,12 @@ Deliverables:
    brand or recruiter sees.
 6. Inbox: read-only list of recruiter messages. Renders message text and
    sender institution name only. No reply box, no reply button, no compose
-   affordance. Marks message read on open via POST /reps/inbox/:id/read.
+   affordance. Marks message read on open via POST /talents/inbox/:id/read.
 7. Prominent one-tap withdraw button on every active campaign — not buried
    in settings. No confirmation dialog required (withdrawal is frictionless
    by design per Section 9's safety requirements).
 8. Section 1A enforcement in frontend: no UI for messaging another rep,
-   browsing other rep profiles, or posting outside a campaign submission
+   browsing other talent profiles, or posting outside a campaign submission
    context. These are structural absences, not disabled buttons.
 9. Achievement Link sharing UI:
    - In the profile preview screen: a "Share your verified profile"
@@ -945,13 +946,13 @@ Deliverables:
       target value input with sensible defaults and input validation,
       optional target date.
     - Suggestions panel: "Goals to consider" showing the rule-based
-      suggestions from GET /reps/goals/suggestions. One-tap to add a
+      suggestions from GET /talents/goals/suggestions. One-tap to add a
       suggested goal.
     - Goal completion notification: when a goal completes, the dashboard
       shows a completion state for that goal before it moves to the
       completed history. No animation, no points — a clean "Goal
       reached" state with the completed goal details.
-    - The 3-goal limit is communicated proactively: when a rep has 3
+    - The 3-goal limit is communicated proactively: when a talent has 3
       active goals, the "add goal" action is replaced with "Manage
       your goals to add a new one" with a link to abandon an existing
       goal. Never a silent rejection.
@@ -989,15 +990,15 @@ Acceptance criteria:
 
 ---
 
-## 6A. Demo Mode — Rep Demo
+## 6A. Demo Mode — Talent Demo
 
 **Depends on:** Prompt 6. Rep-side only — recruiter demo deferred to
 Prompt 12A after the real Recruiter Portal exists.
 
 ```
-Build the interactive rep demo at apps/web/app/(marketing)/demo/rep/.
+Build the interactive talent demo at apps/web/app/(marketing)/demo/talent/.
 
-First, populate /demo with a rep-side seed dataset. Every demo rep must
+First, populate /demo with a rep-side seed dataset. Every demo talent must
 be unmistakably fictional — invented names, invented schools, no resemblance
 to a real person. Use the real profile schema and completeness-scoring
 logic from Prompt 5 so profiles actually score as complete. Include one
@@ -1016,14 +1017,14 @@ Then build the demo screen:
    around age gating or parental consent.
 
 No signup wall between a visitor and the demo — parents and prospective
-reps must explore fully before hitting any prompt.
+talents must explore fully before hitting any prompt.
 
 Acceptance criteria:
   - Works with no authenticated session, mutates nothing.
   - No real user data reachable from demo routes.
   - Every demo record obviously synthetic on inspection.
   - "Start building yours" routes into the real age-gated signup flow —
-    cannot reach an active rep account without passing through Prompt 4's
+    cannot reach an active talent account without passing through Prompt 4's
     flow.
 ```
 
@@ -1037,10 +1038,10 @@ Acceptance criteria:
 now implements `create_customer`, `create_connect_account`,
 `create_connect_onboarding_link`, and `verify_webhook_signature`
 (checkout/transfer/refund remain `NotImplementedError` stubs, correctly
-scoped to Prompt 10). `rep_profiles` gained `stripe_account_id` +
+scoped to Prompt 10). `talent_profiles` gained `stripe_account_id` +
 `stripe_onboarding_complete` columns (migration
 `20260814090000_stripe_connect_columns.sql`). New endpoint
-`POST /reps/stripe/onboarding` creates-or-resumes Connect onboarding.
+`POST /talents/stripe/onboarding` creates-or-resumes Connect onboarding.
 New `POST /webhooks/stripe` verifies signatures before any dispatch and
 implements `account.updated`; every other Section 8 event is a
 registered no-op stub returning 200 so Stripe doesn't retry before its
@@ -1050,11 +1051,11 @@ search surfaces) and linked from the README, per the acceptance
 criteria.
 
 **Flagged for human/legal review before real (non-test-mode) Connect
-payouts go live for any rep under 18** — see
+payouts go live for any Talent under 18** — see
 `docs/stripe-minors-policy.md`'s last section: Teenure's own age gate
 (parental consent under 16) is narrower than Stripe's Representative
 requirement (applies to everyone under 18), which is a real product gap
-for 16-17-year-old reps with no parent otherwise involved in their
+for 16-17-year-old talents with no parent otherwise involved in their
 account. The gameplan's own "parent-as-payee fallback" note is the
 likely direction but is not implemented in this prompt — it needs a
 product decision and legal sign-off, not a guess.
@@ -1070,15 +1071,15 @@ onboarding only — charges and payouts wire up in Prompt 10.
 
 Deliverables:
 1. stripe_service.py: implement create_customer (brands, recruiter billing)
-   and create_connected_account (reps).
+   and create_connected_account (talents).
 2. Research and document Stripe's current policy on Connected Accounts for
    under-18 individuals. Produce docs/stripe-minors-policy.md covering:
    what Stripe currently allows for minors, whether a parent-as-payee
    fallback is needed, which Connect account type fits. Do not guess —
    cite findings and flag anything requiring human (legal/Stripe support)
    confirmation before launch.
-3. Rep Connect onboarding endpoint: creates or resumes onboarding link,
-   stores resulting account ID on rep_profiles (add stripe_account_id
+3. talent Connect onboarding endpoint: creates or resumes onboarding link,
+   stores resulting account ID on talent_profiles (add stripe_account_id
    column — flag as schema addition beyond Section 7, justified because
    payouts require it).
 4. Brand Stripe Customer creation: service function ready for admin
@@ -1091,7 +1092,7 @@ Deliverables:
 
 Acceptance criteria:
   - Invalid webhook signature rejected before any business logic runs.
-  - Rep can complete test-mode Connect onboarding end-to-end; platform
+  - talent can complete test-mode Connect onboarding end-to-end; platform
     records account ID and onboarding-complete status.
   - Minors-policy decision doc exists and is linked from README.
 ```
@@ -1105,7 +1106,7 @@ Acceptance criteria:
 **Build-log note:** All 10 deliverables implemented (`app/routers/brands.py`,
 `app/repositories/brand_profiles_repository.py`, `app/services/campaign_service.py`
 for the fee-split math, `app/core/crypto.py` for Fernet-based EIN
-encryption at rest). No schema migration needed -- every column Prompt
+encryption at talents.). No schema migration needed -- every column Prompt
 8 touches already existed in Section 7's verbatim schema.
 
 Two real, pre-existing bugs were found and fixed while building this,
@@ -1113,7 +1114,7 @@ unrelated to Prompt 8's own deliverables but directly in the code path
 this prompt extends:
 
 1. `campaign_reps_repository.py` had every rep-participation function
-   (`CampaignRep`, `create_application`, accept/decline/submit/withdraw,
+   (`campaignTalent`, `create_application`, accept/decline/submit/withdraw,
    `list_active_for_rep`, `list_history_for_rep`, `earnings_breakdown`,
    `auto_decline_expired_parent_approvals`) defined **twice** -- the
    entire first block (parent-facing helpers aside) was dead code,
@@ -1128,7 +1129,7 @@ this prompt extends:
    one that remains, matching `block_campaign`'s existing semantics.
    New regression test added.
 2. `parent_service.send_campaign_approval_request` existed, was fully
-   implemented, and was documented as "called by Prompt 5 when a rep is
+   implemented, and was documented as "called by Prompt 5 when a Talent is
    invited/matched to a campaign" -- but nothing ever called it. A
    parent whose approval was required got no notification that
    anything was waiting on them. Fixed in both `POST /campaigns/:id/apply`
@@ -1139,9 +1140,10 @@ this prompt extends:
    paths (email sent when required, not sent when not required).
 
 Interpretive decisions made and documented rather than guessed past:
-- `GET /brands/campaigns/:id/reps/browse`'s exact no-PII field set
+
+- `GET /brands/campaigns/:id/talents/browse`'s exact no-PII field set
   isn't specified in Section 8 -- documented in
-  `rep_profiles_repository.RepBrowseCard`'s docstring (excludes
+  `talent_profiles_repository.TalentBrowseCard`'s docstring (excludes
   display_name, school_name, bio, handles; includes city/state/
   categories/school_type/completeness/rating).
 - Campaign cancellation refund policy is explicitly unresolved --
@@ -1156,7 +1158,7 @@ Interpretive decisions made and documented rather than guessed past:
   prompt's stated deliverables).
 
 44 new tests (`test_brands_portal.py`, `test_campaign_service.py`, plus
-2 new regression tests in `test_reps_portal.py` for the bugs above).
+2 new regression tests in `test_talents_portal.py` for the bugs above).
 All 139 backend tests pass. Verified end-to-end against the real local
 Supabase stack: brand signup → profile creation with real EIN
 encryption confirmed at the DB layer → campaign creation with correct
@@ -1166,14 +1168,14 @@ server-side fee split.
 Implement Brand backend routes from Section 8 and Phase 2 of Section 5.
 
 Deliverables:
-1. GET/PUT /brands/me — profile including EIN encrypted at rest (implement
+1. GET/PUT /brands/me — profile including EIN encrypted at talents (implement
    now, not deferred — Section 7 flags this explicitly).
 2. Campaign CRUD: GET /brands/campaigns, POST /brands/campaigns,
    GET/PUT /brands/campaigns/:id. PUT legal only in 'draft' status → 409
    otherwise.
 3. Server-side fee-split at campaign creation: platform_fee_cents and
-   rep_pool_cents from budget_cents using STRIPE_PLATFORM_FEE_PERCENT from
-   config (never hardcoded). payout_per_rep_cents = rep_pool_cents /
+   talent_pool_cents from budget_cents using STRIPE_PLATFORM_FEE_PERCENT from
+   config (never hardcoded). payout_per_talent_cents = talent_pool_cents /
    max_reps. Never accept these as client input.
 4. POST /brands/campaigns/:id/activate — validates brief complete, start
    date in future, max_reps > 0. Transitions 'draft' → 'pending_payment'
@@ -1185,22 +1187,22 @@ Deliverables:
    retry-payment" error. Calling /retry-payment on any other status
    returns 409.
 6. POST /brands/campaigns/:id/pause, /cancel — cancel triggers refund
-   logic. State the refund policy explicitly (full refund if no reps have
-   submitted? partial for reps mid-campaign?) and flag it as a business
+   logic. State the refund policy explicitly (full refund if no talents have
+   submitted? partial for talents mid-campaign?) and flag it as a business
    decision requiring confirmation — do not assume.
-7. Rep discovery: GET .../reps/browse (no PII at browse stage),
-   POST .../reps/invite.
-8. Submission review: GET .../reps/:rep_id/submission,
-   POST .../reps/:rep_id/confirm (stubs payout engine, Prompt 10 wires it),
-   POST .../reps/:rep_id/revision.
-9. POST .../reps/:rep_id/rate — 1–5 stars, write-once, legal only after
+7. talent discovery: GET .../talents/browse (no PII at browse stage),
+   POST .../talents/invite.
+8. Submission review: GET .../talents/:talent_id/submission,
+   POST .../talents/:talent_id/confirm (stubs payout engine, Prompt 10 wires it),
+   POST .../talents/:talent_id/revision.
+9. POST .../talents/:talent_id/rate — 1–5 stars, write-once, legal only after
    confirmation. No PUT/PATCH route for ratings.
 10. Billing history: Stripe-hosted receipt URLs, not reimplemented invoices.
 
 Acceptance criteria:
   - Cannot activate with missing brief fields, invalid dates, max_reps ≤ 0.
   - Cannot edit a campaign that has left 'draft'.
-  - Fee-split unit tests cover rounding edge cases; rep_pool_cents +
+  - Fee-split unit tests cover rounding edge cases; talent_pool_cents +
     platform_fee_cents always equals budget_cents.
   - Browse endpoints never return PII — verified by inspecting response
     payloads.
@@ -1218,7 +1220,7 @@ Acceptance criteria:
 must be fully operational before the milestone layer is added on top of
 it — this prompt extends the payout engine, it does not replace it).
 Positioned here, immediately after Prompt 8, purely for narrative
-grouping with the rest of the campaign-payment-model prompts (8B–8F) —
+grouping with the talents of the campaign-payment-model prompts (8B–8F) —
 its actual dependency on Prompt 10 means it cannot be built until Prompt
 10 is complete, regardless of numbering. Do not build 8B before 10.
 
@@ -1247,7 +1249,7 @@ existing influencer or campus ambassador platform.
 
 The thesis behind this feature: paying for posts is a commodity. Paying
 for documented outcomes — a peer referral used, a product purchased by
-someone the rep introduced, a survey completed by documented peers — is
+someone the talent introduced, a survey completed by documented peers — is
 something no current platform does for this demographic at verified scale.
 Milestone payments are the technical expression of that thesis.
 
@@ -1272,11 +1274,11 @@ SCHEMA ADDITIONS (new migration, separately numbered from Prompt 2):
        code used 10 times", "Survey completed by 5 peers")
      description (text — plain language explanation of what constitutes
        completion of this milestone)
-     verification_method (enum: 'brand_confirmation' | 'rep_submission' —
+     verification_method (enum: 'brand_confirmation' | 'talent_submission' —
        how completion is verified; see verification mechanics below.
        'code_redemption' is deliberately excluded from this prompt — see
        the note at the end of the verification mechanics section)
-     payout_percentage (integer — percentage of rep_pool_cents this
+     payout_percentage (integer — percentage of talent_pool_cents this
        milestone releases, 1–100; all milestones for a campaign must
        sum to exactly 100, enforced at campaign creation)
      sequence_required (boolean default true — if true, this milestone
@@ -1285,28 +1287,28 @@ SCHEMA ADDITIONS (new migration, separately numbered from Prompt 2):
 
    RLS: brands can read/write milestones only for their own campaigns.
    Reps can read milestones for campaigns they are invited to. No direct
-   write access for reps.
+   write access for talents.
 
 3. Add to campaign_reps table:
      milestones_completed_count (integer default 0 — cached count,
        recomputed on each milestone confirmation)
      total_milestone_payout_cents (integer default 0 — cumulative payout
-       released across all confirmed milestones for this rep on this
-       campaign; must never exceed payout_per_rep_cents)
+       released across all confirmed milestones for this talent on this
+       campaign; must never exceed payout_per_talent_cents)
 
-4. New table: campaign_rep_milestones
+4. New table: campaign_talent_milestones
      id (UUID PK)
-     campaign_rep_id (FK to campaign_reps)
+     campaign_talent_id (FK to campaign_reps)
      campaign_milestone_id (FK to campaign_milestones)
      status (enum: 'pending' | 'submitted' | 'confirmed' | 'paid',
        default 'pending')
-     rep_submission_text (text, nullable — rep's submission evidence for
+     talent_submission_text (text, nullable — rep's submission evidence for
        this milestone)
-     rep_submission_file_urls (text[], default '{}')
+     talent_submission_file_urls (text[], default '{}')
      brand_confirmation_note (text, nullable)
      payout_cents (integer, nullable — calculated at confirmation:
        campaign_milestone.payout_percentage / 100 *
-       campaign_reps.payout_per_rep_cents, rounded down, with any
+       campaign_reps.payout_per_talent_cents, rounded down, with any
        rounding remainder added to the final milestone)
      stripe_transfer_id (text, nullable)
      payout_status (enum: 'pending' | 'processing' | 'paid' | 'failed',
@@ -1316,16 +1318,16 @@ SCHEMA ADDITIONS (new migration, separately numbered from Prompt 2):
      confirmed_at (timestamptz, nullable)
      paid_at (timestamptz, nullable)
 
-   RLS: a rep can read/write only their own campaign_rep_milestones rows.
+   RLS: a talent can read/write only their own campaign_talent_milestones rows.
    A brand can read/write only rows for campaign_reps belonging to their
    campaigns.
 
-   UNIQUE constraint: (campaign_rep_id, campaign_milestone_id) — one row
-   per rep per milestone per campaign.
+   UNIQUE constraint: (campaign_talent_id, campaign_milestone_id) — one row
+   per talent per milestone per campaign.
 
 5. Add index:
-     idx_campaign_rep_milestones_status on
-       campaign_rep_milestones(campaign_rep_id, status)
+     idx_campaign_talent_milestones_status on
+       campaign_talent_milestones(campaign_talent_id, status)
      idx_campaign_milestones_campaign on campaign_milestones(campaign_id,
        milestone_number)
 
@@ -1343,7 +1345,7 @@ any deliverable — a post, an event appearance, a piece of content. The
 brand sees the rep's submission and clicks confirm. Identical in flow to
 the existing flat campaign confirmation, applied per milestone.
 
-'rep_submission': the milestone is considered submitted when the rep
+'talent_submission': the milestone is considered submitted when the rep
 submits evidence via the milestone submission interface. No separate brand
 confirmation step — the submission itself triggers the payout. Use for
 milestones where the evidence is self-verifying (a screenshot of a
@@ -1360,18 +1362,18 @@ been removed from this prompt entirely, for two reasons. First, without
 real tracking infrastructure it was brand-manual in exactly the same way
 'brand_confirmation' already is — it added a schema/UX distinction with
 no functional difference. Second, and more importantly: it was the only
-verification method in this prompt where a rep could do everything asked
+verification method in this prompt where a talent could do everything asked
 of them and still not get paid, because the outcome depended on a third
 party's behavior (whether a peer redeemed the code), not the rep's own.
-Both 'brand_confirmation' and 'rep_submission' only ever pay for
-something the rep directly did — every milestone in this prompt's scope
+Both 'brand_confirmation' and 'talent_submission' only ever pay for
+something the talent directly did — every milestone in this prompt's scope
 is fully within the rep's control. Outcome-linked, third-party-contingent
 verification (via real e-commerce integration or a platform-issued
 tracked short link, not brand-manual confirmation) is deferred to a
 separate future prompt, to be written once that tracking infrastructure
 actually exists. Do not add 'code_redemption' back into this prompt's
 scope without that infrastructure and without re-deriving the UX
-safeguards a genuinely contingent payout requires (see the rep portal
+safeguards a genuinely contingent payout requires (see the talent portal
 additions below).
 
 ---
@@ -1396,7 +1398,7 @@ BACKEND DELIVERABLES:
          title: "Story follow-up",
          description: "Publish one Instagram Story within 7 days of
            the post.",
-         verification_method: "rep_submission",
+         verification_method: "talent_submission",
          payout_percentage: 30,
          sequence_required: true
        },
@@ -1405,7 +1407,7 @@ BACKEND DELIVERABLES:
          title: "Bonus content",
          description: "Publish one additional piece of content of your
            choice (Reel, TikTok, or blog post) featuring the product.",
-         verification_method: "rep_submission",
+         verification_method: "talent_submission",
          payout_percentage: 40,
          sequence_required: false
        }
@@ -1429,47 +1431,47 @@ BACKEND DELIVERABLES:
    single database transaction. If milestone creation fails, roll back
    the campaign creation.
 
-2. campaign_rep_milestones initialization: when a rep accepts a campaign
-   invitation (POST /campaigns/:id/accept), create campaign_rep_milestones
+2. campaign_talent_milestones initialization: when a talent accepts a campaign
+   invitation (POST /campaigns/:id/accept), create campaign_talent_milestones
    rows for every milestone in the campaign — one row per milestone per
    rep, all initialized to status 'pending'. This creation is atomic with
    the accept action. If any milestone row fails to create, roll back the
    accept.
 
-3. GET /reps/campaigns/active (extend Prompt 5): for milestone campaigns,
+3. GET /talents/campaigns/active (extend Prompt 5): for milestone campaigns,
    include the milestone list with each active campaign, showing each
    milestone's title, description, payout_percentage, status for this rep,
    and whether it is currently actionable (sequence_required milestone
    where all prior milestones are confirmed, or a non-sequential milestone).
-   A rep should never be confused about which milestone they are working on.
+   A talent should never be confused about which milestone they are working on.
 
 4. Milestone submission (new endpoint):
    POST /campaigns/:campaign_id/milestones/:milestone_id/submit
      - Validates the campaign_rep exists and is in 'accepted' status
-     - Validates the milestone is actionable for this rep (sequence check)
-     - Writes rep_submission_text and rep_submission_file_urls
+     - Validates the milestone is actionable for this talent (sequence check)
+     - Writes talent_submission_text and talent_submission_file_urls
      - Sets status 'pending' → 'submitted', sets submitted_at
-     - For 'rep_submission' milestones: schedules auto-release after 24
+     - For 'talent_submission' milestones: schedules auto-release after 24
        hours via the Prompt 3 runner (see deliverable 6 below)
      - For 'brand_confirmation' milestones: notifies brand via email that
        a milestone submission is awaiting their review
 
 5. Milestone confirmation (new endpoint):
-   POST /campaigns/:campaign_id/reps/:rep_id/milestones/:milestone_id/confirm
+   POST /campaigns/:campaign_id/talents/:talent_id/milestones/:milestone_id/confirm
      - Brand-only route
      - Validates the milestone status is 'submitted'
      - Sets status → 'confirmed', sets confirmed_at
      - Calculates payout_cents: (payout_percentage / 100) *
-       payout_per_rep_cents, rounded down. For the final milestone,
+       payout_per_talent_cents, rounded down. For the final milestone,
        add any rounding remainder so total_milestone_payout_cents across
-       all milestones equals exactly payout_per_rep_cents. Never let
-       rounding silently reduce or increase total rep earnings.
-     - Calls payout_service.release_milestone_payout(campaign_rep_milestone_id)
+       all milestones equals exactly payout_per_talent_cents. Never let
+       rounding silently reduce or increase total talent earnings.
+     - Calls payout_service.release_milestone_payout(campaign_talent_milestone_id)
        — a new function in payout_service that validates the milestone
        row, checks the rep's Stripe Connect account is complete, and
        creates a Transfer for payout_cents. This is the per-milestone
        equivalent of the flat release_payout function from Prompt 10.
-     - Updates campaign_rep_milestones.milestones_completed_count and
+     - Updates campaign_talent_milestones.milestones_completed_count and
        total_milestone_payout_cents on the parent campaign_reps row
      - After the final milestone is confirmed: update campaign_reps.status
        to 'confirmed' (matching flat campaign behavior) so the rating flow
@@ -1479,8 +1481,8 @@ BACKEND DELIVERABLES:
 
 6. Auto-release scheduled job (extend Prompt 3 runner):
    New job: milestone_auto_release — runs every 30 minutes. Finds
-   campaign_rep_milestones rows where:
-     - verification_method = 'rep_submission'
+   campaign_talent_milestones rows where:
+     - verification_method = 'talent_submission'
      - status = 'submitted'
      - submitted_at < now() - interval '24 hours'
      - dispute_flag = false
@@ -1489,15 +1491,15 @@ BACKEND DELIVERABLES:
    is skipped without error. Log every auto-release for admin audit.
 
 7. Milestone dispute (new endpoint):
-   POST /campaigns/:campaign_id/reps/:rep_id/milestones/:milestone_id/dispute
+   POST /campaigns/:campaign_id/talents/:talent_id/milestones/:milestone_id/dispute
      - Brand-only route
      - Legal only within 24 hours of the rep's submission (the auto-
        release window)
-     - Sets dispute_flag = true on the campaign_rep_milestone row (see
+     - Sets dispute_flag = true on the campaign_talent_milestone row (see
        the migration's own dispute_flag column in the schema addition
        above — do not add it in a second migration)
      - Pauses the auto-release job for this row
-     - Notifies the rep via email that the brand has flagged this
+     - Notifies the talent via email that the brand has flagged this
        milestone for review
      - Creates an admin queue entry for manual resolution — milestone
        disputes are a new category in the admin queue from Prompt 13,
@@ -1507,25 +1509,25 @@ BACKEND DELIVERABLES:
    evidence, and either confirms (triggering payout) or declines
    (setting the milestone back to 'submitted' status, notifying both
    parties). Do not build a self-serve dispute resolution between brand
-   and rep — all disputes go through admin at MVP.
+   and talent — all disputes go through admin at MVP.
 
 8. payout_service.py additions:
-   release_milestone_payout(campaign_rep_milestone_id):
+   release_milestone_payout(campaign_talent_milestone_id):
      - Validates the milestone row is in 'confirmed' status with a
        non-null payout_cents
-     - Validates the parent campaign_rep's rep has a completed Stripe
+     - Validates the parent campaign_rep's talent has a completed Stripe
        Connect account
      - Creates a Stripe Transfer for payout_cents with metadata:
-       payment_type: 'milestone', milestone_id: ..., campaign_rep_id: ...
+       payment_type: 'milestone', milestone_id: ..., campaign_talent_id: ...
      - Sets payout_status → 'processing', stores stripe_transfer_id
      - Idempotent — a milestone row with an existing stripe_transfer_id
        is a no-op, not a duplicate transfer
 
 9. Stripe webhook additions (extend Prompt 10's handler):
    transfer.paid where metadata.payment_type = 'milestone':
-     → campaign_rep_milestones.payout_status → 'paid', set paid_at
+     → campaign_talent_milestones.payout_status → 'paid', set paid_at
      → update campaign_reps.total_milestone_payout_cents
-     → update rep_profiles cached total_earnings_cents (same mechanism
+     → update talent_profiles cached total_earnings_cents (same mechanism
         as Prompt 10's flat campaign recompute)
    transfer.failed where metadata.payment_type = 'milestone':
      → alert admin, flag milestone row for manual review
@@ -1538,10 +1540,10 @@ BACKEND DELIVERABLES:
    `.get()` (see the existing `_handle_account_updated` handler's own
    documented note on this).
 
-10. GET /reps/earnings (extend Prompt 5):
+10. GET /talents/earnings (extend Prompt 5):
     For milestone campaigns, the earnings breakdown must show milestone-
     level detail: which milestones are pending, which are paid, what
-    amount each released. The rep must be able to see at a glance what
+    amount each released. The talent must be able to see at a glance what
     they have earned and what remains achievable in each active campaign.
     Aggregate to the campaign level for the summary totals but expose
     milestone-level detail in the campaign earnings breakdown.
@@ -1569,18 +1571,18 @@ Brand portal additions (Prompt 9):
     calculator that shows remaining percentage as milestones are added.
     The calculator must show a clear error state when percentages do not
     sum to 100 before the brand can proceed.
-  - Milestone submission review: each active campaign rep shows a milestone
+  - Milestone submission review: each active campaign talent shows a milestone
     progress view — which milestones are pending, submitted, or confirmed
     per rep. Each submitted milestone shows the rep's evidence and a
     confirm/dispute action.
-  - Dispute window indicator: for 'rep_submission' milestones, show a
+  - Dispute window indicator: for 'talent_submission' milestones, show a
     countdown to the 24-hour auto-release so brands know how long they
     have to review before the payout releases automatically.
 
 Rep portal additions (Prompt 6):
   - Campaign detail view for milestone campaigns: show each milestone
     with its title, description, payout amount, current status, and
-    whether it is currently actionable. A rep should never have to guess
+    whether it is currently actionable. A talent should never have to guess
     what they need to do next.
   - Milestone submission interface: per-milestone submission form (text
     + file upload) that mirrors the flat campaign submission interface
@@ -1592,11 +1594,11 @@ Rep portal additions (Prompt 6):
     same visual pattern as the flat campaign status tracker.
 
   UX guidance — framing and progress visibility: every milestone in this
-  prompt's scope is something the rep directly does (a post, a story, a
+  prompt's scope is something the talent directly does (a post, a story, a
   submission), so there is no externally-contingent payout to soften at
   MVP — do not use "guaranteed base + bonus" language here, since nothing
   is actually at risk from a third party's behavior. What still matters:
-  a rep should always be able to see, at a glance, exactly what she has
+  a talent should always be able to see, at a glance, exactly what she has
   already earned (confirmed/paid milestones) versus what remains
   achievable through her own further effort (pending/actionable
   milestones) — never a single blended total that obscures which part is
@@ -1620,11 +1622,11 @@ Schema and data integrity:
   - A milestone campaign with percentages summing to 99 or 101 is
     rejected at creation with a clear validation error. Never silently
     adjusted.
-  - campaign_rep_milestones rows are created atomically with campaign_reps
-    at accept. If any row fails, the accept is rolled back — a rep cannot
+  - campaign_talent_milestones rows are created atomically with campaign_reps
+    at accept. If any row fails, the accept is rolled back — a talent cannot
     be in an accepted state without a complete milestone record.
   - total_milestone_payout_cents across all confirmed milestones for a
-    single campaign_rep never exceeds payout_per_rep_cents — verified by
+    single campaign_rep never exceeds payout_per_talent_cents — verified by
     unit test covering the rounding calculation across multiple milestone
     percentage combinations including those that do not divide evenly.
 
@@ -1642,16 +1644,16 @@ Payout safety:
     exactly one Stripe Transfer — verified with a concurrency test
     matching the pattern from Prompt 11's credit deduction test.
   - transfer.paid webhook for a milestone transfer updates only the
-    campaign_rep_milestones row and the rep's cached earnings — does not
+    campaign_talent_milestones row and the rep's cached earnings — does not
     affect flat campaign payout state.
   - transfer.paid webhook for a flat campaign transfer does not affect
-    campaign_rep_milestones rows.
+    campaign_talent_milestones rows.
 
 Auto-release:
-  - A 'rep_submission' milestone submitted 25 hours ago with no dispute
+  - A 'talent_submission' milestone submitted 25 hours ago with no dispute
     flag is auto-released by the scheduled job — tested directly against
     the job function with a seeded row.
-  - A 'rep_submission' milestone submitted 25 hours ago WITH a dispute
+  - A 'talent_submission' milestone submitted 25 hours ago WITH a dispute
     flag is NOT auto-released — dispute flag correctly blocks auto-release.
   - Running the auto-release job twice against the same eligible row
     produces one transfer and one log entry.
@@ -1672,7 +1674,7 @@ Admin:
 LAUNCH GATE (not a pytest-verifiable acceptance criterion — do not try to
 automate this):
 
-Before milestone campaigns are enabled for the full rep network (even
+Before milestone campaigns are enabled for the full Talent network (even
 though nothing in this prompt's scope is externally contingent), validate
 the milestone framing itself — the language, the progress visibility, the
 "earned vs. achievable" split — with a small cohort of real teenagers.
@@ -1682,7 +1684,7 @@ payout for the same total amount. This matters more once the future
 outcome-linked verification prompt ships (where a milestone genuinely can
 depend on someone else's behavior), but the base framing patterns this
 prompt establishes are what that prompt will build on, so get them right
-here first. Findings from this test should shape the rep portal UI before
+here first. Findings from this test should shape the Talent portal UI before
 general release — this is a go/no-go product gate, not a code review
 checklist item, and it blocks enabling milestone campaigns broadly even
 if every automated acceptance criterion above passes.
@@ -1711,7 +1713,7 @@ purchase sole rights to a category within a geographic market for a
 defined time window. While the exclusivity agreement is active, no other
 brand can create or activate a campaign in that category-and-city
 combination. The purchasing brand runs without competitive interference
-in the rep pool.
+in the talent pool.
 
 THE PRODUCT THESIS:
 
@@ -2057,45 +2059,45 @@ Prompt 6 (Rep Portal frontend — add "a brand is interested" notification
 panel), Prompt 4A (Parent Portal — add reservation notifications to parent
 dashboard), Prompt 13 (Admin — add reservation management).
 
-**Trigger:** Do not build until there is evidence that proven reps (3+
+**Trigger:** Do not build until there is evidence that proven talents (3+
 completed campaigns) are receiving overlapping invitations and turning
-down campaigns due to availability conflicts. If rep scarcity is not yet
+down campaigns due to availability conflicts. If Talent scarcity is not yet
 real, advance reservation has no value to brands and creates complexity
 without return.
 
 ```
 Implement advance cohort reservation — a feature allowing brands to soft-
-hold a group of specific reps before the campaign brief is finalized.
-The brand pays a deposit to signal intent. Reserved reps are notified
+hold a group of specific talents before the campaign brief is finalized.
+The brand pays a deposit to signal intent. Reserved talents are notified
 that a brand is interested. When the brand activates a campaign linked
-to the reservation, reserved reps receive a 48-hour exclusive invitation
-window before the campaign opens to the general rep pool.
+to the reservation, reserved talents receive a 48-hour exclusive invitation
+window before the campaign opens to the general talent pool.
 
 THE PRODUCT THESIS:
 
-  The best reps on the platform receive multiple campaign invitations.
-  Brands that wait until their brief is finalized risk losing the reps
+  The best talents on the platform receive multiple campaign invitations.
+  Brands that wait until their brief is finalized risk losing the talents
   they want to a competitor. Advance cohort reservation gives brands
   a way to secure a cohort before the competition does — paying a small
   deposit as a commitment signal.
 
-  For reps, a reservation is not an obligation. It is a signal of market
-  value. A rep who has been reserved by a brand before the brief even
-  exists is a rep that brands find credible enough to secure early.
+  For talents, a reservation is not an obligation. It is a signal of market
+  value. A talent who has been reserved by a brand before the brief even
+  exists is a talent that brands find credible enough to secure early.
   This is a profile signal that the platform surfaces.
 
   The deposit is retained by the platform regardless of whether the
   campaign activates. It is a commitment fee, not an advance on campaign
   payment. Brands understand they are paying for a priority hold, not
-  for guaranteed rep participation.
+  for guaranteed talent participation.
 
 WHAT A RESERVATION IS NOT:
 
-  A reservation is NOT a binding contract with the rep. The rep can
+  A reservation is NOT a binding contract with the rep. The talent can
   decline the eventual invitation with no consequence. A reservation
   is a brand-to-platform commitment, not a brand-to-rep commitment.
-  This distinction must be communicated clearly in the rep notification
-  and parent portal — a rep who receives a reservation notification
+  This distinction must be communicated clearly in the talent notification
+  and parent portal — a talent who receives a reservation notification
   is not obligated to accept the eventual campaign.
 
 DEPOSIT AND FORFEITURE:
@@ -2129,7 +2131,7 @@ SCHEMA ADDITIONS (new migration, separately numbered):
      brand_id (UUID not null references brand_profiles(id)
        on delete restrict)
      title (text not null — the brand's working title for the upcoming
-       campaign: "Back to School Push" not shown to reps)
+       campaign: "Back to School Push" not shown to talents)
      category (text not null — the intended campaign category)
      city (text not null — reservations are city-specific)
      estimated_budget_cents (integer not null — what the brand expects
@@ -2139,7 +2141,7 @@ SCHEMA ADDITIONS (new migration, separately numbered):
      expires_at (timestamptz not null — auto-set at creation:
        planned_activation_at + RESERVATION_EXPIRY_DAYS days)
      priority_window_hours (integer not null default 48 — how long
-       reserved reps get exclusive access after campaign activates;
+       reserved talents get exclusive access after campaign activates;
        config value RESERVATION_PRIORITY_WINDOW_HOURS, settable per
        reservation by admin only)
      status (text not null default 'active'
@@ -2159,20 +2161,20 @@ SCHEMA ADDITIONS (new migration, separately numbered):
      id (UUID PK default gen_random_uuid())
      reservation_id (UUID not null references cohort_reservations(id)
        on delete restrict)
-     rep_id (UUID not null references rep_profiles(id)
+     talent_id (UUID not null references talent_profiles(id)
        on delete restrict)
-     notified_at (timestamptz nullable — when the rep received the
+     notified_at (timestamptz nullable — when the talent received the
        "a brand is interested" notification)
-     rep_signal (text nullable default null
-       check (rep_signal in (null, 'interested', 'not_interested')) —
+     talent_signal (text nullable default null
+       check (talent_signal in (null, 'interested', 'not_interested')) —
        rep's informal signal of interest; this is NOT a commitment,
-       NOT a contract; reps can change their signal any time before
+       NOT a contract; talents can change their signal any time before
        the campaign invitation arrives)
-     UNIQUE (reservation_id, rep_id)
+     UNIQUE (reservation_id, talent_id)
 
-3. Add to rep_profiles:
+3. Add to talent_profiles:
      times_reserved (integer not null default 0 — how many times this
-       rep has been reserved by a brand before a campaign; a profile
+       talent has been reserved by a brand before a campaign; a profile
        signal of early market demand; cached, updated on reservation
        inclusion)
 
@@ -2189,14 +2191,14 @@ SCHEMA ADDITIONS (new migration, separately numbered):
        ON cohort_reservations(expires_at, status)
        WHERE status = 'active';
      CREATE INDEX idx_reservation_reps_rep
-       ON cohort_reservation_reps(rep_id, reservation_id);
+       ON cohort_reservation_reps(talent_id, reservation_id);
 
 6. RLS policies:
      cohort_reservations: brands read only their own (brand_id matches).
        No rep, recruiter, or parent direct access. Admin uses service role.
      cohort_reservation_reps: brands read only rows for their own
-       reservations. Reps can read only their own rows (rep_id matches)
-       and can UPDATE only rep_signal on their own rows.
+       reservations. Reps can read only their own rows (talent_id matches)
+       and can UPDATE only talent_signal on their own rows.
        Admin uses service role.
 
 ---
@@ -2227,36 +2229,36 @@ BACKEND DELIVERABLES:
 
    POST /brands/reservations
      Body: {title, category, city, estimated_budget_cents,
-       planned_activation_at, rep_ids: [UUID, ...]}
+       planned_activation_at, talent_ids: [UUID, ...]}
      Validates:
        - category in centrally-defined list
        - planned_activation_at is in the future
-       - rep_ids: 2–15 reps (minimum cohort to justify reservation fee;
-         maximum to prevent brands from locking up the entire rep pool
+       - talent_ids: 2–15 talents (minimum cohort to justify reservation fee;
+         maximum to prevent brands from locking up the entire talent pool
          in a category)
-       - all rep_ids are real, active reps with at least 1 completed
-         campaign (reservations are for proven reps; new reps without
+       - all talent_ids are real, active talents with at least 1 completed
+         campaign (reservations are for proven talents; new talents without
          a track record cannot be reserved at MVP)
      Calculates deposit_cents.
      Creates a Stripe PaymentIntent against platform account:
        amount: deposit_cents
        metadata: {type: 'cohort_reservation', brand_id, city, category,
-         rep_count: rep_ids.length}
+         talent_count: talent_ids.length}
      Creates cohort_reservations row (payment_status = 'pending').
-     Creates cohort_reservation_reps rows for each rep_id.
-     Increments rep_profiles.times_reserved for each rep.
+     Creates cohort_reservation_reps rows for each talent_id.
+     Increments talent_profiles.times_reserved for each rep.
      Returns: {reservation_id, deposit_cents, expires_at, client_secret}
-     The rep notification (deliverable 6) fires from the webhook after
-     payment confirms, not from this endpoint. Avoid notifying reps
+     The talent notification (deliverable 6) fires from the webhook after
+     payment confirms, not from this endpoint. Avoid notifying talents
      before payment is confirmed.
 
    GET /brands/reservations
-     List all reservations with status, rep count, deposit_cents,
+     List all reservations with status, talent count, deposit_cents,
      planned_activation_at, expires_at, and linked_campaign_id if
      converted.
 
    GET /brands/reservations/:id
-     Full reservation detail including rep_ids and their rep_signal
+     Full reservation detail including talent_ids and their talent_signal
      values. The brand cannot see the rep's signal reasoning — only
      the signal itself ('interested', 'not_interested', or null).
 
@@ -2266,7 +2268,7 @@ BACKEND DELIVERABLES:
      Sets status = 'cancelled', cancelled_at = now().
      Deposit is forfeited — no Stripe refund on cancellation (documented
      in the purchase UI). Log the cancellation to admin audit trail.
-     Notify the reserved reps: "A brand's plans have changed and they
+     Notify the reserved talents: "A brand's plans have changed and they
      no longer need to reserve your participation. No action needed."
 
 4. Campaign activation modification (modify Prompt 8's
@@ -2283,11 +2285,11 @@ BACKEND DELIVERABLES:
         reservation.priority_window_hours hours
      f. Set reservation.status = 'converted', converted_campaign_id =
         campaign.id, converted_at = now()
-     g. For each rep in cohort_reservation_reps for this reservation:
+     g. For each talent in cohort_reservation_reps for this reservation:
         create a campaign_reps invitation (same structure as a normal
         brand invitation from Prompt 8) with invite_expires_at set to
         campaign.priority_window_ends_at — not the standard 48-hour window.
-        Reserved reps get exactly the priority_window_hours window.
+        Reserved talents get exactly the priority_window_hours window.
      h. Apply the deposit credit: deduct deposit_cents from the platform
         fee on this campaign (document how this credit is tracked —
         a campaign_platform_credits table is the cleanest approach;
@@ -2301,7 +2303,7 @@ BACKEND DELIVERABLES:
    invitations (from the brand portal or the normal matching flow) until
    priority_window_ends_at has passed. After that, the campaign opens
    normally. This is the core promise of advance reservation — reserved
-   reps get exclusive first access.
+   talents get exclusive first access.
 
 5. Campaign platform credits (new table: campaign_platform_credits):
      id (UUID PK)
@@ -2317,9 +2319,9 @@ BACKEND DELIVERABLES:
    to Prompt 10's billing logic — document it here so the Prompt 10
    maintainer knows to check.
 
-6. Rep notification for reservation (triggered from webhook in deliverable 7):
+6. talent notification for reservation (triggered from webhook in deliverable 7):
    When a reservation's payment_status transitions to 'paid':
-   For each rep in cohort_reservation_reps:
+   For each talent in cohort_reservation_reps:
      - Send email: "A brand is interested in working with you. They're
        planning a campaign in [category] in [city] around [month/year
        of planned_activation_at — do not reveal the exact date]. No
@@ -2329,39 +2331,39 @@ BACKEND DELIVERABLES:
      - Set cohort_reservation_reps.notified_at = now()
    The notification is informational, not action-required. No link to
    accept or decline — there is nothing to accept yet.
-   Parent notification: for each notified rep under 16, also notify
+   Parent notification: for each notified talent under 16, also notify
    their parent portal with the same information.
 
 7. Stripe webhook additions (extend Prompt 10's handler):
 
    payment_intent.succeeded where metadata.type = 'cohort_reservation':
      → Set cohort_reservations.payment_status = 'paid'
-     → Fire rep notifications (deliverable 6)
+     → Fire talent notifications (deliverable 6)
      → Send brand confirmation email: "Your cohort reservation is active.
-       [N] reps have been notified that you're interested. Your reservation
+       [N] talents have been notified that you're interested. Your reservation
        expires on [expires_at] if you don't activate a linked campaign."
      → Log to admin audit trail
 
    payment_intent.payment_failed where metadata.type = 'cohort_reservation':
      → Set payment_status = 'failed', status = 'expired'
-     → Do NOT notify reps (payment never confirmed)
-     → Decrement rep_profiles.times_reserved for each rep in the
+     → Do NOT notify talents (payment never confirmed)
+     → Decrement talent_profiles.times_reserved for each talent in the
        reservation (undo the increment from creation)
      → Notify brand: "Payment failed. Your reservation was not activated."
 
-8. Rep signal endpoint (new rep endpoint):
-   POST /reps/reservations/:reservation_id/signal
+8. talent signal endpoint (new talent endpoint):
+   POST /talents/reservations/:reservation_id/signal
      Body: {signal: 'interested' | 'not_interested'}
-     Validates: the rep is in cohort_reservation_reps for this reservation.
-     Sets rep_signal. Does not change reservation status. Returns updated
+     Validates: the talent is in cohort_reservation_reps for this reservation.
+     Sets talent_signal. Does not change reservation status. Returns updated
      cohort_reservation_reps row.
    Reps can update their signal any number of times before the campaign
    invitation arrives. The signal is advisory — it does not bind the
-   rep or the brand.
-   GET /reps/reservations
-     List all reservations the rep is part of (by cohort_reservation_reps
+   talent or the brand.
+   GET /talents/reservations
+     List all reservations the talent is part of (by cohort_reservation_reps
      join). Returns: reservation title (do NOT return — it is internal
-     to the brand), category, city, brand display_name (yes — reps
+     to the brand), category, city, brand display_name (yes — talents
      know which brand reserved them; this is relevant to their signal
      decision), notified_at, signal.
 
@@ -2372,9 +2374,9 @@ BACKEND DELIVERABLES:
      status = 'active'
      payment_status = 'paid'
    Sets status = 'expired'. Logs every expiry.
-   Notifies reserved reps: "The brand's campaign plans changed and your
+   Notifies reserved talents: "The brand's campaign plans changed and your
    advance hold has expired. No action needed."
-   Notifies brand: "Your reservation for [N] reps has expired without
+   Notifies brand: "Your reservation for [N] talents has expired without
    a linked campaign. Your deposit of $X has been retained per the
    reservation terms."
 
@@ -2394,20 +2396,20 @@ Brand portal (add to Prompt 9):
   - Reservation tab under "Campaigns" navigation.
   - Create reservation flow: category and city selector, estimated budget
     input (with live deposit preview), planned activation date picker,
-    rep selection. Rep selection is a search/filter UI identical to the
-    campaign rep browse but restricted to reps with 1+ completed campaigns.
+    talent selection. talent selection is a search/filter UI identical to the
+    campaign talent browse but restricted to talents with 1+ completed campaigns.
     Show rep's categories, campaigns_completed, times_reserved (signal of
     how sought-after they are) in the selection card.
   - Pricing confirmation: before payment, show full breakdown — deposit
     amount, forfeiture policy ("If you cancel or don't activate within
     [N] days, your deposit is retained"), priority window length.
   - Stripe Elements payment form for deposit.
-  - Active reservations list: status, rep count, signal breakdown (how
+  - Active reservations list: status, talent count, signal breakdown (how
     many signaled 'interested' vs 'not_interested' vs no signal yet),
     expires_at countdown.
   - Campaign activation form: if the brand has active paid reservations
     in the campaign's category and city, surface them as an option:
-    "Link this campaign to an advance reservation to give reserved reps
+    "Link this campaign to an advance reservation to give reserved talents
     a 48-hour priority window and apply your $X deposit credit."
 
 Rep portal (add to Prompt 6):
@@ -2422,7 +2424,7 @@ Rep portal (add to Prompt 6):
 
 Parent portal (add to Prompt 4A):
   - Reservation notifications: parent sees the same information as the
-    rep — which brand, which category, that it is not a commitment.
+    talent — which brand, which category, that it is not a commitment.
     Parent can also see the rep's signal. The parent cannot change the
     signal. Informational only.
 
@@ -2440,17 +2442,17 @@ Deposit calculation:
   - Unit test all three cases against calculate_deposit().
 
 Payment:
-  - payment_intent.succeeded triggers rep notifications and brand email.
+  - payment_intent.succeeded triggers talent notifications and brand email.
   - payment_intent.payment_failed sets status = 'expired' and
-    decrements times_reserved for all reps.
+    decrements times_reserved for all talents.
 
 Priority window enforcement:
   - A campaign with priority_window_ends_at set in the future cannot
-    send invitations to non-reserved reps — API returns 409 with
+    send invitations to non-reserved talents — API returns 409 with
     "Priority window is active. General invitations open at [datetime]."
   - After priority_window_ends_at passes, general invitations proceed
     normally.
-  - Reserved reps receive invitations with invite_expires_at =
+  - Reserved talents receive invitations with invite_expires_at =
     priority_window_ends_at, not the standard 48-hour window.
 
 Deposit credit:
@@ -2461,23 +2463,23 @@ Deposit credit:
     credit_type = 'reservation_deposit'.
 
 Rep signal:
-  - A rep can update their signal multiple times — no constraint on
+  - A talent can update their signal multiple times — no constraint on
     number of updates.
-  - Rep signal does not change reservation status.
-  - Rep signal is visible to the brand in GET /brands/reservations/:id.
-  - Rep signal is NOT visible in the rep's public profile or to
+  - talent signal does not change reservation status.
+  - talent signal is visible to the brand in GET /brands/reservations/:id.
+  - talent signal is NOT visible in the rep's public profile or to
     recruiters — it is a private advisory signal.
 
 Auto-expire:
   - A reservation with expires_at in the past transitions to 'expired'.
-  - Rep notifications fire. Brand notification fires. Log entry created.
+  - talent notifications fire. Brand notification fires. Log entry created.
   - Running the job twice against the same expired reservation: one
     log entry, no duplicate notifications.
 ```
 
 ---
 
-## 8E. Rep Syndicates
+## 8E. Talent Syndicates
 
 **Depends on:** Prompt 8 (Brand Portal backend — implemented), Prompt 5
 (Rep Portal backend — implemented), Prompt 10 (Payout Engine — implemented,
@@ -2492,17 +2494,17 @@ add syndicate search and profile view), Prompt 4A (Parent Portal — add
 syndicate membership and campaign notifications), Prompt 13 (Admin — add
 syndicate verification queue).
 
-**Trigger:** Do not build until reps are coordinating informally across
+**Trigger:** Do not build until talents are coordinating informally across
 campaigns — friend groups tagging each other, peer referrals visible in
 PostHog, brands requesting coordinated placements — AND brands have
-expressed demand for group placements. If the rep network is not dense
+expressed demand for group placements. If the Talent network is not dense
 enough to form natural cohesive groups, syndicates will be synthetic
 and unconvincing to brands.
 
 ```
-Implement rep syndicates — named groups of reps that brands can hire as
-a coordinated unit. A syndicate has a collective profile, a lead rep who
-manages the brand relationship, and member reps who execute campaigns.
+Implement talent syndicates — named groups of talents that brands can hire as
+a coordinated unit. A syndicate has a collective profile, a lead talent who
+manages the brand relationship, and member talents who execute campaigns.
 Brands invite the syndicate, not individual members. Payout is distributed
 across the group per a configured split.
 
@@ -2510,16 +2512,16 @@ THE PRODUCT THESIS:
 
   A friend group that all goes to the same school, shops at the same
   stores, and shares followers with each other is more valuable to a
-  brand than five unconnected individual reps. The coordinated reach is
+  brand than five unconnected individual talents The coordinated reach is
   both wider and more authentic — peers recommending to peers within a
   real social network. Syndicates formalize this natural structure into
   a professional unit that brands can hire, trust, and build a
   relationship with over time.
 
-  Syndicates also give reps collective negotiating power. A five-person
+  Syndicates also give talents collective negotiating power. A five-person
   syndicate with a combined audience and track record can command
   higher per-person rates than any individual member could alone.
-  The lead rep learns client relationship management. Members learn
+  The lead talent learns client relationship management. Members learn
   professional collaboration. Both are transferable skills.
 
 WHAT A SYNDICATE IS NOT:
@@ -2548,7 +2550,7 @@ SAFETY ARCHITECTURE:
 
   The lead rep's age matters for additional reasons: a 14-year-old
   should not be managing a brand relationship involving five of their
-  peers. Recommend (but do not enforce at MVP) that lead reps be 17+
+  peers. Recommend (but do not enforce at MVP) that lead talents be 17+
   for syndicates with more than 4 members. Document this as a suggested
   policy for admin to implement at their discretion.
 
@@ -2563,7 +2565,7 @@ SCHEMA ADDITIONS (new migration, separately numbered):
      categories (text[] not null — categories the syndicate works in;
        at least one required; from the centrally-defined list)
      city (text not null — syndicates are city-based)
-     lead_rep_id (UUID not null references rep_profiles(id)
+     lead_talent_id (UUID not null references talent_profiles(id)
        on delete restrict)
      status (text not null default 'pending_verification'
        check (status in ('pending_verification', 'active', 'suspended',
@@ -2588,7 +2590,7 @@ SCHEMA ADDITIONS (new migration, separately numbered):
      id (UUID PK default gen_random_uuid())
      syndicate_id (UUID not null references syndicates(id)
        on delete restrict)
-     rep_id (UUID not null references rep_profiles(id)
+     talent_id (UUID not null references talent_profiles(id)
        on delete restrict)
      role (text not null check (role in ('lead', 'member')))
      payout_share_percentage (integer not null default 0 —
@@ -2599,14 +2601,14 @@ SCHEMA ADDITIONS (new migration, separately numbered):
        check (status in ('active', 'departed', 'removed')))
      joined_at (timestamptz not null default now())
      departed_at (timestamptz nullable)
-     UNIQUE (syndicate_id, rep_id)
+     UNIQUE (syndicate_id, talent_id)
 
-3. Add to rep_profiles:
+3. Add to talent_profiles:
      syndicate_id (UUID nullable references syndicates(id) — the
-       syndicate this rep belongs to, if any; null if not in a syndicate)
+       syndicate this talent belongs to, if any; null if not in a syndicate)
      syndicate_role (text nullable check (syndicate_role in
        (null, 'lead', 'member')))
-   A rep can belong to at most one active syndicate at a time. Enforce
+   A talent can belong to at most one active syndicate at a time. Enforce
    this at the API layer with a clear error: "Reps can only belong to
    one syndicate at a time. Leave your current syndicate before joining
    or creating another."
@@ -2624,32 +2626,32 @@ SCHEMA ADDITIONS (new migration, separately numbered):
      id (UUID PK default gen_random_uuid())
      campaign_id (UUID not null references campaigns(id))
      syndicate_id (UUID not null references syndicates(id))
-     rep_id (UUID not null references rep_profiles(id))
+     talent_id (UUID not null references talent_profiles(id))
      payout_cents (integer not null — this rep's share)
      payout_status (text not null default 'pending'
        check (payout_status in ('pending', 'processing', 'paid', 'failed')))
      stripe_transfer_id (text nullable unique)
      paid_at (timestamptz nullable)
-     UNIQUE (campaign_id, rep_id)
+     UNIQUE (campaign_id, talent_id)
 
 6. Indexes:
      CREATE INDEX idx_syndicates_verified_city
        ON syndicates(city, status, verified)
        WHERE status = 'active' AND verified = true;
      CREATE INDEX idx_syndicate_members_rep
-       ON syndicate_members(rep_id, status)
+       ON syndicate_members(talent_id, status)
        WHERE status = 'active';
      CREATE INDEX idx_syndicate_campaign_payouts_campaign
        ON syndicate_campaign_payouts(campaign_id, payout_status);
 
 7. RLS policies:
      syndicates: any authenticated user can read active, verified
-       syndicates. Lead rep can read and update their own syndicate.
+       syndicates. Lead talent can read and update their own syndicate.
        Members can read their syndicate. Admin uses service role.
      syndicate_members: members can read all rows for their syndicate.
-       Lead rep can read and update all rows for their syndicate.
+       Lead talent can read and update all rows for their syndicate.
        Admin uses service role.
-     syndicate_campaign_payouts: reps can read only their own rows.
+     syndicate_campaign_payouts: talents can read only their own rows.
        Brand can read rows for campaigns they own. Admin uses service role.
 
 ---
@@ -2658,24 +2660,24 @@ BACKEND DELIVERABLES:
 
 1. Syndicate creation (new router: app/routers/syndicates.py):
 
-   POST /reps/syndicates
+   POST /talents/syndicates
      Body: {name, bio, categories, city,
-       members: [{rep_id, payout_share_percentage}]}
-     The creating rep is automatically the lead with
+       members: [{talent_id, payout_share_percentage}]}
+     The creating talent is automatically the lead with
        role = 'lead'; their payout_share_percentage is also in the
        members array. All members' payout_share_percentage values must
        sum to 100.
      Validates:
        - name is unique (case-insensitive)
        - 2–8 members total (including lead)
-       - creating rep has no existing active syndicate_id
+       - creating talent has no existing active syndicate_id
        - all proposed members have no existing active syndicate_id
-       - all proposed members are real, active reps
+       - all proposed members are real, active talents
        - payout shares sum to exactly 100
      Creates syndicates row (status = 'pending_verification',
        verified = false).
      Creates syndicate_members rows for all members.
-     Sets rep_profiles.syndicate_id and syndicate_role for all members.
+     Sets talent_profiles.syndicate_id and syndicate_role for all members.
      Sends invitations to proposed members (not the lead):
        "You've been invited to join [name] syndicate by [lead's
        display_name]. They've set your share at X%. Review and accept
@@ -2684,8 +2686,8 @@ BACKEND DELIVERABLES:
      Returns: {syndicate_id, status: 'pending_verification'}
 
 2. Member invitation acceptance:
-   POST /reps/syndicates/:id/accept
-     Validates: rep is in syndicate_members with status = 'active'
+   POST /talents/syndicates/:id/accept
+     Validates: talent is in syndicate_members with status = 'active'
      (they were added at creation, status starts active — this endpoint
      is about confirming they saw the terms, not a formal approval step).
      Actually, rethink: at creation, proposed members should start with
@@ -2695,8 +2697,8 @@ BACKEND DELIVERABLES:
      A syndicate cannot proceed to verification until all members have
      accepted. If a member declines, the lead is notified and can replace them.
 
-   POST /reps/syndicates/:id/decline
-     Rep removes themselves. Notifies lead. If lead declines their own
+   POST /talents/syndicates/:id/decline
+     talent removes themselves. Notifies lead. If lead declines their own
      role, the syndicate creation fails (lead cannot be removed without
      disbanding).
 
@@ -2719,14 +2721,14 @@ BACKEND DELIVERABLES:
        syndicate.city = query.city (if provided)
      Per syndicate: name, bio, categories, city, member_count,
        campaigns_completed, average_rating, payout_share structure
-       (array of {role, payout_share_percentage} — not rep_ids; brands
+       (array of {role, payout_share_percentage} — not talent_ids; brands
        see the share structure without identifying individual members
        until they invite the syndicate).
      Full member details available at:
    GET /brands/syndicates/:id
      Full syndicate profile including all member cards (display_name,
        city, categories, campaigns_completed, average_rating per member).
-     No PII. Same no-PII card as individual rep discovery.
+     No PII. Same no-PII card as individual talent discovery.
 
 5. Syndicate campaign creation and invitation:
    POST /brands/campaigns (extend Prompt 8):
@@ -2734,10 +2736,10 @@ BACKEND DELIVERABLES:
      Validate syndicate is active and verified.
      Set max_reps = syndicate.member_count (campaigns invite all
        members, not a subset).
-     payout_per_rep_cents is the total campaign payout divided among
+     payout_per_talent_cents is the total campaign payout divided among
        all members per their payout_share_percentage — document this
        in the campaign creation schema: for syndicate campaigns,
-       payout_per_rep_cents stores the total syndicate payout, and
+       payout_per_talent_cents stores the total syndicate payout, and
        individual member payouts are calculated at payout time.
 
    POST /brands/campaigns/:id/invite_syndicate
@@ -2751,7 +2753,7 @@ BACKEND DELIVERABLES:
 
 6. Syndicate campaign acceptance:
    POST /campaigns/:id/accept (extend Prompt 5):
-     For syndicate campaigns, only the lead rep can accept.
+     For syndicate campaigns, only the lead talent can accept.
      Acceptance transitions all members' campaign_reps.status = 'accepted'.
      For each member under 16: parent approval is still required before
        their status transitions to 'accepted'. The lead accepts the
@@ -2765,7 +2767,7 @@ BACKEND DELIVERABLES:
        submitted deliverables and the brand has confirmed).
      Fetches syndicate_members for the campaign's syndicate.
      For each member with status 'active':
-       individual_payout = round(campaign.payout_per_rep_cents *
+       individual_payout = round(campaign.payout_per_talent_cents *
          member.payout_share_percentage / 100)
      Handles rounding remainder: add any cents lost to rounding to the
        lead rep's payout (same pattern as milestone payment rounding
@@ -2773,19 +2775,19 @@ BACKEND DELIVERABLES:
      Creates syndicate_campaign_payouts rows.
      Creates one Stripe Transfer per member to their Connected Account:
        metadata: {payment_type: 'syndicate_campaign', campaign_id,
-         syndicate_id, rep_id, payout_share_percentage}
+         syndicate_id, talent_id, payout_share_percentage}
      Idempotent: if stripe_transfer_id already set on a row, skip.
    Webhook handling:
      transfer.paid where metadata.payment_type = 'syndicate_campaign':
        → syndicate_campaign_payouts.payout_status = 'paid'
-       → update rep_profiles.total_earnings_cents for the rep
+       → update talent_profiles.total_earnings_cents for the rep
        → update syndicates.total_earnings_cents (add to cached total)
        → after all members paid: update syndicates.campaigns_completed,
          syndicates.average_rating
 
 8. Payout share modification:
-   PUT /reps/syndicates/:id/shares
-     Lead-only endpoint. Body: [{rep_id, payout_share_percentage}] for
+   PUT /talents/syndicates/:id/shares
+     Lead-only endpoint. Body: [{talent_id, payout_share_percentage}] for
        all members. All shares must sum to 100.
      Can only be called when no active campaigns are in progress for
        this syndicate (campaign_reps with status in
@@ -2795,7 +2797,7 @@ BACKEND DELIVERABLES:
      Notifies all members of the share change.
 
 9. Profile integration:
-   Add to the rep profile serializer:
+   Add to the talent profile serializer:
      syndicate: {id, name, role} or null if not in a syndicate.
    Syndicate profile for brand/recruiter browse:
      campaigns_completed, average_rating, member_count, verified badge.
@@ -2804,11 +2806,11 @@ BACKEND DELIVERABLES:
      membership is part of the rep's professional profile.
 
 10. Disbanding:
-    POST /reps/syndicates/:id/disband
+    POST /talents/syndicates/:id/disband
       Lead-only. Cannot disband if active campaigns in progress (same
         guard as share modification).
       Sets syndicates.status = 'disbanded', disbanded_at = now().
-      Clears rep_profiles.syndicate_id and syndicate_role for all members.
+      Clears talent_profiles.syndicate_id and syndicate_role for all members.
       Sets syndicate_members.status = 'departed' for all.
       Notifies all members.
 
@@ -2821,7 +2823,7 @@ Rep portal (add to Prompt 6):
     member search and invite, payout share allocation with live 100%
     validation). Pending/active syndicate status. Member list with
     acceptance status. Payout share editor (when no active campaigns).
-  - For invited (non-lead) reps: syndicate invitation card — name, bio,
+  - For invited (non-lead) talents: syndicate invitation card — name, bio,
     lead display_name, their proposed payout share. Accept/decline.
   - Syndicate campaigns appear in the rep's campaign dashboard labeled
     "Syndicate Campaign" with the syndicate name.
@@ -2831,15 +2833,15 @@ Brand portal (add to Prompt 9):
     and city. Syndicate detail view. Invite syndicate button (creates
     a syndicate campaign with the syndicate attached).
   - Campaign creation: campaign_type toggle (Individual / Syndicate).
-    If Syndicate: syndicate selector replaces rep targeting.
+    If Syndicate: syndicate selector replaces talent targeting.
     Payout field: total syndicate payout (platform shows the breakdown
     across members in the UI but the brand just sets the total).
 
 Recruiter portal (add to Prompt 12):
-  - Syndicate affiliation visible on rep profiles.
-  - Link to syndicate profile from rep card.
+  - Syndicate affiliation visible on talent profiles.
+  - Link to syndicate profile from talent card.
   - Syndicate search: filter candidates by syndicate membership (a
-    recruiter recruiting a lead rep may want to note the leadership
+    recruiter recruiting a lead talent may want to note the leadership
     experience).
 
 Parent portal (add to Prompt 4A):
@@ -2859,7 +2861,7 @@ Admin portal (add to Prompt 13):
 ACCEPTANCE CRITERIA:
 
 Membership constraint:
-  - A rep cannot create or join a second syndicate while already in one —
+  - A talent cannot create or join a second syndicate while already in one —
     409 "already in a syndicate" at both endpoints.
   - Unit test: create two syndicates with the same rep; second creation
     fails.
@@ -2887,7 +2889,7 @@ Verification gate:
 
 Disbanding:
   - Attempting to disband with an active campaign returns 409.
-  - After disbanding, all members' rep_profiles.syndicate_id is null.
+  - After disbanding, all members' talent_profiles.syndicate_id is null.
   - Verified by seeding an active campaign, attempting disband (fail),
     completing the campaign, then disbanding (succeed).
 ```
@@ -2901,14 +2903,15 @@ data: at least 200 brand-rep pairs with 3+ completed campaigns together.
 This data must exist in production before this prompt is executed.
 
 **Trigger:** Do not build until:
-  1. At least 200 brand-rep pairs have completed 3+ campaigns together.
-  2. At least 2 years of longitudinal campaign data exists in the
-     production database.
-  3. A meaningful subset of reps are approaching high school graduation
-     or college application season with multi-year Teenure history.
-Without these conditions, the "Verified Partnership" credential is
-theoretical rather than demonstrated, and the brand-side re-engagement
-features lack the historical data to surface meaningful match quality.
+
+1. At least 200 brand-rep pairs have completed 3+ campaigns together.
+2. At least 2 years of longitudinal campaign data exists in the
+   production database.
+3. A meaningful subset of talents are approaching high school graduation
+   or college application season with multi-year Teenure history.
+   Without these conditions, the "Verified Partnership" credential is
+   theoretical rather than demonstrated, and the brand-side re-engagement
+   features lack the historical data to surface meaningful match quality.
 
 **This prompt is a planning document, not a build order.**
 When the trigger conditions are met, this document provides the
@@ -2925,28 +2928,28 @@ over time.
 
 THE PRODUCT THESIS:
 
-  A rep who has completed five campaigns with the same brand over two
-  years is not the same thing as a rep who did one campaign last month.
+  A talent who has completed five campaigns with the same brand over two
+  years is not the same thing as a talent who did one campaign last month.
   The multi-year relationship demonstrates reliability, consistency, and
   professional longevity that a single campaign can never signal. This
   matters to colleges, employers, and future brand partners.
 
-  For brands, a rep with a proven two-year track record is more valuable
+  For brands, a talent with a proven two-year track record is more valuable
   and requires less onboarding than an unknown quantity. The relationship
   continuity product gives brands a way to formalize and maintain their
-  best rep relationships, and gives those reps priority access to future
+  best talent relationships, and gives those talents priority access to future
   campaigns.
 
   The product also addresses the platform's retention risk: without
   a mechanism for multi-year relationships, every campaign is a discrete
-  transaction and there is no structural force keeping high-value reps
+  transaction and there is no structural force keeping high-value talents
   and brands on the platform. The continuity product creates switching
   costs in both directions.
 
 WHAT COUNTS AS A PARTNERSHIP:
 
   A "Verified Brand Partnership" is earned automatically when:
-    - A brand and rep complete at least 3 campaigns together
+    - A brand and talent complete at least 3 campaigns together
     - The campaigns span at least 6 calendar months
     - The rep's average rating from the brand across those campaigns
       is at least 4.0 out of 5.0
@@ -2957,29 +2960,29 @@ WHAT COUNTS AS A PARTNERSHIP:
 
 PARTNERSHIP BENEFITS:
 
-  For reps:
+  For talents:
     - "Verified Brand Partner: [Brand Name]" badge on profile, visible
       to all brands and recruiters. Searchable by recruiters.
     - Priority invitation window: when the partner brand creates a new
-      campaign in the rep's categories, the rep receives a 72-hour
+      campaign in the rep's categories, the talent receives a 72-hour
       exclusive invitation window before the campaign opens.
     - Partnership longevity metric on profile: "3-year partner of
       [Brand Name]" once the relationship reaches 3 years.
 
   For brands:
-    - Dashboard showing all active partnerships with rep engagement
+    - Dashboard showing all active partnerships with talent engagement
       history, total campaigns together, total spent together.
     - Partnership priority invitations (described above) without
       paying for advance cohort reservation — partnership is its
       own priority mechanism.
     - Partnership anniversary recognition: platform notifies the brand
       on annual partnership anniversaries so they can acknowledge
-      long-term reps.
+      long-term talents.
 
 PARTNERSHIP DISSOLUTION:
 
   Either party can dissolve a partnership at any time with no penalty.
-  The rep retains the badge history (earned_at and campaigns_completed
+  The talent retains the badge history (earned_at and campaigns_completed
   together remain visible on their profile) but the active partnership
   status changes to 'completed'. A completed partnership still shows
   on the profile as a credential — it does not disappear on dissolution.
@@ -2990,11 +2993,11 @@ PARTNERSHIP DISSOLUTION:
 
 SCHEMA ADDITIONS (new migration, separately numbered):
 
-1. New table: brand_rep_partnerships
+1. New table: brand_talent_partnerships
      id (UUID PK default gen_random_uuid())
      brand_id (UUID not null references brand_profiles(id)
        on delete restrict)
-     rep_id (UUID not null references rep_profiles(id)
+     talent_id (UUID not null references talent_profiles(id)
        on delete restrict)
      status (text not null default 'eligible'
        check (status in ('eligible', 'active', 'completed', 'declined')))
@@ -3009,10 +3012,10 @@ SCHEMA ADDITIONS (new migration, separately numbered):
      dissolved_at (timestamptz nullable)
      dissolution_reason (text nullable)
      brand_opted_in_at (timestamptz nullable)
-     rep_opted_in_at (timestamptz nullable)
-     UNIQUE (brand_id, rep_id)
+     talent_opted_in_at (timestamptz nullable)
+     UNIQUE (brand_id, talent_id)
 
-2. Partnership badge in rep_profiles.badges (extend existing badges jsonb):
+2. Partnership badge in talent_profiles.badges (extend existing badges jsonb):
    When a partnership activates, append a badge entry:
      {type: 'brand_partnership', brand_id, brand_display_name,
       badge_title: 'Brand Partner: [name]',
@@ -3027,18 +3030,18 @@ SCHEMA ADDITIONS (new migration, separately numbered):
 
 3. Indexes:
      CREATE INDEX idx_partnerships_rep
-       ON brand_rep_partnerships(rep_id, status);
+       ON brand_talent_partnerships(talent_id, status);
      CREATE INDEX idx_partnerships_brand
-       ON brand_rep_partnerships(brand_id, status);
+       ON brand_talent_partnerships(brand_id, status);
      CREATE INDEX idx_partnerships_eligible
-       ON brand_rep_partnerships(status, campaigns_completed_together,
+       ON brand_talent_partnerships(status, campaigns_completed_together,
        average_rating_from_brand)
        WHERE status = 'eligible';
 
 4. RLS policies:
-     brand_rep_partnerships: brands read only their own rows
+     brand_talent_partnerships: brands read only their own rows
        (brand_id matches). Reps read only their own rows
-       (rep_id matches). Neither can directly write — all writes
+       (talent_id matches). Neither can directly write — all writes
        are through the API. Admin uses service role.
 
 ---
@@ -3057,7 +3060,7 @@ BACKEND DELIVERABLES:
         rep's submissions across all campaigns together)
      d. If: campaigns_completed_together >= 3 AND time span >= 180 days
         AND average_rating_from_brand >= 4.0:
-          Upsert brand_rep_partnerships row with status = 'eligible',
+          Upsert brand_talent_partnerships row with status = 'eligible',
           updated counts and ratings. If row already exists with
           status in ('active', 'completed', 'declined'): skip — do
           not re-trigger partnerships that have already been handled.
@@ -3071,22 +3074,22 @@ BACKEND DELIVERABLES:
    To rep: "A brand you've worked with [N] times is interested in
      formalizing your relationship as a Verified Partnership. This adds
      a credential badge to your profile. [Accept] [Decline]"
-   To parent (if rep under 16): inform the parent that a partnership
+   To parent (if talent under 16): inform the parent that a partnership
      invitation has been received; parent does not approve partnerships
      (they are credential agreements, not campaign invitations) but
      should be informed.
 
 3. Partnership opt-in (new router: app/routers/partnerships.py):
    POST /brands/partnerships/:id/accept
-     Sets brand_opted_in_at = now(). If rep_opted_in_at is also set:
+     Sets brand_opted_in_at = now(). If talent_opted_in_at is also set:
      transition to 'active', set partnership_started_at = now(),
-     append badge to rep_profiles.badges, send celebration notifications
+     append badge to talent_profiles.badges, send celebration notifications
      to both.
    POST /brands/partnerships/:id/decline
-     Sets status = 'declined'. Notifies rep politely. No badge.
-   POST /reps/partnerships/:id/accept
-     Sets rep_opted_in_at. Same logic as brand accept above.
-   POST /reps/partnerships/:id/decline
+     Sets status = 'declined'. Notifies talent politely. No badge.
+   POST /talents/partnerships/:id/accept
+     Sets talent_opted_in_at. Same logic as brand accept above.
+   POST /talents/partnerships/:id/decline
      Sets status = 'declined'. Notifies brand. No badge.
 
    Partnerships expire if neither party opts in within 30 days of the
@@ -3097,7 +3100,7 @@ BACKEND DELIVERABLES:
 4. Priority invitation integration (modify Prompt 8's campaign
    invitation flow):
    When a brand creates a campaign, check for active partnerships
-   between this brand and any available reps (reps whose categories
+   between this brand and any available talents (talents whose categories
    overlap the campaign category). Partners receive invitations with
    a 72-hour invite_expires_at rather than the standard 48 hours.
    This is automatic — no brand action required, no configuration.
@@ -3105,11 +3108,11 @@ BACKEND DELIVERABLES:
 
 5. Partnership management endpoints:
    GET /brands/partnerships — all partnerships (all statuses) with
-     rep cards, campaign history together, earnings together.
-   GET /reps/partnerships — all partnerships with brand name and
+     talent cards, campaign history together, earnings together.
+   GET /talents/partnerships — all partnerships with brand name and
      badge details.
    POST /brands/partnerships/:id/dissolve
-   POST /reps/partnerships/:id/dissolve
+   POST /talents/partnerships/:id/dissolve
      Either party can dissolve. Required: dissolution_reason (for
      audit — not shown to the other party). Sets status = 'completed',
      dissolved_at = now(). Updates rep's badge entry: active = false,
@@ -3146,16 +3149,16 @@ Rep portal (add to Prompt 6):
     on profile and profile preview.
 
 Brand portal (add to Prompt 9):
-  - Partnerships dashboard: active partnerships with rep engagement
+  - Partnerships dashboard: active partnerships with talent engagement
     metrics, campaign history, and "invite to campaign" shortcut
     for quick re-engagement.
-  - Partnership invitation card with accept/decline (mirror of rep portal).
+  - Partnership invitation card with accept/decline (mirror of talent portal).
   - Anniversary notifications: alert on the dashboard when a
     partnership anniversary approaches.
 
 Recruiter portal (add to Prompt 12):
   - Partnership filter in search.
-  - Partnership credentials visible on rep profile detail view.
+  - Partnership credentials visible on talent profile detail view.
 
 ---
 
@@ -3174,20 +3177,20 @@ Opt-in flow:
   - Brand accepts before rep: status remains 'eligible', partnership
     not activated.
   - Both accept: status transitions to 'active', badge appended to
-    rep_profiles.badges.
+    talent_profiles.badges.
   - Either declines: status transitions to 'declined', other party
     notified, no badge.
 
 Dissolution:
   - Dissolving an active partnership sets active: false on the badge
-    entry but does not remove the badge from rep_profiles.badges —
+    entry but does not remove the badge from talent_profiles.badges —
     the historical credential persists.
   - Dissolution reason is stored server-side but not sent to the
     other party in any notification.
 
 Priority window:
   - A campaign created by a brand with an active partnership to a
-    matching-category rep sends that rep an invitation with 72-hour
+    matching-category talent sends that talent an invitation with 72-hour
     expiry, not 48-hour.
 
 No-trigger safety:
@@ -3219,21 +3222,21 @@ be updated to reflect 8G before this prompt is executed.
 
 ```
 Implement skill challenges — an open, low-commitment submission surface
-where brands post creative briefs that any matching rep can respond to
+where brands post creative briefs that any matching talent can respond to
 without a formal campaign relationship. Challenges are how brands
-discover talent before committing campaign budget. For reps, challenges
+discover talent before committing campaign budget. For talents, challenges
 are a way to build profile depth and earn potential campaign invitations
 even before being directly approached by a brand.
 
 THE FUNDAMENTAL DISTINCTION FROM CAMPAIGNS — enforce this everywhere:
 
   Campaigns: formal relationship, guaranteed payout, FTC disclosure
-    required, parent approval required for under-16, rep is invited
+    required, parent approval required for under-16, talent is invited
     by the brand.
   Challenges: open audition, NO guaranteed payout, NO FTC disclosure
     (no compensation means no sponsored content), NO parent approval
     required (no financial transaction involving a minor), any matching
-    rep can submit, brand discovers talent.
+    talent can submit, brand discovers talent.
 
 This distinction is the legal and safety architecture. A challenge that
 offers compensation is a campaign and must use the full campaign flow.
@@ -3241,7 +3244,7 @@ A challenge that offers only the possibility of a future campaign
 invitation is categorically different and subject to different rules.
 
 The pre-challenge disclosure is NOT optional UI copy. It is a server-
-enforced contract. A rep submitting via direct API call without seeing
+enforced contract. A talent submitting via direct API call without seeing
 the disclosure UI is still submitting to a system that never promised
 payment. The schema and API response must make this explicit.
 
@@ -3249,7 +3252,7 @@ COMPENSATION DESIGN — read before building:
 
   Challenges are unpaid by design. However, when a brand converts a
   challenge submission to a campaign invitation, the platform pays a
-  small conversion bonus to the rep from platform margin — not from
+  small conversion bonus to the talent from platform margin — not from
   the brand. This bonus signals that creative effort has real value
   and that the platform respects the rep's time even when they did
   not know upfront whether their work would convert.
@@ -3258,7 +3261,7 @@ COMPENSATION DESIGN — read before building:
   CHALLENGE_CONVERSION_BONUS_CENTS (starting value: 750 cents = $7.50).
   This is a platform cost, not a brand charge. Document it as a rep
   acquisition cost — the platform spends $7.50 to convert a passive
-  rep into an active campaign participant, which is a fraction of the
+  talent into an active campaign participant, which is a fraction of the
   cost of any other acquisition channel.
 
   All conversion bonuses flow through the existing Stripe Connect
@@ -3266,17 +3269,17 @@ COMPENSATION DESIGN — read before building:
 
 TEEN AND PARENT EXPECTATION MANAGEMENT:
 
-  Some reps and parents will expect payment for challenge submissions.
+  Some talents and parents will expect payment for challenge submissions.
   The platform handles this through radical transparency, not fine print:
     - The challenge submission flow states clearly before any work is
-      done: "Challenges are unpaid. Brands use them to discover reps
+      done: "Challenges are unpaid. Brands use them to discover talents
       for paid campaigns. If a brand invites you to a campaign based
       on your submission, you receive a $7.50 discovery bonus from
       Teenure — but this is not guaranteed."
     - The parent portal shows all challenge activity and any conversion
       bonuses earned, so parents always know what their child submitted
       to and what they received.
-    - Declined submissions are never shown to reps (protects confidence)
+    - Declined submissions are never shown to talents (protects confidence)
       but ARE shown in aggregate in the parent dashboard ("submitted to
       4 challenges, 1 converted, $7.50 earned") so parents have the
       full picture.
@@ -3295,7 +3298,7 @@ migrations — do not alter any existing migration file):
      category (text not null — must be a value from the centrally-
        defined category list in Prompt 5; enforce at API layer)
      target_cities (text[] not null default '{}' — empty array means
-       all cities; non-empty means only reps in those cities)
+       all cities; non-empty means only talents in those cities)
      submission_format (text not null default 'both'
        check (submission_format in ('text', 'file', 'both')))
      submission_prompt (text not null — specific instruction to the rep:
@@ -3314,7 +3317,7 @@ migrations — do not alter any existing migration file):
      id (UUID PK default gen_random_uuid())
      challenge_id (UUID not null references challenges(id)
        on delete restrict)
-     rep_id (UUID not null references rep_profiles(id)
+     talent_id (UUID not null references talent_profiles(id)
        on delete restrict)
      submission_text (text nullable)
      submission_file_urls (text[] not null default '{}')
@@ -3334,9 +3337,9 @@ migrations — do not alter any existing migration file):
      reviewed_at (timestamptz nullable)
      converted_at (timestamptz nullable)
      paid_at (timestamptz nullable)
-     UNIQUE (challenge_id, rep_id)
+     UNIQUE (challenge_id, talent_id)
 
-3. Add to rep_profiles:
+3. Add to talent_profiles:
      challenges_submitted_count (integer not null default 0)
      challenges_converted_count (integer not null default 0)
    These are cached counts updated on submission and conversion.
@@ -3352,7 +3355,7 @@ migrations — do not alter any existing migration file):
      CREATE INDEX idx_challenges_brand
        ON challenges(brand_id, status);
      CREATE INDEX idx_challenge_submissions_rep
-       ON challenge_submissions(rep_id, status);
+       ON challenge_submissions(talent_id, status);
      CREATE INDEX idx_challenge_submissions_challenge
        ON challenge_submissions(challenge_id, status);
      CREATE INDEX idx_challenge_submissions_payout
@@ -3366,14 +3369,14 @@ migrations — do not alter any existing migration file):
      challenges:
        Brands read and write only their own challenges (brand_id matches
        authenticated brand's brand_profiles.id). Reps read only active
-       challenges (status = 'active'). No rep can read draft or closed
+       challenges (status = 'active'). No talent can read draft or closed
        challenges. Recruiters and parents have no direct table access.
        Admin uses service role.
 
      challenge_submissions:
-       Reps read and write only their own rows (rep_id matches
-       authenticated rep's rep_profiles.id). Brands read all submissions
-       for challenges they own. Reps cannot read other reps' submissions
+       Reps read and write only their own rows (talent_id matches
+       authenticated rep's talent_profiles.id). Brands read all submissions
+       for challenges they own. Reps cannot read other talents' submissions
        under any circumstances — submissions are never public. Recruiters
        and parents have no direct table access. Admin uses service role.
 
@@ -3427,9 +3430,9 @@ BACKEND DELIVERABLES:
 
    GET /brands/challenges/:id/submissions
      All submissions for a brand's challenge. Returns per submission:
-       - rep_id (opaque UUID only — brand cannot directly identify the
-         rep from this field alone)
-       - rep display_name, city, categories, profile_completeness_score,
+       - talent_id (opaque UUID only — brand cannot directly identify the
+         talent from this field alone)
+       - talent display_name, city, categories, profile_completeness_score,
          campaigns_completed, average_rating, challenges_converted_count,
          derived conversion_rate — this is the no-PII card for challenge
          context
@@ -3439,25 +3442,25 @@ BACKEND DELIVERABLES:
          declined submissions show as 'reviewed' from the brand's list
          perspective — the decline was their action)
      Does NOT include: brand_note (that is internal server state),
-     rep Instagram/TikTok handles, school name, date of birth, or any
+     talent Instagram/TikTok handles, school name, date of birth, or any
      other PII not listed above.
 
      Full profile view: in the challenge submission context, a brand may
-     view a rep's full profile (GET /reps/:id/profile — add this brand-
+     view a rep's full profile (GET /talents/:id/profile — add this brand-
      facing endpoint if it does not already exist from Prompt 8's
      implementation) without spending a recruiter credit. The rep
      submitted voluntarily to the brand's challenge; the brand has
      implicit context to view their full profile. Document this decision
      explicitly so it does not conflict with the recruiter credit model:
      recruiter credit applies to cold discovery. Challenge submission
-     is warm discovery — the rep initiated contact by submitting.
+     is warm discovery — the talent initiated contact by submitting.
 
 3. Brand submission review actions:
 
    POST /brands/challenges/:id/submissions/:submission_id/review
      Marks submission as reviewed. Accepts optional brand_note (internal
      only — never returned in any rep-facing endpoint). Sets status
-     'submitted' → 'reviewed'. No rep notification. Reviewed is a brand-
+     'submitted' → 'reviewed'. No talent notification. Reviewed is a brand-
      internal state for managing their inbox.
 
    POST /brands/challenges/:id/submissions/:submission_id/convert
@@ -3468,8 +3471,8 @@ BACKEND DELIVERABLES:
           challenge, status is 'submitted' or 'reviewed' (not already
           'converted' or 'declined').
        b. Validate: campaign_id is active, belongs to this brand,
-          has available rep slots (reps_accepted_count < max_reps).
-       c. Create a campaign_reps invitation row for this rep on this
+          has available talent slots (reps_accepted_count < max_reps).
+       c. Create a campaign_reps invitation row for this talent on this
           campaign — status 'invited', invite_expires_at set per the
           standard 48-hour window. This invitation is identical in
           structure to a direct brand invitation from Prompt 8. The
@@ -3485,8 +3488,8 @@ BACKEND DELIVERABLES:
           challenge_submission_id) — a new function in payout_service
           (see deliverable 5).
        i. Update challenges.conversion_count (+1).
-       j. Update rep_profiles.challenges_converted_count (+1).
-       k. Notify rep via email: "A brand loved your challenge submission
+       j. Update talent_profiles.challenges_converted_count (+1).
+       k. Notify talent via email: "A brand loved your challenge submission
           and has invited you to a paid campaign. You've also earned a
           $7.50 discovery bonus from Teenure." The bonus amount should
           be formatted from CHALLENGE_CONVERSION_BONUS_CENTS, not
@@ -3499,32 +3502,32 @@ BACKEND DELIVERABLES:
      a duplicate payout.
 
    POST /brands/challenges/:id/submissions/:submission_id/decline
-     Sets status → 'declined'. Idempotent. No rep notification —
+     Sets status → 'declined'. Idempotent. No talent notification —
      declined submissions are silently archived. Reps see their own
      submission status as 'submitted', 'reviewed', or 'converted' only.
      'declined' is never returned in any rep-facing endpoint. This is a
-     deliberate UX decision: protecting rep confidence, especially for
+     deliberate UX decision: protecting talent confidence, especially for
      younger users who may internalize rejection disproportionately.
 
-4. Rep challenge discovery and submission:
+4. talent challenge discovery and submission:
 
-   GET /reps/challenges/available
+   GET /talents/challenges/available
      Active challenges where:
        - challenge.category intersects rep's categories (same logic as
          campaign matching from Prompt 5)
        - challenge.target_cities matches rep's city, OR target_cities
          is empty (all cities)
-       - rep does not already have a challenge_submission row for this
+       - talent does not already have a challenge_submission row for this
          challenge (already submitted)
        - challenge is not closed and max_submissions has not been reached
          (submissions_count < max_submissions, or max_submissions is null)
      Does NOT apply parent values_filter — challenges are unpaid, do not
      involve a brand relationship, and do not require parent approval.
-     However: if the rep is under 16 and parent campaign_approval_required
+     However: if the talent is under 16 and parent campaign_approval_required
      is TRUE, challenges are still available — the approval gate is
      specific to paid campaigns. Document this decision.
 
-   GET /reps/challenges/submitted
+   GET /talents/challenges/submitted
      Rep's own submission history. Returns: challenge title, category,
      submitted_at, status — but status mapping for rep-facing output:
        'submitted' → 'submitted'
@@ -3533,15 +3536,15 @@ BACKEND DELIVERABLES:
        'converted' → 'converted' (with campaign name and payout_cents)
        'declined' → never returned, row excluded from this endpoint
      If status is 'converted': include the campaign they were invited to
-     (campaign title, payout_per_rep_cents) and the conversion bonus
+     (campaign title, payout_per_talent_cents) and the conversion bonus
      amount (payout_cents). This is the direct line from effort to
      outcome that makes challenges worth doing.
 
-   POST /reps/challenges/:id/submit
+   POST /talents/challenges/:id/submit
      Creates a challenge_submission row. Process:
        a. Validate challenge is active.
        b. Validate max_submissions not exceeded.
-       c. Validate rep has not already submitted (UNIQUE constraint will
+       c. Validate talent has not already submitted (UNIQUE constraint will
           catch this, but return a clear error before hitting the
           constraint: "You have already submitted to this challenge").
        d. Validate submission content matches submission_format: if format
@@ -3554,12 +3557,12 @@ BACKEND DELIVERABLES:
           required. Challenges are unpaid brand discovery tools. Your
           submission may result in a paid campaign invitation, but this
           is not guaranteed." This is the server-side enforcement of the
-          pre-challenge disclosure — a rep who calls this endpoint via
+          pre-challenge disclosure — a talent who calls this endpoint via
           direct API without the disclosure UI must still acknowledge the
           terms, or the submission is rejected.
        f. Create challenge_submission row.
        g. Increment challenges.submissions_count (+1, atomic).
-       h. Increment rep_profiles.challenges_submitted_count (+1).
+       h. Increment talent_profiles.challenges_submitted_count (+1).
        i. Return the created submission with status 'submitted'. Do not
           return an estimated response time or any implication that the
           brand will respond. Neutral confirmation only.
@@ -3571,13 +3574,13 @@ BACKEND DELIVERABLES:
          status = 'converted'
          payout_cents is not null and > 0
          payout_status = 'pending' (not already processing or paid)
-         rep has a completed Stripe Connect account (same check as
+         talent has a completed Stripe Connect account (same check as
            release_payout from Prompt 10)
      - Create a Stripe Transfer from the platform account to the rep's
        Connected Account for payout_cents. Transfer metadata:
          payment_type: 'challenge_conversion_bonus'
          challenge_submission_id: <id>
-         rep_id: <rep_id>
+         talent_id: <talent_id>
      - Set payout_status → 'processing', store stripe_transfer_id.
      - Idempotent: if stripe_transfer_id already exists on this row,
        return without creating a duplicate Transfer. This is the
@@ -3588,7 +3591,7 @@ BACKEND DELIVERABLES:
 
    transfer.paid where metadata.payment_type = 'challenge_conversion_bonus':
      → challenge_submissions.payout_status → 'paid', set paid_at
-     → update rep_profiles.total_earnings_cents (same cached-field
+     → update talent_profiles.total_earnings_cents (same cached-field
        recompute mechanism from Prompt 10 — challenge conversion bonuses
        count toward the rep's total lifetime earnings)
    transfer.failed where metadata.payment_type = 'challenge_conversion_bonus':
@@ -3611,11 +3614,11 @@ BACKEND DELIVERABLES:
    challenge_id, closes_at, and the timestamp of closure.
 
 8. Profile serializer additions:
-   Add to the rep profile serializer used by:
-     - GET /reps/me
-     - GET /reps/me/profile-preview
-     - Brand-facing rep browse (GET /brands/campaigns/:id/reps/browse)
-     - Recruiter search results (GET /recruiters/reps/search)
+   Add to the talent profile serializer used by:
+     - GET /talents/me
+     - GET /talents/me/profile-preview
+     - Brand-facing talent browse (GET /brands/campaigns/:id/talents/browse)
+     - Recruiter search results (GET /recruiters/talents/search)
    Fields to add:
      challenges_submitted_count (integer)
      challenges_converted_count (integer)
@@ -3639,7 +3642,7 @@ BACKEND DELIVERABLES:
      - Top categories by submission volume
      - Brands with highest conversion rates (a quality signal — a brand
        that converts 40% of submissions is a better platform partner
-       than one that converts 5% and wastes rep effort)
+       than one that converts 5% and wastes talent effort)
      - Brands with zero conversions after 30+ submissions (a warning
        signal — these brands may be using challenges to harvest creative
        work without paying for campaigns)
@@ -3655,10 +3658,10 @@ BACKEND DELIVERABLES:
           bonus_earned_cents if converted]
       }
     Parents see aggregate challenge activity and bonuses earned.
-    Parents do NOT see declined submissions (same protection as reps —
+    Parents do NOT see declined submissions (same protection as talents —
     no reason to expose rejection to a parent who may pressure their
     child about it). Parents DO see 'converted' submissions including
-    the campaign the rep was invited to, because a campaign invitation
+    the campaign the talent was invited to, because a campaign invitation
     is a financial event the parent has a legitimate interest in knowing
     about before their child accepts.
 
@@ -3671,20 +3674,20 @@ Brand portal (add to Prompt 9's challenge management tab):
   - Challenge creation form: title, brief field, category selector
     (same options as campaign targeting), submission format selector,
     submission prompt field, optional max submissions and close date.
-    A preview panel showing exactly what a rep will see before the
+    A preview panel showing exactly what a talent will see before the
     brand activates.
   - Challenge list: all challenges with status, submissions_count,
     conversion_count, conversion_rate per challenge.
-  - Submissions inbox per challenge: rep no-PII card, submission
+  - Submissions inbox per challenge: talent no-PII card, submission
     content, submitted_at. Review, Convert, and Decline actions.
     Convert action requires selecting an active campaign from a
     dropdown. A clear note on the Convert action: "Converting sends
-    the rep a campaign invitation and a $7.50 Teenure discovery bonus.
+    the talent a campaign invitation and a $7.50 Teenure discovery bonus.
     This does not create a billing event — the campaign budget was
     set at campaign activation."
   - Zero-conversions warning state: if a brand has closed a challenge
     with 30+ submissions and zero conversions, surface a prompt:
-    "Consider using challenges to discover reps for active campaigns.
+    "Consider using challenges to discover talents for active campaigns.
     Reps invest time in submissions — converting the best ones builds
     your brand reputation on Teenure."
 
@@ -3726,19 +3729,19 @@ ACCEPTANCE CRITERIA:
 
 Schema and RLS:
   - brand_note is never present in any rep-facing API response payload —
-    verified by inspecting GET /reps/challenges/submitted and the
+    verified by inspecting GET /talents/challenges/submitted and the
     challenge detail response.
-  - A rep cannot read another rep's challenge_submissions rows — RLS
-    verified by attempting cross-rep access with two seeded reps.
-  - A rep cannot see declined submissions in any rep-facing endpoint —
+  - A talent cannot read another rep's challenge_submissions rows — RLS
+    verified by attempting cross-rep access with two seeded talents.
+  - A talent cannot see declined submissions in any rep-facing endpoint —
     verified by seeding a declined submission and confirming it is
-    absent from GET /reps/challenges/submitted.
+    absent from GET /talents/challenges/submitted.
 
 Disclosure enforcement:
-  - POST /reps/challenges/:id/submit with disclosure_acknowledged absent
+  - POST /talents/challenges/:id/submit with disclosure_acknowledged absent
     or false returns 400 with the correct disclosure message. Verified
     by calling the endpoint directly without a UI session.
-  - A rep who submits via direct API with disclosure_acknowledged: true
+  - A talent who submits via direct API with disclosure_acknowledged: true
     but no UI interaction creates a valid submission — the server
     does not require UI interaction, only the acknowledgment flag.
 
@@ -3759,7 +3762,7 @@ Conversion:
     Transfer — verified by calling the convert endpoint twice and
     asserting stripe_transfer_id is identical on both responses and
     only one Stripe Transfer exists.
-  - Converting a submission to a campaign with no available rep slots
+  - Converting a submission to a campaign with no available talent slots
     returns 409 "campaign is full" and does not create a
     campaign_reps row or initiate a payout.
   - The conversion transaction is atomic — if the campaign_reps
@@ -3772,7 +3775,7 @@ Payout safety:
     with a concurrency test matching the pattern from Prompt 11's
     credit deduction test.
   - transfer.paid for a challenge bonus Transfer updates only
-    challenge_submissions and rep_profiles.total_earnings_cents —
+    challenge_submissions and talent_profiles.total_earnings_cents —
     does not touch any campaign_reps or campaign payout rows.
   - transfer.paid for a campaign Transfer does not affect
     challenge_submissions rows.
@@ -3801,7 +3804,7 @@ Parent portal:
 ## 8H. Learning Modules and Verified Badges
 
 **Depends on:** Prompt 5 (Rep Portal backend — implemented), Prompt 8G
-(establishes the non-campaign rep activity pattern this prompt follows;
+(establishes the non-campaign Talent activity pattern this prompt follows;
 specifically the disclosure architecture, the profile serializer
 additions, and the admin analytics pattern).
 
@@ -3819,15 +3822,15 @@ already implemented, not open.
 
 ```
 Implement learning modules and verified badges — short, platform-curated
-educational content that reps complete to earn verified profile badges.
-Badges are issued by Teenure, not self-reported by reps. They appear on
+educational content that talents complete to earn verified profile badges.
+Badges are issued by Teenure, not self-reported by talents They appear on
 the rep's profile and are visible to brands and recruiters as verified
 credentials.
 
 PURPOSE (three distinct goals — design against all three):
 
-  1. Give new reps with zero campaigns a reason to stay active and
-     build profile depth. A rep who just signed up should land in
+  1. Give new talents with zero campaigns a reason to stay active and
+     build profile depth. A talent who just signed up should land in
      the learning hub if no campaigns are available, not a blank screen.
 
   2. Give districts and schools a curriculum hook. When district licensing
@@ -3835,16 +3838,16 @@ PURPOSE (three distinct goals — design against all three):
      The module infrastructure must support a future district-funded
      completion stipend without a rebuild (see payout_cents field below).
 
-  3. Give brands a quality signal beyond campaign count. A rep with
+  3. Give brands a quality signal beyond campaign count. A talent with
      verified FTC knowledge and client communication credentials is more
      credible than one without.
 
 COMPENSATION DESIGN — read before building:
 
   Modules are unpaid at MVP. However the schema includes a payout_cents
-  field on rep_module_completions that is null at MVP. This field exists
+  field on talent_module_completions that is null at MVP. This field exists
   to enable district-funded module completion stipends when district
-  licensing activates: a district pays Teenure, Teenure pays reps a
+  licensing activates: a district pays Teenure, Teenure pays talents a
   stipend for completing curriculum, stipend flows through Stripe Connect.
   Do not implement the payment logic now. Do implement the field so the
   payment logic can be added via a new prompt without a schema migration.
@@ -3859,7 +3862,7 @@ COMPENSATION DESIGN — read before building:
 TEEN AND PARENT EXPECTATION MANAGEMENT:
 
   Same principle as challenges: radical transparency before any work
-  is done. The disclosure is mandatory and server-enforced. A rep who
+  is done. The disclosure is mandatory and server-enforced. A talent who
   completes a module without passing the disclosure acknowledgment has
   not completed the module in the platform's view.
 
@@ -3871,23 +3874,23 @@ CONTENT GOVERNANCE:
   badge is not a verified credential. An admin-curated badge is.
 
   Module content must never be editable after activation. Archive and
-  recreate is the only path to content changes. This protects reps who
+  recreate is the only path to content changes. This protects talents who
   earned a badge on a specific version of the content — the badge they
   earned remains accurate even if the content is later updated.
 
 FTC DISCLOSURE MODULE — MANDATORY:
 
   One specific module — title: "FTC Disclosure Essentials", defined in
-  a config constant FTC_MODULE_ID — is mandatory for all reps before
+  a config constant FTC_MODULE_ID — is mandatory for all talents before
   their first campaign acceptance. This replaces the current checkbox-
   only mechanism with a verified understanding check. The checkbox at
-  campaign acceptance remains as an acknowledgment that the rep already
+  campaign acceptance remains as an acknowledgment that the talent already
   understands the requirement — it is now backed by a verified module
   completion, not just a click.
 
   The gate logic in POST /campaigns/:id/accept must be updated in this
-  prompt: before allowing accept, check that the rep has a 'passed'
-  rep_module_completions row for FTC_MODULE_ID. If not, return 403 with
+  prompt: before allowing accept, check that the talent has a 'passed'
+  talent_module_completions row for FTC_MODULE_ID. If not, return 403 with
   message: "Complete the FTC Disclosure Essentials module before
   accepting campaigns. It takes about 5 minutes and is required to
   work with brands on Teenure."
@@ -3901,7 +3904,7 @@ SCHEMA ADDITIONS (new migration, separately numbered):
      title (text not null)
      description (text not null)
      category (text nullable — if set, this module is especially
-       relevant to reps in this category; null means relevant to all)
+       relevant to talents in this category; null means relevant to all)
      content_blocks (jsonb not null — ordered array. Each element:
        {
          "type": "text" | "video_url" | "image_url" | "quiz",
@@ -3917,14 +3920,14 @@ SCHEMA ADDITIONS (new migration, separately numbered):
        The correct_index field in quiz blocks is stored server-side and
        evaluated server-side. It must never appear in any client-facing
        API response regardless of authentication role — including admin
-       preview mode. Admin previews the module as a rep sees it, with
+       preview mode. Admin previews the module as a talent sees it, with
        correct answers hidden. This is enforced by a dedicated module
        serializer that strips correct_index from all outbound responses.)
      passing_score (integer nullable — minimum percentage correct to
        pass. null means no quiz; completion on content view alone)
      badge_title (text not null)
      badge_description (text not null — one sentence explaining what
-       the rep demonstrated)
+       the talent demonstrated)
      badge_color (text not null — hex color e.g. '#6C3FC5')
      badge_icon (text nullable — icon name from the shared icon set)
      estimated_minutes (integer not null)
@@ -3933,9 +3936,9 @@ SCHEMA ADDITIONS (new migration, separately numbered):
      created_at (timestamptz not null default now())
      updated_at (timestamptz not null default now())
 
-2. New table: rep_module_completions
+2. New table: talent_module_completions
      id (UUID PK default gen_random_uuid())
-     rep_id (UUID not null references rep_profiles(id) on delete restrict)
+     talent_id (UUID not null references talent_profiles(id) on delete restrict)
      module_id (UUID not null references learning_modules(id)
        on delete restrict)
      status (text not null default 'in_progress'
@@ -3949,7 +3952,7 @@ SCHEMA ADDITIONS (new migration, separately numbered):
        separate field anticipates future where badge issuance could be
        decoupled from completion)
      disclosure_acknowledged_at (timestamptz nullable — set when the
-       rep acknowledges the pre-module disclosure; required before
+       talent acknowledges the pre-module disclosure; required before
        start is recorded)
      payout_cents (integer nullable default null — null at MVP; set
        to the district stipend amount when district licensing activates;
@@ -3958,17 +3961,17 @@ SCHEMA ADDITIONS (new migration, separately numbered):
        check (payout_status in (null, 'pending', 'processing',
        'paid', 'failed')))
      stripe_transfer_id (text nullable unique)
-     UNIQUE (rep_id, module_id) — one completion record per rep per
+     UNIQUE (talent_id, module_id) — one completion record per talent per
        module; retakes update the existing row, never create a new one
 
-3. Add to rep_profiles:
+3. Add to talent_profiles:
      badges (jsonb not null default '[]' — denormalized array of
        earned badge data for fast profile rendering:
        [{"module_id": "uuid", "badge_title": "string",
          "badge_description": "string", "badge_color": "#hex",
          "badge_icon": "string|null", "earned_at": "iso8601"}]
-       Updated atomically with rep_module_completions when a module
-       is passed. The badges jsonb is for display; rep_module_completions
+       Updated atomically with talent_module_completions when a module
+       is passed. The badges jsonb is for display; talent_module_completions
        is the source of truth for audit.)
      badges_earned_count (integer not null default 0 — cached count,
        updated when badges jsonb is appended to)
@@ -3992,10 +3995,10 @@ SCHEMA ADDITIONS (new migration, separately numbered):
 6. Indexes:
      CREATE INDEX idx_learning_modules_status
        ON learning_modules(status) WHERE status = 'active';
-     CREATE INDEX idx_rep_module_completions_rep
-       ON rep_module_completions(rep_id, status);
-     CREATE INDEX idx_rep_module_completions_ftc
-       ON rep_module_completions(module_id, rep_id, status)
+     CREATE INDEX idx_talent_module_completions_rep
+       ON talent_module_completions(talent_id, status);
+     CREATE INDEX idx_talent_module_completions_ftc
+       ON talent_module_completions(module_id, talent_id, status)
        WHERE status = 'passed';
        (This index specifically optimizes the FTC gate check on
        campaign accept, which runs on every accept action.)
@@ -4008,8 +4011,8 @@ SCHEMA ADDITIONS (new migration, separately numbered):
        (status = 'active'). Only admin (service role) can read draft
        or archived modules, and can insert, update, or delete.
 
-     rep_module_completions:
-       Reps can SELECT and UPDATE only their own rows (rep_id matches).
+     talent_module_completions:
+       Reps can SELECT and UPDATE only their own rows (talent_id matches).
        Reps can INSERT only their own rows. Admin uses service role.
        No other role has direct table access.
 
@@ -4046,7 +4049,7 @@ BACKEND DELIVERABLES:
    POST /admin/modules/:id/activate
      Validates: all required fields present, content_blocks is valid,
      passing_score is consistent with quiz presence. Transitions
-     'draft' → 'active'. Once active, the module is visible to reps
+     'draft' → 'active'. Once active, the module is visible to talents
      and completions can be recorded.
 
    POST /admin/modules/:id/archive
@@ -4056,7 +4059,7 @@ BACKEND DELIVERABLES:
      In-progress completions (status = 'in_progress') are orphaned —
      document how to handle: return them as 'in_progress' in rep-facing
      endpoints with a message "This module is no longer available" if
-     the rep tries to complete it.
+     the talent tries to complete it.
 
    GET /admin/modules
      All modules (all statuses) with: completion_count (total passed),
@@ -4070,8 +4073,8 @@ BACKEND DELIVERABLES:
    logic:
 
    If FTC_MODULE_ID is set (non-empty string in config):
-     Check for a rep_module_completions row where:
-       rep_id = current rep
+     Check for a talent_module_completions row where:
+       talent_id = current rep
        module_id = FTC_MODULE_ID
        status = 'passed'
      If no such row exists:
@@ -4092,33 +4095,33 @@ BACKEND DELIVERABLES:
    criteria and must be added to the Prompt 15 compliance audit
    checklist as item 10.
 
-3. Rep module discovery and progress:
+3. talent module discovery and progress:
 
-   GET /reps/modules/available
-     Active modules the rep has NOT passed (no 'passed' row in
-     rep_module_completions). Include modules with 'in_progress' or
+   GET /talents/modules/available
+     Active modules the talent has NOT passed (no 'passed' row in
+     talent_module_completions). Include modules with 'in_progress' or
      'failed' rows — those are available to continue or retake.
      Sorted: FTC module first (always), then category-matched modules,
      then general modules. For each module: id, title, description,
      category, badge_title, badge_description, badge_color, badge_icon,
      estimated_minutes, passing_score (as a percentage, e.g. 80),
-     rep_progress (object: status, attempts, quiz_score, last_attempt_at
+     talent_progress (object: status, attempts, quiz_score, last_attempt_at
      — or null if no completion row exists yet).
 
-   GET /reps/modules/completed
-     Modules the rep has passed. Returns full badge details and
+   GET /talents/modules/completed
+     Modules the talent has passed. Returns full badge details and
      passed_at. This is the source of truth for badge history — the
-     badges jsonb on rep_profiles is for display; this endpoint is for
+     badges jsonb on talent_profiles is for display; this endpoint is for
      the complete audit trail.
 
-   GET /reps/modules/:id
+   GET /talents/modules/:id
      Full module content using ModulePublicSerializer — content_blocks
      with correct_index STRIPPED from all quiz questions. Every field
      present except correct_index. The frontend renders content blocks
      in order; the quiz question format includes options but no answer.
 
 4. Module start:
-   POST /reps/modules/:id/start
+   POST /talents/modules/:id/start
      Body must include: disclosure_acknowledged: true
      If absent or false: return 400 with message:
        "Module disclosure acknowledgment required. This module is
@@ -4136,21 +4139,21 @@ BACKEND DELIVERABLES:
            "available_at": "<iso8601 timestamp>"}}
        The available_at field allows the frontend to show a precise
        countdown without a separate server call.
-     Upsert the rep_module_completions row:
+     Upsert the talent_module_completions row:
        If no row exists: INSERT with status 'in_progress', attempts 1
        If row exists with status 'failed': UPDATE status →
          'in_progress', increment attempts, set last_attempt_at = now()
        Set disclosure_acknowledged_at = now() in both cases.
-     Returns the module content (same as GET /reps/modules/:id) plus
+     Returns the module content (same as GET /talents/modules/:id) plus
      the rep's current completion record.
 
 5. Module completion:
-   POST /reps/modules/:id/complete
+   POST /talents/modules/:id/complete
      Body: {"answers": [integer, integer, ...]} — one answer index per
      quiz question in content_block order. For modules with no quiz:
      empty array is valid and the module passes immediately.
      Process:
-       a. Validate rep has an 'in_progress' completion row (cannot
+       a. Validate talent has an 'in_progress' completion row (cannot
           complete without starting — 409 if no in_progress row).
        b. Validate module is still active (not archived mid-session —
           rare but possible; return 410 Gone with explanation).
@@ -4167,39 +4170,39 @@ BACKEND DELIVERABLES:
             If quiz_score >= passing_score: passed.
             Else: failed.
        g. On pass:
-            Update rep_module_completions: status → 'passed',
+            Update talent_module_completions: status → 'passed',
               quiz_score, passed_at = now(), badge_issued_at = now()
-            Append to rep_profiles.badges atomically:
+            Append to talent_profiles.badges atomically:
               {module_id, badge_title, badge_description, badge_color,
                badge_icon, earned_at: now()}
-            Increment rep_profiles.badges_earned_count (+1)
-            Recompute rep_profiles.profile_completeness_score using the
+            Increment talent_profiles.badges_earned_count (+1)
+            Recompute talent_profiles.profile_completeness_score using the
               centrally-defined scoring function (which now includes
               badge contribution)
             Return: {passed: true, quiz_score, badge: {badge_title,
               badge_description, badge_color, badge_icon},
               profile_completeness_score: <new score>}
        h. On fail:
-            Update rep_module_completions: status → 'failed', quiz_score,
+            Update talent_module_completions: status → 'failed', quiz_score,
               last_attempt_at = now()
             Return: {passed: false, quiz_score, passing_score,
               correct_answers: [{question_index, correct_index,
-              rep_answer_index}] — return which questions the rep got
+              talent_answer_index}] — return which questions the talent got
               wrong with the correct answers. This is a learning tool.
               Showing correct answers after failure is intentional.
-              Do NOT return correct answers for questions the rep got
+              Do NOT return correct answers for questions the talent got
               right.}
        Steps g must execute atomically: if the badges jsonb append fails,
-       the completion status must not be set to 'passed'. A rep whose
+       the completion status must not be set to 'passed'. A talent whose
        module passed but whose badge was not issued is in an inconsistent
        state that requires manual admin resolution.
 
 6. Badge display in profile serializers:
-   Add badges (full array from rep_profiles.badges) and
+   Add badges (full array from talent_profiles.badges) and
    badges_earned_count to:
-     - GET /reps/me (full array)
-     - GET /reps/me/profile-preview (full array)
-     - Brand-facing rep browse: badge_count and badge_titles array only
+     - GET /talents/me (full array)
+     - GET /talents/me/profile-preview (full array)
+     - Brand-facing talent browse: badge_count and badge_titles array only
        (enough for brand to see credentials without full badge detail)
      - Recruiter search results (no-PII cards): badge_count and
        badge_titles — no credit required to see badge count and titles.
@@ -4236,9 +4239,9 @@ BACKEND DELIVERABLES:
      - Total modules (by status)
      - Total completions (by status: in_progress, passed, failed)
      - Per-module: pass_rate, average_attempts, completion_count
-     - FTC module specifically: what percentage of reps who have
+     - FTC module specifically: what percentage of talents who have
        tried to accept a campaign have the FTC module passed? This
-       is a launch readiness metric — if it is low, reps are hitting
+       is a launch readiness metric — if it is low, talents are hitting
        the gate and bouncing.
      - Badge distribution: which badges are most earned, by category
      - Modules with pass_rate < 50%: flag these for content review
@@ -4253,7 +4256,7 @@ FRONTEND ADDITIONS:
 Rep portal (add to Prompt 6 as the learning hub):
   - Learning Hub: a dedicated section accessible from the main
     navigation (not buried in settings or profile). After onboarding,
-    if no campaigns are available, the rep lands here by default rather
+    if no campaigns are available, the talent lands here by default rather
     than an empty dashboard.
   - Module list: available modules (not yet passed). FTC module pinned
     to the top with a badge: "Required before campaigns." Category-
@@ -4289,10 +4292,10 @@ Rep portal (add to Prompt 6 as the learning hub):
     and "Continue Learning." No confetti, no points, no score display
     on the pass screen — the badge is the reward, not the score.
   - Fail screen: "Not quite — review and try again in 24 hours."
-    Show the questions the rep got wrong and the correct answers (not
+    Show the questions the talent got wrong and the correct answers (not
     the ones they got right). Countdown timer to retake availability.
     Warm, encouraging tone. Not "You failed" — "Almost there."
-  - FTC module gate modal: if a rep tries to accept a campaign before
+  - FTC module gate modal: if a talent tries to accept a campaign before
     passing the FTC module, show a modal (not a redirect):
       "Before accepting campaigns, complete the FTC Disclosure
       Essentials module. It takes about 5 minutes and ensures you
@@ -4302,7 +4305,7 @@ Rep portal (add to Prompt 6 as the learning hub):
     Do not reject silently. Do not redirect without explanation.
   - Badge display on profile preview: badges rendered as colored chips
     with badge_title. Tap/hover shows badge_description and earned_at.
-    Same rendering in profile preview mode so reps see exactly what
+    Same rendering in profile preview mode so talents see exactly what
     brands and recruiters see before opting into visibility.
   - Mobile-first: all learning hub surfaces must pass the 375px
     viewport check. Quiz options must be large enough to tap without
@@ -4322,7 +4325,7 @@ Admin portal (add to Prompt 13's admin frontend):
     Passing score input (shown only when quiz blocks are present).
     Badge configuration: title, description, color picker, icon selector.
     Estimated minutes input.
-  - Preview mode: renders the module exactly as a rep sees it, with
+  - Preview mode: renders the module exactly as a talent sees it, with
     correct answers hidden. Admin cannot see correct answers in preview.
     This enforces the security model at the UI level — the API already
     enforces it server-side, the UI should too.
@@ -4335,61 +4338,61 @@ Admin portal (add to Prompt 13's admin frontend):
 ACCEPTANCE CRITERIA:
 
 Security — correct answers never exposed:
-  - GET /reps/modules/:id response payload contains no correct_index
+  - GET /talents/modules/:id response payload contains no correct_index
     field anywhere in the content_blocks structure — verified by
     recursively searching the JSON response for the key "correct_index".
   - GET /admin/modules/:id response payload contains no correct_index
     field — same verification. Admin sees the module structure but
     not the answer key via the API.
-  - POST /reps/modules/:id/complete rejects if the request body
+  - POST /talents/modules/:id/complete rejects if the request body
     contains correct answer indices submitted by the client — the
     server fetches correct answers independently and ignores any
     correct-answer-adjacent fields in the request body.
 
 Disclosure enforcement:
-  - POST /reps/modules/:id/start with disclosure_acknowledged absent
+  - POST /talents/modules/:id/start with disclosure_acknowledged absent
     or false returns 400 with the correct message — verified by direct
     API call without UI session.
 
 FTC gate:
-  - POST /campaigns/:id/accept with a rep who has no FTC module
+  - POST /campaigns/:id/accept with a talent who has no FTC module
     completion returns 403 with code "ftc_module_required" and
     module_id in the error body.
-  - POST /campaigns/:id/accept with a rep who has a 'failed' FTC
+  - POST /campaigns/:id/accept with a talent who has a 'failed' FTC
     module completion returns 403 (failed is not passed).
-  - POST /campaigns/:id/accept with a rep who has a 'passed' FTC
+  - POST /campaigns/:id/accept with a talent who has a 'passed' FTC
     module completion proceeds normally.
   - If FTC_MODULE_ID is not configured (empty string), the gate is
     skipped and a warning is logged — acceptance proceeds normally.
   - These four cases must each have a named pytest test.
 
 Retake cooldown:
-  - POST /reps/modules/:id/start for a rep with a 'failed' row and
+  - POST /talents/modules/:id/start for a talent with a 'failed' row and
     last_attempt_at within 24 hours returns 429 with available_at.
-  - POST /reps/modules/:id/start for a rep with a 'failed' row and
+  - POST /talents/modules/:id/start for a talent with a 'failed' row and
     last_attempt_at more than 24 hours ago succeeds.
-  - POST /reps/modules/:id/start for a rep with a 'passed' row
+  - POST /talents/modules/:id/start for a talent with a 'passed' row
     returns 409 "already completed."
 
 Completion atomicity:
-  - Passing a module updates rep_module_completions, rep_profiles.badges,
-    and rep_profiles.badges_earned_count atomically — if the badges
+  - Passing a module updates talent_module_completions, talent_profiles.badges,
+    and talent_profiles.badges_earned_count atomically — if the badges
     append fails, the completion status is not set to 'passed'. Verified
     by mocking a database failure mid-transaction and asserting the
     rolled-back state.
-  - Failing a module does not modify rep_profiles.badges.
+  - Failing a module does not modify talent_profiles.badges.
 
 Badge in serializers:
   - badges_earned_count appears in recruiter no-PII search result cards
     without a credit spend — verified by calling the search endpoint
     and asserting the field is present.
-  - badge_titles array appears in brand-facing rep browse — verified
-    by seeding a rep with badges and calling the browse endpoint.
+  - badge_titles array appears in brand-facing talent browse — verified
+    by seeding a talent with badges and calling the browse endpoint.
 
 Module content protection:
   - An archived module cannot be started (400 with explanation).
   - An in_progress completion on an archived module returns a clear
-    message when the rep attempts to complete it.
+    message when the talent attempts to complete it.
 
 Prompt 15 compliance update:
   - Add item 10 to the compliance checklist: "FTC module gate on
@@ -4398,19 +4401,19 @@ Prompt 15 compliance update:
     FTC_MODULE_ID configured)."
   - Add item 11: "Module correct answers never present in any API
     response — verified by recursive key search on representative
-    responses from GET /reps/modules/:id and GET /admin/modules."
+    responses from GET /talents/modules/:id and GET /admin/modules."
 
 Prompt 19 PostHog update:
   Add these events to the instrumentation list:
-    - module_started (module_id, category — no rep identity)
-    - module_passed (module_id, quiz_score, attempts — no rep identity)
-    - module_failed (module_id, quiz_score, attempts — no rep identity)
-    - ftc_gate_triggered (when a rep hits the FTC gate — critical
-      funnel metric; high volume here means reps are ready to accept
+    - module_started (module_id, category — no talent identity)
+    - module_passed (module_id, quiz_score, attempts — no talent identity)
+    - module_failed (module_id, quiz_score, attempts — no talent identity)
+    - ftc_gate_triggered (when a talent hits the FTC gate — critical
+      funnel metric; high volume here means talents are ready to accept
       campaigns but haven't completed the module)
-    - badge_earned (badge_title, module category — no rep identity)
-    - challenge_submitted (category — no rep identity)
-    - challenge_converted (category, bonus_amount — no rep identity)
+    - badge_earned (badge_title, module category — no talent identity)
+    - challenge_submitted (category — no talent identity)
+    - challenge_converted (category, bonus_amount — no talent identity)
 ```
 
 ---
@@ -4445,10 +4448,10 @@ Photoshop: the layout is Teenure's, the substance is theirs.
 
 1. **Scholarship Template** — brand name/logo, scholarship title, award
    amount, number of awards, eligibility criteria (structured checklist
-   + free text), application requirements, deadline, a required
-   150-word-max "why we're offering this" statement (keeps it from
-   reading like a pure ad), optional pre-approved image/short video
-   (no autoplay).
+   - free text), application requirements, deadline, a required
+     150-word-max "why we're offering this" statement (keeps it from
+     reading like a pure ad), optional pre-approved image/short video
+     (no autoplay).
 2. **Skills Challenge Template** — content layer over the Prompt 8G
    `challenges` submission mechanics: brand name/logo, challenge title,
    prize/reward, structured description (goal, rules, judging
@@ -4477,7 +4480,7 @@ Photoshop: the layout is Teenure's, the substance is theirs.
    **The pseudonym system is the load-bearing safeguard for this
    template — do not build the campaign flow without it:**
    - Every teen has one persistent pseudonymous handle (e.g.
-     "Contributor_4B7") that the *brand* sees across every campaign. It
+     "Contributor*4B7") that the \_brand* sees across every campaign. It
      never resets per-campaign, so a brand can recognize a repeat
      contributor and the contributor can build reputation.
    - The brand only ever sees the handle, aggregated ratings, and
@@ -4528,6 +4531,7 @@ Photoshop: the layout is Teenure's, the substance is theirs.
    campaigns pulled from templates 1–4.
 
 **Content rules across every template:**
+
 - No open external links to unmoderated pages — route everything
   through Teenure-hosted or reviewed pages.
 - No comment sections, no reactions, no follower counts anywhere in
@@ -4562,12 +4566,13 @@ placement, and custom video length limits — a natural revenue tier
 once partners exist who want more than the template offers.
 
 **Build sequencing within this prompt:**
+
 1. Company Profile + Scholarship template — simplest, lowest-risk,
    matches founding-partner asks.
 2. Skills Challenge template (without interactive quiz) — second.
 3. Insight & Feedback Campaign template (aggregated ratings only, no
    open-response yet) — third. The pseudonym system, once built, is
-   reusable infrastructure the rest of the platform benefits from.
+   reusable infrastructure the talents of the platform benefits from.
 4. Internship/Apprenticeship template — fourth (heaviest legal weight).
 5. Interactive quiz builder / open-response feedback — last, needs the
    most moderation infrastructure.
@@ -4590,7 +4595,7 @@ pass — before screens in this prompt are built).
 **Build-log note:** Section 0A's token system landed first (real
 color/type/spacing tokens in `app/globals.css` + `lib/design-tokens.ts`,
 Inter via `next/font/google`, `Skeleton`/`EmptyState` primitives), then
-Prompt 6's already-built Rep Portal screens (auth pages, dashboard,
+Prompt 6's already-built Talent Portal screens (auth pages, dashboard,
 campaign detail) were retrofitted against it — shared `RepShell`/
 `AuthShell`/`CampaignBrief` components extracted so both portals read
 as one product, per 0A's own acceptance criterion. Then the Brand
@@ -4598,7 +4603,7 @@ Portal core flow: signup, company-profile onboarding (EIN, categories),
 campaign dashboard, brief builder with a live preview (reusing
 `CampaignBrief`, satisfying deliverable 2's "reuse the rep-facing
 renderer" instruction literally), campaign detail with activate/retry-
-payment/pause/cancel, and rep browse + invite.
+payment/pause/cancel, and Talent browse + invite.
 
 **Not built in this pass** (scoped out, not silently skipped): actual
 Stripe Elements/Checkout card collection UI (deliverable 3 explicitly
@@ -4613,7 +4618,7 @@ UI is missing), and the billing/receipt page.
 **A real, load-bearing bug was found and fixed while building this**,
 not a hypothetical: every brand signup lands `account_status='pending'`
 (no admin-approval flow exists yet — Prompt 13 builds it), and
-`require_role("brand")` gated *every* brand route, including
+`require_role("brand")` gated _every_ brand route, including
 `GET/PUT /brands/me`, behind `account_status='active'`. That meant a
 real brand could never reach the API call that submits their profile
 for review in the first place — Prompt 8's own tests never caught this
@@ -4634,7 +4639,7 @@ genuinely cannot create a campaign without an admin approving it first
 way pytest's own fixtures do, rather than pretending the gap isn't
 there).
 
-All existing Playwright suites (demo portal, rep auth pages, rep
+All existing Playwright suites (demo portal, Talent auth pages, rep
 authenticated E2E) and all 140 backend tests still pass.
 
 ```
@@ -4651,21 +4656,21 @@ Deliverables:
 1. Signup/verification: business email, company name, website, EIN field,
    "pending admin approval" state after signup.
 2. Brief builder: every field from Prompt 8's schema, preview step showing
-   exactly what reps see (reuse the rep-facing campaign detail component
+   exactly what talents see (reuse the rep-facing campaign detail component
    from Prompt 6 — do not build a second renderer).
 3. Stripe payment capture at activation (Elements or Checkout — pick one
    and justify). Campaign in 'payment_failed' shows a clear "payment
    failed, retry" state using this same UI — not a dead end.
-4. Rep discovery: filter panel, no-PII cards, full profile on click,
+4. talent discovery: filter panel, no-PII cards, full profile on click,
    invite action, platform-auto-match alternative.
 5. Campaign management dashboard: all campaigns with status, per-campaign
-   rep list, submission review (approve/revision with note), rating UI
+   talent list, submission review (approve/revision with note), rating UI
    enforcing write-once/post-confirmation rule.
 6. Billing view: spend history, Stripe receipt links.
 
 Acceptance criteria:
   - Full walkthrough: signup → simulated admin approval → create campaign
-    → activate (Stripe test card) → browse/invite reps → review submission
+    → activate (Stripe test card) → browse/invite talents → review submission
     → confirm → rate. Each step matches backend state.
   - Pending brand cannot reach campaign creation UI.
 ```
@@ -4704,7 +4709,7 @@ handler runs. `POST /brands/campaigns/:id/confirm` now calls
 transition to `'confirmed'`; `POST /activate`/`/retry-payment` now
 lazily create-or-reuse the brand's Stripe Customer
 (`campaign_service.get_or_create_stripe_customer_id`, same
-create-or-resume shape as the rep Connect onboarding flow) before
+create-or-resume shape as the Talent Connect onboarding flow) before
 creating the PaymentIntent against it, resolving Prompt 8's own
 build-log note that this was "ready for admin approval flow, Prompt
 13" — it turned out not to need Prompt 13 at all, since a brand's
@@ -4714,16 +4719,16 @@ Stripe Customer identity doesn't depend on admin verification.
 to pick a cancellation refund amount and flagged it as a business
 decision. Rather than leave `refund_campaign` unimplemented
 indefinitely, this prompt adopts its own proposed fallback verbatim
-("partial refund for un-paid remainder when some reps already paid")
+("partial refund for un-paid remainder when some talents already paid")
 as the documented interim policy — see the rewritten
 `docs/campaign-cancellation-refund-policy.md` for the exact formula and
 what's still open (e.g. platform-fee refundability, which this prompt
 did decide: refunded proportionally to the unpaid remainder).
 
-**rep_profiles cached-field recompute (deliverable 7)**: Prompt 2 only
+**talent_profiles cached-field recompute (deliverable 7)**: Prompt 2 only
 ever produced a design note for this ("updated via trigger or
 background job") — no trigger exists in any migration. Rather than
-inventing one now, `rep_profiles_repository.recompute_cached_totals`
+inventing one now, `talent_profiles_repository.recompute_cached_totals`
 recomputes `total_campaigns_completed`/`total_earnings_cents`/
 `average_rating` in application code from `campaign_reps`, called from
 `payout_service.handle_transfer_paid` right after a payout completes —
@@ -4731,6 +4736,7 @@ matching this codebase's existing style (`update_profile_completeness_score`)
 of computing cached fields at the call site rather than in SQL.
 
 **Interpretive decisions documented rather than guessed past:**
+
 - `payout_service.calculate_platform_fee_split` mirrors
   `campaign_service.compute_campaign_fee_split`'s exact rounding rule
   but is not on `release_payout`'s call path — the per-rep amount is
@@ -4739,11 +4745,11 @@ of computing cached fields at the call site rather than in SQL.
   function purely for this prompt's own rounding-invariant unit-test
   coverage, per the acceptance criteria's wording.
 - A `transfer.failed` row has no admin queue to land in yet (Prompt 13
-  isn't built) — `payout_status = 'failed'` on `campaign_reps` *is* the
+  isn't built) — `payout_status = 'failed'` on `campaign_reps` _is_ the
   interim queue, flagged rather than inventing a table this prompt
   doesn't own.
-- A rep confirmed for payout but not yet Connect-onboarded
-  (`release_payout`'s `"rep_not_onboarded"` outcome) does not fail the
+- A Talent confirmed for payout but not yet Connect-onboarded
+  (`release_payout`'s `"talent_not_onboarded"` outcome) does not fail the
   confirm call — the row stays `payout_status='pending'` until the rep
   finishes onboarding. Nothing currently retries the transfer
   automatically once they do; flagged, not a stated deliverable here.
@@ -4762,37 +4768,41 @@ backend tests pass.
 Implement the money-movement core. Treat every amount as untrusted until
 
 ```
+
 Implement the money-movement core. Treat every amount as untrusted until
 recomputed server-side; every state transition must be idempotent against
 webhook retries.
 
 Deliverables:
+
 1. payout_service.py: calculate_platform_fee (pure, unit-testable) and
-   release_payout(campaign_rep_id) — validates 'confirmed' status, non-null
+   release_payout(campaign_talent_id) — validates 'confirmed' status, non-null
    payout_cents, completed Connect account before creating Transfer.
 2. Wire /activate to create Stripe PaymentIntent for budget_cents against
    brand's stripe_customer_id.
 3. Complete webhook handlers (idempotent — dedup on Stripe event ID):
-     - payment_intent.succeeded → 'pending_payment' → 'active'
-     - payment_intent.payment_failed → notify brand, → 'payment_failed'
-     - transfer.paid → campaign_reps payout_status → 'paid', set paid_at
-     - transfer.failed → alert admin, flag for manual review
+   - payment_intent.succeeded → 'pending_payment' → 'active'
+   - payment_intent.payment_failed → notify brand, → 'payment_failed'
+   - transfer.paid → campaign_reps payout_status → 'paid', set paid_at
+   - transfer.failed → alert admin, flag for manual review
 4. Wire /confirm to call release_payout. Idempotent — confirming an
    already-confirmed row is a no-op or clean 409, not a duplicate transfer.
 5. Refund logic for /cancel per policy defined in Prompt 8 — partial refund
-   for un-paid remainder when some reps already paid.
+   for un-paid remainder when some talents already paid.
 6. Rating sequence: brand confirms → Stripe transfer → rating optional
    afterward. Confirm this sequence is what's implemented.
-7. rep_profiles cached-field recompute on relevant transitions — whatever
+7. talent_profiles cached-field recompute on relevant transitions — whatever
    mechanism was documented in Prompt 2.
 
 Acceptance criteria:
-  - Full integration test (Stripe test mode): activation → payment webhook
-    → rep submits → brand confirms → transfer webhook → rep earnings update.
-  - Same webhook payload twice → no duplicate side effects.
-  - transfer.failed → surfaces in admin queue (Prompt 13).
-  - calculate_platform_fee unit tests: rounding covered,
-    rep_pool + fee == budget always holds.
+
+- Full integration test (Stripe test mode): activation → payment webhook
+  → Talent submits → brand confirms → transfer webhook → Talent earnings update.
+- Same webhook payload twice → no duplicate side effects.
+- transfer.failed → surfaces in admin queue (Prompt 13).
+- calculate_platform_fee unit tests: rounding covered,
+  talent_pool + fee == budget always holds.
+
 ```
 
 ---
@@ -4802,50 +4812,54 @@ Acceptance criteria:
 **Depends on:** Prompt 8, Prompt 10.
 
 ```
+
 Implement Recruiter backend routes from Section 8 and Phase 3 of Section 5.
 
 Deliverables:
+
 1. GET/PUT /recruiters/me, GET /recruiters/credits.
-2. GET /recruiters/reps/search — all query params from Section 8
+2. GET /recruiters/talents/search — all query params from Section 8
    (graduation_year, city, state, categories, min_campaigns, min_rating,
-   limit, offset) against recruiter_visible=TRUE reps. No credit cost. No
+   limit, offset) against recruiter_visible=TRUE talents No credit cost. No
    PII in results.
-3. GET /recruiters/reps/:id — full profile, costs 1 credit, deducted
+3. GET /recruiters/talents/:id — full profile, costs 1 credit, deducted
    server-side in same transaction as read. 402 on zero balance.
-4. POST /recruiters/reps/:id/contact — costs 1 credit (same transactional
+4. POST /recruiters/talents/:id/contact — costs 1 credit (same transactional
    deduction). One-directional by design — recruiter_contacts has no
    reply column, no reply endpoint exists or will be added here. MVP
    behavior on second contact to same rep: reject with "you've already
    contacted this rep" (UNIQUE constraint enforcement).
-   Notification: (a) GET /reps/inbox returns the message row, (b)
+   Notification: (a) GET /talents/inbox returns the message row, (b)
    transactional email to rep's account email ("you have a new message
    on Teenure" — not the message content). No push/websocket at MVP.
-   Add POST /reps/inbox/:contact_id/read (mark-read) here.
-5. POST/DELETE /recruiters/reps/:id/save, GET /recruiters/saved —
+   Add POST /talents/inbox/:contact_id/read (mark-read) here.
+5. POST/DELETE /recruiters/talents/:id/save, GET /recruiters/saved —
    list_name field supported.
 6. GET /recruiters/credits returns server-computed low-credit warning flag
    at 20% remaining.
 7. Credit top-up: Stripe one-time charge, increments credits on webhook,
    idempotent.
 8. Subscription lifecycle webhooks (complete the stubs from Prompt 7):
-     - customer.subscription.created → recruiter 'active' (both admin
-       approval AND subscription creation required — dual gate) + set
-       contact_credits_remaining to plan allotment + set credits_reset_date
-     - customer.subscription.renewed → reset credits to plan allotment
-       (credits do NOT roll over — unused credits are lost, this is the
-       explicit MVP decision) + advance credits_reset_date. Idempotent —
-       duplicated event grants reset exactly once.
-     - customer.subscription.deleted → account out of 'active'; existing
-       saved profiles and message history retained; credit-spending
-       endpoints return "subscription inactive" error.
+   - customer.subscription.created → recruiter 'active' (both admin
+     approval AND subscription creation required — dual gate) + set
+     contact_credits_remaining to plan allotment + set credits_reset_date
+   - customer.subscription.renewed → reset credits to plan allotment
+     (credits do NOT roll over — unused credits are lost, this is the
+     explicit MVP decision) + advance credits_reset_date. Idempotent —
+     duplicated event grants reset exactly once.
+   - customer.subscription.deleted → account out of 'active'; existing
+     saved profiles and message history retained; credit-spending
+     endpoints return "subscription inactive" error.
 
 Acceptance criteria:
-  - 0 credits → clear distinct error on profile view or contact.
-  - Concurrent requests with exactly 1 credit → exactly one success, one
-    "insufficient credits" — verified with a concurrency test.
-  - Search never returns identifying fields before credit spent.
-  - Simulated subscription.created → recruiter active with correct starting
-    credits. Duplicated subscription.renewed → credits reset exactly once.
+
+- 0 credits → clear distinct error on profile view or contact.
+- Concurrent requests with exactly 1 credit → exactly one success, one
+  "insufficient credits" — verified with a concurrency test.
+- Search never returns identifying fields before credit spent.
+- Simulated subscription.created → recruiter active with correct starting
+  credits. Duplicated subscription.renewed → credits reset exactly once.
+
 ```
 
 ---
@@ -4856,13 +4870,14 @@ Acceptance criteria:
 
 **Before building auth for this portal:** do not add `/recruiter/login`
 or a `RecruiterGate` component. Prompt 6 documents an unresolved
-login/gate fragmentation issue (`/rep/login` vs `/brand/login`,
+login/gate fragmentation issue (`/talent/login` vs `/brand/login`,
 `RepGate` vs `BrandGate`) that this portal must not repeat as a third
 copy — land the shared `/login` page and `useRoleGate`/`<AuthGate>`
 fix first (or as part of this prompt if still outstanding), then point
 recruiter auth at it.
 
 ```
+
 Build the Recruiter Portal under apps/web/app/(recruiter)/.
 
 Apply Section 0A in full — reuse the shared design tokens from Prompts
@@ -4874,6 +4889,7 @@ Desktop-primary but fully responsive. Phone-width sanity pass required
 in acceptance criteria.
 
 Deliverables:
+
 1. Signup/verification: institution email (.edu preferred), institution
    name, type (college|employer), website, pending-admin-approval state.
 2. Search/filter UI matching every Prompt 11 filter. No-PII cards. Full
@@ -4884,13 +4900,15 @@ Deliverables:
    display, low-credit warning at 20%, top-up flow.
 
 Acceptance criteria:
-  - Every credit-spending action shows explicit cost confirmation before
-    firing — no silent credit spend.
-  - Full walkthrough: signup → simulated admin approval → subscribe (test
-    mode) → search → view profile (credit decrements) → contact rep
-    (credit decrements) → confirm rep receives message in inbox and alert
-    email.
-  - Core flows usable at phone viewport — no layout breakage.
+
+- Every credit-spending action shows explicit cost confirmation before
+  firing — no silent credit spend.
+- Full walkthrough: signup → simulated admin approval → subscribe (test
+  mode) → search → view profile (credit decrements) → contact rep
+  (credit decrements) → confirm Talent receives message in inbox and alert
+  email.
+- Core flows usable at phone viewport — no layout breakage.
+
 ```
 
 ---
@@ -4904,6 +4922,7 @@ search endpoint against seed data rather than building a parallel fake
 version.
 
 ```
+
 This is the single highest-stakes surface for Section 0A: it's a sales
 page a brand or institution sees before ever creating an account. Apply
 0A in full, and hold this specific prompt to a higher bar than the
@@ -4913,6 +4932,7 @@ with money and minors' data, on first impression, with no other context.
 Build two things: recruiter search preview and brand sales page.
 
 Part 1 — Recruiter preview at apps/web/app/(marketing)/demo/recruiter/:
+
 1. Live search using Prompt 11's real search endpoint scoped to seed
    dataset from Prompt 6A. Add category/city variety to seed data now if
    Prompt 6A's set is too narrow for search filters to look meaningful.
@@ -4922,23 +4942,26 @@ Part 1 — Recruiter preview at apps/web/app/(marketing)/demo/recruiter/:
 
 Part 2 — Brand page at apps/web/app/(marketing)/demo/brand/ (or in the
 brand audience section from Prompt 18 — state which):
-1. Explains rep network and campaign model.
+
+1. Explains Talent network and campaign model.
 2. Single CTA: "Schedule a demo" → Calendly or contact form. Not a signup
    flow. No self-serve campaign builder.
 
 Optional: extend Prompt 6A seed dataset with enough confirmed campaign
-history to show a multi-year compounding earnings story on the rep demo
+history to show a multi-year compounding earnings story on the Talent demo
 profile, now that Prompt 10's payout engine can generate it from real
 state transitions.
 
 Acceptance criteria:
-  - Recruiter preview works with no session, spends no credits.
-  - Search results in preview are the exact same shape (no-PII cards) as
-    a signed-in recruiter would see — verified by comparing against Prompt
-    12's real search UI for the same query.
-  - Brand page's only CTA is "Schedule a demo" — no signup form, no
-    self-serve campaign creation reachable.
-  - No real user data exposed anywhere.
+
+- Recruiter preview works with no session, spends no credits.
+- Search results in preview are the exact same shape (no-PII cards) as
+  a signed-in recruiter would see — verified by comparing against Prompt
+  12's real search UI for the same query.
+- Brand page's only CTA is "Schedule a demo" — no signup form, no
+  self-serve campaign creation reachable.
+- No real user data exposed anywhere.
+
 ```
 
 ---
@@ -4959,15 +4982,17 @@ page — but its own gate should still reuse the `useRoleGate`/
 `AdminGate`, since the loading/redirect mechanics are the same shape.
 
 ```
+
 Implement Admin Portal — Phase 4 from Section 5, admin routes from
 Section 8. Internal-only; service-role/admin auth required on every route.
 
 Deliverables:
-1. Approval queues: GET /admin/queue/{reps,brands,recruiters},
+
+1. Approval queues: GET /admin/queue/{talents,brands,recruiters},
    POST /admin/approve/:type/:id, POST /admin/reject/:type/:id (required
    reason on reject, sent to applicant via email). Queue distinguishes
    'pending: awaiting parent consent' from 'pending: awaiting admin
-   approval'. Confirm against Section 5 Phase 1 whether reps require admin
+   approval'. Confirm against Section 5 Phase 1 whether talents require admin
    approval at all — implement accordingly.
 2. Campaign oversight: GET /admin/campaigns, flag, resolve. Resolve has
    enumerated action set (force-confirm, force-cancel with refund) — not
@@ -4977,17 +5002,17 @@ Deliverables:
    POST /admin/payments/:transfer_id/release (uses payout_service with
    admin-initiated audit flag).
 4. Analytics: revenue by stream and period (Section 4's three streams),
-   reps by city/category, campaigns by status/category, parental consent
+   talents by city/category, campaigns by status/category, parental consent
    status breakdown (GET /admin/analytics/consent-status — flag as
    addition beyond Section 8).
 5. Outlier-rating detection: define a concrete rule (e.g., brand rated
-   >2 SD from platform mean, or 100% five-star ratings), surface flagged
-   brands.
-6. Parent suspension queue: admin can see rep accounts suspended by parents
+   > 2 SD from platform mean, or 100% five-star ratings), surface flagged
+   > brands.
+6. Parent suspension queue: admin can see Talent accounts suspended by parents
    and reverse suspension if warranted (separate from admin-initiated
    suspension).
 7. Safety report queue (highest-priority lane in admin): reports submitted
-   via the rep portal's one-tap report mechanism. Safety reports sit above
+   via the Talent portal's one-tap report mechanism. Safety reports sit above
    campaign disputes and payment issues in queue priority.
 8. Admin frontend under apps/web/app/(admin)/: queues, oversight table,
    stuck-payments list, analytics dashboards, safety report lane.
@@ -5000,14 +5025,16 @@ builder) and module analytics (completion rates, pass rates, average
 attempts, badge distribution) to deliverable 8's admin frontend.
 
 Acceptance criteria:
-  - Non-admin JWT cannot reach /admin/* routes.
-  - Approving a pending brand flips account_status to 'active' and unblocks
-    campaign creation.
-  - Rejection sends reason via email.
-  - Stuck-payments query correctly identifies 49-hour row and excludes
-    40-hour row.
-  - Safety report queue is visually distinct and clearly highest-priority
-    in the admin UI.
+
+- Non-admin JWT cannot reach /admin/\* routes.
+- Approving a pending brand flips account_status to 'active' and unblocks
+  campaign creation.
+- Rejection sends reason via email.
+- Stuck-payments query correctly identifies 49-hour row and excludes
+  40-hour row.
+- Safety report queue is visually distinct and clearly highest-priority
+  in the admin UI.
+
 ```
 
 ---
@@ -5019,25 +5046,27 @@ intelligence_events_anonymized is not in Section 7. Write as a new,
 separately-numbered migration — do not alter already-applied migrations.
 
 ```
+
 Implement the intelligence/data layer per Section 3.5 and Section 9.
 The anonymization boundary must be enforced structurally, not by
 convention — this is the second-highest legal-risk piece after auth/consent.
 
 Deliverables:
+
 1. New migration creating intelligence_events_anonymized with no FK to
-   rep_profiles or users. Columns: category, city, school_type (sourced
-   from rep_profiles.school_type — nullable; null values bucketed into an
+   talent_profiles or users. Columns: category, city, school_type (sourced
+   from talent_profiles.school_type — nullable; null values bucketed into an
    explicit "unspecified" group, not silently dropped, still subject to the
    minimum-group-size-of-10 gate), time_period_bucket, and campaign-
    performance metrics needed for trend reports. RLS: read access for
    admin/service role only.
 2. Background job (Prompt 3 runner): on campaign_reps reaching 'confirmed'
-   or 'paid', strips all PII (enumerate explicitly: rep_id, rep
+   or 'paid', strips all PII (enumerate explicitly: talent_id, rep
    display_name, school_name, instagram_handle, tiktok_handle, city at
    individual level — not the aggregate city field — any other
    identifying field) and writes to intelligence_events_anonymized with no
    FK back to source tables.
-3. Aggregation logic: any query returning a group smaller than 10 reps
+3. Aggregation logic: any query returning a group smaller than 10 talents
    returns an explicit "insufficient sample size" — not a real number,
    not an empty result.
 4. Trend-report generation by category, region, school_type — only against
@@ -5047,14 +5076,16 @@ Deliverables:
    without reading every file.
 
 Acceptance criteria:
-  - Anonymized table cannot be joined back to any identifying table —
-    structurally impossible (no shared key), not just discouraged.
-    Verified by attempting the join in a test.
-  - Group of 8 → "insufficient sample size," not a number, not empty.
-  - PII-stripping unit test: sample campaign_reps row → assert every
-    PII field absent from output.
-  - null school_type → "unspecified" bucket in aggregation output, still
-    subject to minimum group size gate.
+
+- Anonymized table cannot be joined back to any identifying table —
+  structurally impossible (no shared key), not just discouraged.
+  Verified by attempting the join in a test.
+- Group of 8 → "insufficient sample size," not a number, not empty.
+- PII-stripping unit test: sample campaign_reps row → assert every
+  PII field absent from output.
+- null school_type → "unspecified" bucket in aggregation output, still
+  subject to minimum group size gate.
+
 ```
 
 ---
@@ -5064,6 +5095,7 @@ Acceptance criteria:
 **Depends on:** Prompts 4, 4A, 5, 8, 11, 13, 14.
 
 ```
+
 Dedicated audit pass against Section 9. Does not add features — verifies
 and hardens enforcement, produces a written audit trail.
 
@@ -5078,7 +5110,7 @@ docs/compliance-checklist.md.
 3. FTC disclosure — no submission endpoint or admin override can create a
    'submitted' campaign_reps row without ftc_disclosure_accepted = TRUE,
    including admin force-resolve from Prompt 13.
-4. Parent campaign approval gate — no rep can accept a campaign requiring
+4. Parent campaign approval gate — no Talent can accept a campaign requiring
    parent approval without a recorded parent approval. Verify the RLS
    policy from Prompt 2 and the API check from Prompt 5 are both
    enforcing this independently.
@@ -5098,15 +5130,15 @@ docs/compliance-checklist.md.
    rights, parent rights, portal expiry at 18). Source from what's
    actually implemented, not the aspirational spec.
 10. FTC module gate (added by Prompt 8H) — confirm POST /campaigns/:id/accept
-    returns 403 unless the rep has a 'passed' row on the FTC Disclosure
+    returns 403 unless the Talent has a 'passed' row on the FTC Disclosure
     learning module, distinct from and in addition to the
     ftc_disclosure_accepted checkbox acknowledgment already covered above.
 11. Module correct answers never present in any API response (added by
     Prompt 8H) — verified by recursive key search for "correct_index" on
-    representative responses from GET /reps/modules/:id and
+    representative responses from GET /talents/modules/:id and
     GET /admin/modules, including admin preview mode.
 12. Public achievement link (added by Prompt 5 deliverable 12) — confirm the
-    public /verified/:token page renders no PII beyond what the rep has
+    public /verified/:token page renders no PII beyond what the Talent has
     explicitly enabled, verified by inspecting the public endpoint response
     under each combination of verified_profile_public and
     earnings_visible_on_public_profile toggle states.
@@ -5117,11 +5149,13 @@ requirement to (a) implementing code location, (b) covering test(s),
 not fully closed.
 
 Acceptance criteria:
-  - Every Section 9 row has a checklist entry.
-  - Every "implemented" row has a named passing test run as part of
-    producing this checklist.
-  - Every "open" or "partial" row has a specific reason and what's needed
-    to close it — not "needs more work."
+
+- Every Section 9 row has a checklist entry.
+- Every "implemented" row has a named passing test run as part of
+  producing this checklist.
+- Every "open" or "partial" row has a specific reason and what's needed
+  to close it — not "needs more work."
+
 ```
 
 ---
@@ -5132,9 +5166,11 @@ Acceptance criteria:
 alongside them; this prompt is the consolidation pass.
 
 ```
+
 Consolidate and fill gaps in automated test coverage.
 
 Deliverables:
+
 1. Backend (pytest): every Section 8 route has at least one happy-path
    test, one role-enforcement rejection test, one primary business-rule
    rejection test. Coverage report — flag any route with zero tests.
@@ -5145,29 +5181,29 @@ Deliverables:
    producing exactly one Transfer; flat-campaign tests from Prompts 8/9/10
    passing unmodified after 8B lands).
 2. Integration tests for: (a) full campaign lifecycle from creation to
-   paid-out rep (extend Prompt 10's test to true end-to-end), and (b)
+   paid-out Talent (extend Prompt 10's test to true end-to-end), and (b)
    parental-consent signup-to-active flow.
-3. Integration test for parent portal campaign approval flow: rep invited
-   → parent receives approval request → parent approves → rep can accept
-   → parent blocks a different campaign → rep cannot see it in available
+3. Integration test for parent portal campaign approval flow: Talent invited
+   → parent receives approval request → parent approves → Talent can accept
+   → parent blocks a different campaign → Talent cannot see it in available
    campaigns.
 4. Frontend tests (Vitest/RTL or Next.js equivalent): FTC checkbox gate,
    credit-spend confirmation prompts, age-gate/pending-consent screen
-   states, parent-approval-pending state in rep campaign view,
-   parent portal approve/block actions, and the rep dashboard's
+   states, parent-approval-pending state in Talent campaign view,
+   parent portal approve/block actions, and the Talent dashboard's
    available-campaigns panel excluding a parent-blocked-category
-   campaign for a rep whose parent has that category in values_filters
+   campaign for a Talent whose parent has that category in values_filters
    (mock the API response with a category the seeded rep's parent has
    blocked and assert it never renders — this is a safety-enforcement
    surface, not just a display concern, so it needs the same test-backed
    guarantee as the FTC checkbox rather than resting on manual
-   verification alone). Add: a rep cannot submit a sequence-required
+   verification alone). Add: a Talent cannot submit a sequence-required
    milestone before prior milestones are confirmed — the submission
    control for a non-actionable milestone must be disabled/absent in the
    rendered UI, not just rejected server-side, since this is a safety-
-   adjacent feature protecting reps from confusion about what they've
+   adjacent feature protecting talents from confusion about what they've
    agreed to deliver next. Add (from Prompt 8H): the FTC module gate
-   modal that appears when a rep tries to accept a campaign before
+   modal that appears when a Talent tries to accept a campaign before
    passing the FTC Disclosure module. Add (from Prompt 5 deliverable 13):
    the goal completion state on the dashboard. Add (from Prompt 5
    deliverable 12): the achievement link visibility toggles (public
@@ -5177,14 +5213,16 @@ Deliverables:
    failing build on any failure.
 
 Acceptance criteria:
-  - No Section 8 route with zero tests, or explicit documented exception.
-  - Integration flows pass end-to-end against local Supabase and Stripe
-    test mode.
-  - Parent portal approval flow integration test passes.
-  - Frontend test proves (not just visually confirms) that a
-    parent-blocked-category campaign is absent from the rendered
-    available-campaigns panel.
-  - CI command returns non-zero on any failure.
+
+- No Section 8 route with zero tests, or explicit documented exception.
+- Integration flows pass end-to-end against local Supabase and Stripe
+  test mode.
+- Parent portal approval flow integration test passes.
+- Frontend test proves (not just visually confirms) that a
+  parent-blocked-category campaign is absent from the rendered
+  available-campaigns panel.
+- CI command returns non-zero on any failure.
+
 ```
 
 ---
@@ -5194,13 +5232,15 @@ Acceptance criteria:
 **Depends on:** Prompt 16.
 
 ```
+
 Set up deployment and CI per Section 6 (Vercel, Railway, Supabase).
 
 Deliverables:
+
 1. CI pipeline (GitHub Actions): install deps, run backend + frontend
    test suites, lint, type-check on every PR. Block merge on failure.
 2. Vercel config for apps/web: build command, output dir, env var mapping
-   (document NEXT_PUBLIC_* vs server-only).
+   (document NEXT*PUBLIC*\* vs server-only).
 3. Railway config for apps/api: secret injection (never committed).
 4. Supabase migration-deploy step: documented order relative to API/web
    deploys (migrations land before the API version that depends on them).
@@ -5209,11 +5249,13 @@ Deliverables:
    procedure documented.
 
 Acceptance criteria:
-  - Deliberately broken test prevents PR merge (verified in scratch branch,
-    then reverted).
-  - Full staging deploy succeeds; Prompt 16 integration flows pass against
-    staging.
-  - No secret value in any committed file, CI log, or deployment config.
+
+- Deliberately broken test prevents PR merge (verified in scratch branch,
+  then reverted).
+- Full staging deploy succeeds; Prompt 16 integration flows pass against
+  staging.
+- No secret value in any committed file, CI log, or deployment config.
+
 ```
 
 ---
@@ -5226,6 +5268,7 @@ if already built; otherwise build CTAs to signup and add demo links
 once 6A/12A exist.
 
 ```
+
 Build the public marketing site under apps/web/app/(marketing)/.
 
 Same "highest-stakes first impression" bar as Prompt 12A applies here —
@@ -5236,6 +5279,7 @@ retrofit/build against what's landed here rather than each inventing
 their own.
 
 Deliverables:
+
 1. Landing page: core insight, one-sentence platform rule, differentiation
    from social platforms per Section 1's "What It Is Not" list. No copy
    implying Section 1A-prohibited features.
@@ -5243,15 +5287,15 @@ Deliverables:
    motivations from Section 2 and clear signup CTAs routing to correct
    portal flows.
 3. Parents page — not a footer mention, a real page:
-     - What Teenure is and is not
-     - How the parent portal works (campaign approval queue, values filters,
-       monthly digest, account controls)
-     - Age-based autonomy model (under-16 required approval, 16-17 opt-in,
-       18 portal closes)
-     - What data is collected and who sees it
-     - How to suspend the account
-     - Why the constraints are protective (Section 1A's "Why These
-       Constraints Are Competitive Advantages" — adapted for parents)
+   - What Teenure is and is not
+   - How the parent portal works (campaign approval queue, values filters,
+     monthly digest, account controls)
+   - Age-based autonomy model (under-16 required approval, 16-17 opt-in,
+     18 portal closes)
+   - What data is collected and who sees it
+   - How to suspend the account
+   - Why the constraints are protective (Section 1A's "Why These
+     Constraints Are Competitive Advantages" — adapted for parents)
 4. Schools/counselors page: how Teenure complements transcript, the
    verified achievement record, how to recommend it to students, the
    Teenure Achievement Record export (from Prompt 5 deliverable 9).
@@ -5260,14 +5304,16 @@ Deliverables:
    "pending legal review" — no actual legal text.
 
 Acceptance criteria:
-  - No copy implies Section 1A-prohibited features.
-  - Each audience CTA routes to correct signup flow.
-  - No signup wall on any marketing page or linked demo.
-  - A parent reading this site without an account can answer all five:
-    what is Teenure, how does my child earn money, who sees their profile,
-    what data is collected, how is my child protected — AND can answer:
-    what do I see in the parent portal, and how do I stop my child's
-    account if I need to. Seven questions, all answerable without signup.
+
+- No copy implies Section 1A-prohibited features.
+- Each audience CTA routes to correct signup flow.
+- No signup wall on any marketing page or linked demo.
+- A parent reading this site without an account can answer all five:
+  what is Teenure, how does my child earn money, who sees their profile,
+  what data is collected, how is my child protected — AND can answer:
+  what do I see in the parent portal, and how do I stop my child's
+  account if I need to. Seven questions, all answerable without signup.
+
 ```
 
 ---
@@ -5278,10 +5324,12 @@ Acceptance criteria:
 follow-up once 12A is built.
 
 ```
+
 Integrate PostHog per Section 6. Self-hosted or EU cloud — state which
 and why given minor data handling. Document the choice.
 
 Deliverables:
+
 1. PostHog client initialization: never loads before a user is
    authenticated with an assigned role. Marketing-site analytics (if any)
    are a clearly separate, minimal event set.
@@ -5290,44 +5338,46 @@ Deliverables:
    Conservative autocapture configuration (explicit event calls preferred
    over blanket DOM autocapture). Document reasoning.
 3. Instrument key funnel events:
-     - signup started/completed per role
-     - parental-consent link clicked
-     - parent portal: campaign approved, campaign blocked, values filter
-       updated
-     - campaign viewed/accepted/declined/submitted/withdrawn (rep side)
-     - campaign created/activated (brand side)
-     - profile viewed/contacted (recruiter side — aggregate-safe properties
-       only, no specific rep identity)
-     - demo surfaces: demo page viewed (tagged by which demo), demo CTA
-       clicked, demo-to-signup conversion (anonymous ID carried across
-       redirect, no PII used for join)
-     - (from Prompts 8G/8H/5) module_started, module_passed, module_failed
-       (module_id, quiz_score, attempts — no rep identity), badge_earned
-       (badge_title, module category — no rep identity), ftc_gate_triggered
-       (fires when a rep hits the FTC module gate on campaign accept — a
-       critical funnel metric; high volume means reps are ready to accept
-       campaigns but haven't completed the module), challenge_submitted
-       and challenge_converted (category, bonus_amount — no rep identity),
-       goal created, goal completed, achievement link generated,
-       achievement link page viewed (this last one fires on the public
-       /verified/:token page — it is the only analytics event that fires
-       without an authenticated session, and it is aggregate-safe since
-       it carries no user identity, only a timestamp and a referrer if
-       available)
+   - signup started/completed per role
+   - parental-consent link clicked
+   - parent portal: campaign approved, campaign blocked, values filter
+     updated
+   - campaign viewed/accepted/declined/submitted/withdrawn (rep side)
+   - campaign created/activated (brand side)
+   - profile viewed/contacted (recruiter side — aggregate-safe properties
+     only, no specific Talent identity)
+   - demo surfaces: demo page viewed (tagged by which demo), demo CTA
+     clicked, demo-to-signup conversion (anonymous ID carried across
+     redirect, no PII used for join)
+   - (from Prompts 8G/8H/5) module_started, module_passed, module_failed
+     (module_id, quiz_score, attempts — no Talent identity), badge_earned
+     (badge_title, module category — no Talent identity), ftc_gate_triggered
+     (fires when a Talent hits the FTC module gate on campaign accept — a
+     critical funnel metric; high volume means talents are ready to accept
+     campaigns but haven't completed the module), challenge_submitted
+     and challenge_converted (category, bonus_amount — no Talent identity),
+     goal created, goal completed, achievement link generated,
+     achievement link page viewed (this last one fires on the public
+     /verified/:token page — it is the only analytics event that fires
+     without an authenticated session, and it is aggregate-safe since
+     it carries no user identity, only a timestamp and a referrer if
+     available)
 4. PostHog dashboard for Section 13's six milestones. Wire events for
    milestones 1–4 (milestone 4 — intelligence report sale — is a manual
    sales event, not automatable; note this explicitly rather than
    pretending it is).
 
 Acceptance criteria:
-  - Each instrumented event produces a visible PostHog event with no PII
-    in properties — verified by inspecting actual payload.
-  - Unauthenticated user generates no portal-level events.
+
+- Each instrumented event produces a visible PostHog event with no PII
+  in properties — verified by inspecting actual payload.
+- Unauthenticated user generates no portal-level events.
+
 ```
 
 ---
 
-## 20. Terminology Rename — Rep → Talent
+## 20. Terminology Rename — talent → Talent
 
 **Depends on:** All prior prompts that are already **implemented** (2
 through 16 as marked). This is a rename pass across existing code, not
@@ -5335,12 +5385,13 @@ new product surface — do not run it against unbuilt/unmarked prompts;
 update this file's own prose for those instead (see step 8 below).
 
 **Trigger:** Run once, deliberately, as its own PR — not folded into an
-unrelated feature change. Freeze other work on `rep_`-prefixed files
+unrelated feature change. Freeze other work on `talent_`-prefixed files
 for the duration to avoid merge conflicts against renamed
 tables/routes/identifiers.
 
 ```
-Rename the external-facing role currently called "Rep" (a teenage user
+
+Rename the external-facing role currently called "talent" (a teenage user
 building a verified achievement record) to "Talent" everywhere in the
 codebase, database, API surface, and documentation. This is a full
 rename — schema, routes, internal identifiers, and copy — not a
@@ -5348,72 +5399,72 @@ copy-only pass. "Brand" and "Recruiter" are unaffected.
 
 BRAND RATIONALE (use this to judge ambiguous cases — does a given
 string/identifier serve this meaning?):
-  Teenure's positioning is the tension between "tenure" (time served,
-  seniority, a proven track record) and "talent" (raw capability,
-  unproven by tenure standards). Teenure lets talent build a verified
-  record without waiting for tenure. "Talent" is also the term brands
-  and recruiters already use for candidates on staffing platforms
-  ("verified talent pool"), so it needs no glossary entry for the
-  paying side of the three-sided market. Prefer this term over
-  "Rep" in every place a human reads it; prefer keeping the shorter
-  `talent` (not `talent_profile` or `the_talent`) as the identifier
-  root wherever singular/plural ambiguity allows, matching how `rep`
-  was used today.
+Teenure's positioning is the tension between "tenure" (time served,
+seniority, a proven track record) and "talent" (raw capability,
+unproven by tenure standards). Teenure lets talent build a verified
+record without waiting for tenure. "Talent" is also the term brands
+and recruiters already use for candidates on staffing platforms
+("verified talent pool"), so it needs no glossary entry for the
+paying side of the three-sided market. Prefer this term over
+"talent" in every place a human reads it; prefer keeping the shorter
+`talent` (not `talent_profile` or `the_talent`) as the identifier
+root wherever singular/plural ambiguity allows, matching how `rep`
+was used today.
 
 SCOPE — WHAT TO RENAME:
 
 1. Database (new migration, forward-only, do not edit past migrations):
-   - Table renames: rep_profiles -> talent_profiles, plus every other
-     table with a rep_ prefix or a rep_id / rep_profile_id foreign key
-     column (rep_module_completions, rep_syndicates, etc. — enumerate
+   - Table renames: rep*profiles -> talent_profiles, plus every other
+     table with a rep* prefix or a talent_id / talent_profile_id foreign key
+     column (talent_module_completions, talent_syndicates, etc. — enumerate
      the actual set from \d against the live schema, do not guess from
      memory of this spec).
-   - Column renames: rep_id -> talent_id, rep_profile_id ->
-     talent_profile_id, and any rep_* column across every table.
-   - Enum/check-constraint values that literally spell "rep" (e.g. a
-     role column with check (role in ('rep', 'brand', 'recruiter',
+   - Column renames: rep*id -> talent_id, talent_profile_id ->
+     talent_profile_id, and any rep*\* column across every table.
+   - Enum/check-constraint values that literally spell "talent" (e.g. a
+     role column with check (role in ('talent', 'brand', 'recruiter',
      'admin'))) -> 'talent'. Any existing rows must be migrated with an
      UPDATE in the same migration, not left stale.
-   - RLS policy names and policy bodies referencing rep_profiles or a
-     'rep' role check — rename and re-verify each policy still
+   - RLS policy names and policy bodies referencing talent_profiles or a
+     'talent' role check — rename and re-verify each policy still
      evaluates correctly against the renamed columns.
    - Foreign key constraint names, index names, and trigger names that
-     embed "rep" — rename for consistency, but do not let cosmetic
+     embed "talent" — rename for consistency, but do not let cosmetic
      constraint-name churn block the PR if some are impractical to
      rename atomically (Postgres constraint renames are cheap; note
      any you skip and why).
    - Supabase Auth: if role is stored in auth.users metadata or a
-     custom claim as "rep", migrate stored values, not just the
+     custom claim as "talent", migrate stored values, not just the
      column.
 
 2. FastAPI backend (apps/api):
-   - Router file/module renames: reps.py -> talent.py (or the
+   - Router file/module renames: talents.py -> talent.py (or the
      project's actual current filename — verify before renaming).
-     Mirror in the router prefix: /reps -> /talent (and every nested
-     path, e.g. /reps/{id}/... -> /talent/{id}/...).
-   - Repository, schema, and service files: rep_profiles_repository.py
+     Mirror in the router prefix: /talents -> /talent (and every nested
+     path, e.g. /talents/{id}/... -> /talent/{id}/...).
+   - Repository, schema, and service files: talent_profiles_repository.py
      -> talent_profiles_repository.py, and equivalent for schemas
      (RepProfile -> TalentProfile, RepCreate -> TalentCreate, etc. —
      rename every Pydantic model, ORM class, and function whose name
-     contains "rep" as the role noun). Be precise about false
-     positives: "rep" as a substring inside unrelated words (e.g.
+     contains "talent" as the role noun). Be precise about false
+     positives: "talent" as a substring inside unrelated words (e.g.
      "represent", "report", "repository" itself) must NOT be touched —
      rename only tokens that mean "the teenage user," not any
      substring match.
    - Route path parameters, query param names, and OpenAPI
      summary/description strings.
-   - JWT claims / session role strings if "rep" is encoded as a role
+   - JWT claims / session role strings if "talent" is encoded as a role
      value anywhere in auth middleware.
    - Error messages and log messages that name the role.
 
 3. Next.js frontend (apps/web), once it exists in this repo:
-   - Route group (rep) -> (talent) under app/.
-   - Component, hook, and file names containing "Rep" as the role
+   - Route group (talent) -> (talent) under app/.
+   - Component, hook, and file names containing "talent" as the role
      noun (RepDashboard -> TalentDashboard, useRepProfile ->
      useTalentProfile, etc.) — same false-positive rule as above.
    - All user-visible copy: page titles, nav labels, empty states,
      form labels, toasts, emails (Resend templates), marketing site
-     copy that says "Rep" in the role sense.
+     copy that says "talent" in the role sense.
    - Do not rename "Reputation," "Report," "Represent," or any
      unrelated word that happens to contain "rep."
 
@@ -5422,27 +5473,27 @@ SCOPE — WHAT TO RENAME:
    to prevent drift, so it must be updated in the same PR.
 
 5. Tests (apps/api/tests, and future frontend tests): rename fixtures,
-   factory functions, and test file names (test_reps.py ->
+   factory functions, and test file names (test_talents.py ->
    test_talent.py) alongside the code they test. A rename PR with
    passing-but-unrenamed tests is not complete — tests are the
    regression net for this exact class of change.
 
-6. Config, env vars, and infra: any REP_-prefixed environment variable,
-   Stripe metadata field (e.g. metadata={"rep_id": ...} sent to
+6. Config, env vars, and infra: any REP\_-prefixed environment variable,
+   Stripe metadata field (e.g. metadata={"talent_id": ...} sent to
    Stripe on Connect account creation or PaymentIntents), PostHog
-   event property (rep_id in event payloads), and CI/deploy config
+   event property (talent_id in event payloads), and CI/deploy config
    referencing renamed paths (e.g. Railway service names, Vercel
    route rewrites) if any exist.
 
-7. Docs: Teenure_MVP_Gameplan.md is the spec of record — do not
+7. Docs: Teenure*MVP_Gameplan.md is the spec of record — do not
    silently reinterpret it. Instead, add a short terminology note near
-   the top (Section 1 area) stating "Rep" in this document refers to
+   the top (Section 1 area) stating "talent" in this document refers to
    the role implemented in code as "Talent" as of <date>, and that all
-   schema/route names in this document using rep_ should be read as
-   talent_ post-rename. Do not do a blind find/replace across the
+   schema/route names in this document using rep* should be read as
+   talent\_ post-rename. Do not do a blind find/replace across the
    spec — it is the historical source of truth for what was built and
    why; a silent rewrite would make future spec-vs-code diffs
-   meaningless. Update CLAUDE.md's references to "Rep" the same way if
+   meaningless. Update CLAUDE.md's references to "talent" the same way if
    any exist there.
 
 8. This file (Teenure_Build_Prompts.md): do NOT rewrite the historical
@@ -5450,55 +5501,59 @@ SCOPE — WHAT TO RENAME:
    the name used at the time, and rewriting history here creates the
    same audit problem as in the spec. Instead, add a note at the top
    of the Table of Contents cross-referencing this prompt, so a reader
-   knows "Rep" in Prompts 1–19 equals "Talent" in code from this point
+   knows "talent" in Prompts 1–19 equals "Talent" in code from this point
    forward.
 
 WHAT NOT TO RENAME:
-  - The product name "Teenure" itself (unrelated — do not touch).
-  - "Recruiter" and "Brand" roles — out of scope.
-  - Unrelated substrings: reputation, report, represent, repository,
-    repeat, replace, reply — verify every proposed rename against
-    actual word-boundary/role-context, not a naive string match.
-  - Any third-party library or dependency name that happens to
-    contain "rep" (e.g. python packages) — do not touch external
-    dependencies.
+
+- The product name "Teenure" itself (unrelated — do not touch).
+- "Recruiter" and "Brand" roles — out of scope.
+- Unrelated substrings: reputation, report, represent, repository,
+  repeat, replace, reply — verify every proposed rename against
+  actual word-boundary/role-context, not a naive string match.
+- Any third-party library or dependency name that happens to
+  contain "talent" (e.g. python packages) — do not touch external
+  dependencies.
 
 MIGRATION SAFETY:
-  - This is a rename, not a data model change — no data should be
-    lost or reshaped, only relabeled. Write the migration as ALTER
-    TABLE ... RENAME TO / ALTER TABLE ... RENAME COLUMN wherever
-    possible (preserves data, indexes, and constraints without a
-    rebuild) rather than create-new-table-and-copy.
-  - If this app has any live users/data at the time this runs,
-    sequence the deploy so the migration and the API code rollout
-    land together (a window where old code queries renamed tables, or
-    renamed code queries old tables, breaks in production) — call out
-    the deploy-ordering plan explicitly rather than assuming
-    simultaneity.
-  - Grep the entire repo (not just apps/api and apps/web) for the
-    literal token "rep" case-insensitively after the rename pass and
-    manually triage every remaining hit — confirm each is a false
-    positive (reputation, report, etc.) or a legitimate remainder to
-    fix, not code you missed. Paste the final triaged list in the PR
-    description.
+
+- This is a rename, not a data model change — no data should be
+  lost or reshaped, only relabeled. Write the migration as ALTER
+  TABLE ... RENAME TO / ALTER TABLE ... RENAME COLUMN wherever
+  possible (preserves data, indexes, and constraints without a
+  rebuild) rather than create-new-table-and-copy.
+- If this app has any live users/data at the time this runs,
+  sequence the deploy so the migration and the API code rollout
+  land together (a window where old code queries renamed tables, or
+  renamed code queries old tables, breaks in production) — call out
+  the deploy-ordering plan explicitly rather than assuming
+  simultaneity.
+- Grep the entire repo (not just apps/api and apps/web) for the
+  literal token "talent" case-insensitively after the rename pass and
+  manually triage every remaining hit — confirm each is a false
+  positive (reputation, report, etc.) or a legitimate remainder to
+  fix, not code you missed. Paste the final triaged list in the PR
+  description.
 
 Acceptance criteria:
-  - Every table, column, route, identifier, and user-visible string
-    that means "the teenage user role" reads "Talent" / "talent",
-    with zero remaining "Rep" occurrences outside the excluded
-    false-positive words and the deliberately-preserved historical
-    prose in Teenure_MVP_Gameplan.md and Prompts 1–19 of this file.
-  - Full test suite passes against the renamed schema and routes.
-  - RLS policies re-verified (not just renamed) to still enforce the
-    same access rules post-rename — run the existing RLS test
-    coverage from Prompt 2/16 against the renamed tables.
-  - Stripe Connect and PaymentIntent metadata sent to Stripe reflects
-    the new field names going forward; historical Stripe objects with
-    old metadata keys are left as-is (Stripe objects are immutable
-    once created) — do not attempt to rewrite Stripe-side history.
-  - A single PR (or clearly sequenced stack) contains the migration
-    and all renamed code together — no intermediate broken state
-    merged to main.
+
+- Every table, column, route, identifier, and user-visible string
+  that means "the teenage user role" reads "Talent" / "talent",
+  with zero remaining "talent" occurrences outside the excluded
+  false-positive words and the deliberately-preserved historical
+  prose in Teenure_MVP_Gameplan.md and Prompts 1–19 of this file.
+- Full test suite passes against the renamed schema and routes.
+- RLS policies re-verified (not just renamed) to still enforce the
+  same access rules post-rename — run the existing RLS test
+  coverage from Prompt 2/16 against the renamed tables.
+- Stripe Connect and PaymentIntent metadata sent to Stripe reflects
+  the new field names going forward; historical Stripe objects with
+  old metadata keys are left as-is (Stripe objects are immutable
+  once created) — do not attempt to rewrite Stripe-side history.
+- A single PR (or clearly sequenced stack) contains the migration
+  and all renamed code together — no intermediate broken state
+  merged to main.
+
 ```
 
 ---
@@ -5527,6 +5582,7 @@ library, and per-portal application sequence). Companion reference files:
 (applied mockup). Read all three before executing.
 
 ```
+
 Summary (see the linked prompt file for the full, authoritative version):
 
 Establishes the brand's design system and applies it across every existing
@@ -5536,22 +5592,22 @@ parent portal -> admin portal -> auth flows. Each layer depends on the one
 before it — do not skip ahead.
 
 THE CORE RULE:
-  Teal (#0D9B7A) is the brand's identity and primary action color — buttons,
-  active nav states, focus rings, the logo, the wordmark accent, anything
-  prompting the user to act.
+Teal (#0D9B7A) is the brand's identity and primary action color — buttons,
+active nav states, focus rings, the logo, the wordmark accent, anything
+prompting the user to act.
 
-  Gold (#F0A535) is reserved exclusively for earned/credentialed moments —
-  a campaign confirmed, a badge issued, a payout released, a challenge
-  converted. Never used on buttons, navigation, or general UI. The test:
-  if gold would appear on something the user hasn't yet earned, use teal
-  instead; if teal would appear on an earned achievement, use gold instead.
-  Gold found anywhere else is a bug, not a style choice.
+Gold (#F0A535) is reserved exclusively for earned/credentialed moments —
+a campaign confirmed, a badge issued, a payout released, a challenge
+converted. Never used on buttons, navigation, or general UI. The test:
+if gold would appear on something the user hasn't yet earned, use teal
+instead; if teal would appear on an earned achievement, use gold instead.
+Gold found anywhere else is a bug, not a style choice.
 
-  Green (#22C55E) is a functional "complete" color only (paid status,
-  successful validation, email-verified) — not a brand color.
+Green (#22C55E) is a functional "complete" color only (paid status,
+successful validation, email-verified) — not a brand color.
 
-  Cyan is removed from the system entirely; existing cyan usage is
-  replaced with teal or gold depending on context.
+Cyan is removed from the system entirely; existing cyan usage is
+replaced with teal or gold depending on context.
 
 Design tokens (styles/tokens.css or equivalent) cover brand colors,
 credential/completion/danger states, a dark canvas system (--ink,
@@ -5563,6 +5619,7 @@ everything routes through a token.
 Execute against Prompt 20's renamed identifiers (Talent, not Rep) if
 Prompt 20 has already landed; if this prompt runs before Prompt 20, revisit
 component names once the rename lands rather than doing both renames twice.
+
 ```
 
 ---
@@ -5581,8 +5638,8 @@ entirely). Companion palette/mockup references:
 (Terminology Rename) since component/route names should reflect
 "Talent" before the reskin renames files again.
 
-**v1.7** — added Prompt 20 (Terminology Rename — Rep → Talent): a
-full, deliberate rename of the external teenage-user role from "Rep"
+**v1.7** — added Prompt 20 (Terminology Rename — talent → Talent): a
+full, deliberate rename of the external teenage-user role from "talent"
 to "Talent" across the database (tables, columns, enum values, RLS
 policies), FastAPI backend (routers, repositories, schemas, routes),
 future Next.js frontend, shared-types package, tests, config/env vars,
@@ -5606,9 +5663,9 @@ network-density trigger condition and must not be built before it is
 met:
   - 8C: 10+ competing brands actively running campaigns in the same
     category-and-city combination.
-  - 8D: proven reps (3+ completed campaigns) receiving overlapping
+  - 8D: proven talents (3+ completed campaigns) receiving overlapping
     invitations and turning down campaigns over availability conflicts.
-  - 8E: reps already coordinating informally across campaigns (peer
+  - 8E: talents already coordinating informally across campaigns (peer
     referrals, friend-group tagging) with brands requesting coordinated
     placements.
   - 8F: at least 200 brand-rep pairs with 3+ completed campaigns
@@ -5649,19 +5706,19 @@ server-only quiz answer evaluation (correct_index never sent to any
 client, including admin preview), a mandatory FTC Disclosure Essentials
 module gating campaign acceptance (POST /campaigns/:id/accept, replacing
 the checkbox-only enforcement), a 24-hour retake cooldown, atomic badge
-issuance, and a payout_cents/payout_status field on rep_module_completions
+issuance, and a payout_cents/payout_status field on talent_module_completions
 left null at MVP to support a future district-funded completion stipend
 without a schema migration. Both prompts add parent-dashboard visibility
 into challenge and module activity, admin analytics, and PostHog events.
 Updated Prompt 15's compliance checklist to items 10–12 (FTC module gate,
 module answer security, public achievement link scope). Numbered 8G/8H
 to preserve 8C–8F as placeholders for Category Exclusivity, Advance
-Cohort Reservation, Rep Syndicates, and the Relationship Continuity
+Cohort Reservation, talent Syndicates, and the Relationship Continuity
 Product, none of which are built yet.
 
 **Build-log note (post-8, design system added)** — Added
 [Section 0A: Design System & UX Standards](#0a-design-system--ux-standards),
-prompted by a direct assessment that the built Rep Portal frontend
+prompted by a direct assessment that the built talent Portal frontend
 (Prompt 6) was functionally correct but visually indistinguishable from
 unstyled shadcn/ui defaults — no color system, type scale, spacing
 discipline, or motion beyond framework defaults. For a three-sided
@@ -5684,7 +5741,7 @@ and recruiter sides represent.
 Wired into every remaining frontend-touching prompt (9, 12, 12A, 13,
 18) as an explicit dependency, and flagged as an unscheduled retrofit
 against Prompt 6/6A's already-built screens — not yet its own numbered
-prompt; do the retrofit before or alongside Prompt 9 so the Rep and
+prompt; do the retrofit before or alongside Prompt 9 so the talent and
 Brand portals share one design-token system rather than diverging.
 
 **Build-log note (post-6A, pre-7)** — CI (Prompt 17) and part of the
@@ -5701,7 +5758,7 @@ buildable without a live Supabase project: the backend suite against a
 real ephemeral Postgres service (migrations applied fresh, matching
 Prompt 2's schema), a frontend build/type-check job, and browser-driven
 smoke coverage of the Prompt 6A demo portal (full click-through, zero
-backend network calls) plus the two public `/rep/*` auth pages.
+backend network calls) plus the two public `/talent/*` auth pages.
 
 This is explicitly a partial stand-in, not a fulfillment of Prompt 16
 or 17 — still outstanding when those prompts are reached in sequence:
@@ -5871,10 +5928,11 @@ lifecycle webhooks (Prompt 11), school_type to schema and onboarding
 (Prompts 2, 6), null school_type bucketing (Prompt 14), precedence
 statement in Master Context Prompt.
 
-**v1.1** — added rep inbox (Prompt 6), backend inbox endpoints (Prompt
+**v1.1** — added talent inbox (Prompt 6), backend inbox endpoints (Prompt
 11), scheduled-job runner (Prompt 3), 48-hour auto-decline job (Prompt
 5), intelligence_events_anonymized migration (Prompt 14), Prompt 13 as
 dependency of Prompt 15, mobile-first requirements (Prompts 6, 12),
 Prompt 19 (PostHog).
 
 **v1.0** — initial release.
+```

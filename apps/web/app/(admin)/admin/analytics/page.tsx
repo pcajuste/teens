@@ -15,7 +15,15 @@ import type {
   AdminRevenuePeriod,
 } from "@/lib/types";
 
-function Breakdown({ title, rows, keyName }: { title: string; rows: Record<string, string | number>[]; keyName: string }) {
+function Breakdown({
+  title,
+  rows,
+  keyName,
+}: {
+  title: string;
+  rows: Record<string, string | number>[];
+  keyName: string;
+}) {
   return (
     <Card>
       <CardHeader>
@@ -44,18 +52,26 @@ function Breakdown({ title, rows, keyName }: { title: string; rows: Record<strin
 
 export default function AdminAnalyticsPage() {
   const [revenue, setRevenue] = useState<AdminRevenuePeriod[] | null>(null);
-  const [reps, setReps] = useState<AdminCountBreakdown | null>(null);
+  const [talents, setReps] = useState<AdminCountBreakdown | null>(null);
   const [campaigns, setCampaigns] = useState<AdminCountBreakdown | null>(null);
-  const [consent, setConsent] = useState<AdminConsentStatusEntry[] | null>(null);
+  const [consent, setConsent] = useState<AdminConsentStatusEntry[] | null>(
+    null,
+  );
   const [outliers, setOutliers] = useState<AdminOutlierBrand[] | null>(null);
   const [modules, setModules] = useState<AdminModuleAnalytics | null>(null);
 
   useEffect(() => {
     api.get<AdminRevenuePeriod[]>("/admin/analytics/revenue").then(setRevenue);
-    api.get<AdminCountBreakdown>("/admin/analytics/reps").then(setReps);
-    api.get<AdminCountBreakdown>("/admin/analytics/campaigns").then(setCampaigns);
-    api.get<AdminConsentStatusEntry[]>("/admin/analytics/consent-status").then(setConsent);
-    api.get<AdminOutlierBrand[]>("/admin/analytics/outlier-brands").then(setOutliers);
+    api.get<AdminCountBreakdown>("/admin/analytics/talents").then(setReps);
+    api
+      .get<AdminCountBreakdown>("/admin/analytics/campaigns")
+      .then(setCampaigns);
+    api
+      .get<AdminConsentStatusEntry[]>("/admin/analytics/consent-status")
+      .then(setConsent);
+    api
+      .get<AdminOutlierBrand[]>("/admin/analytics/outlier-brands")
+      .then(setOutliers);
     api.get<AdminModuleAnalytics>("/admin/analytics/modules").then(setModules);
   }, []);
 
@@ -78,25 +94,32 @@ export default function AdminAnalyticsPage() {
                     <th className="py-2 pr-4">Period</th>
                     <th className="py-2 pr-4">Brand campaign fees</th>
                     <th className="py-2 pr-4">Intelligence subscriptions</th>
-                    <th className="py-2 pr-4">Active recruiter subscriptions</th>
+                    <th className="py-2 pr-4">
+                      Active recruiter subscriptions
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {revenue.map((r) => (
                     <tr key={r.period} className="border-b border-border/60">
                       <td className="py-2 pr-4">{r.period}</td>
-                      <td className="py-2 pr-4">${(r.brand_campaign_fees_cents / 100).toFixed(2)}</td>
+                      <td className="py-2 pr-4">
+                        ${(r.brand_campaign_fees_cents / 100).toFixed(2)}
+                      </td>
                       <td className="py-2 pr-4 text-muted-foreground">
                         ${(r.intelligence_subscription_cents / 100).toFixed(2)}
                       </td>
-                      <td className="py-2 pr-4">{r.recruiter_active_subscriptions}</td>
+                      <td className="py-2 pr-4">
+                        {r.recruiter_active_subscriptions}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
               <p className="mt-2 text-xs text-muted-foreground">
-                Intelligence Subscription billing lands with the anonymization pipeline (Build Prompt 14) --
-                reported as $0 until that table exists, not fabricated.
+                Intelligence Subscription billing lands with the anonymization
+                pipeline (Build Prompt 14) -- reported as $0 until that table
+                exists, not fabricated.
               </p>
             </div>
           )}
@@ -104,10 +127,26 @@ export default function AdminAnalyticsPage() {
       </Card>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <Breakdown title="Reps by city" rows={reps?.by_city ?? []} keyName="city" />
-        <Breakdown title="Reps by category" rows={reps?.by_category ?? []} keyName="category" />
-        <Breakdown title="Campaigns by status" rows={campaigns?.by_status ?? []} keyName="status" />
-        <Breakdown title="Campaigns by category" rows={campaigns?.by_category ?? []} keyName="category" />
+        <Breakdown
+          title="Talents by city"
+          rows={talents?.by_city ?? []}
+          keyName="city"
+        />
+        <Breakdown
+          title="Talents by category"
+          rows={talents?.by_category ?? []}
+          keyName="category"
+        />
+        <Breakdown
+          title="Campaigns by status"
+          rows={campaigns?.by_status ?? []}
+          keyName="status"
+        />
+        <Breakdown
+          title="Campaigns by category"
+          rows={campaigns?.by_category ?? []}
+          keyName="category"
+        />
       </div>
 
       <Card>
@@ -137,14 +176,21 @@ export default function AdminAnalyticsPage() {
           {outliers === null ? (
             <Skeleton className="h-16 w-full" />
           ) : outliers.length === 0 ? (
-            <EmptyState title="No outliers detected" description="No brand's rating pattern crosses the threshold." />
+            <EmptyState
+              title="No outliers detected"
+              description="No brand's rating pattern crosses the threshold."
+            />
           ) : (
             <ul className="flex flex-col gap-2">
               {outliers.map((o) => (
-                <li key={o.brand_id} className="rounded-lg border border-border p-3 text-sm">
+                <li
+                  key={o.brand_id}
+                  className="rounded-lg border border-border p-3 text-sm"
+                >
                   <p className="font-medium">{o.company_name}</p>
                   <p className="text-xs text-muted-foreground">
-                    {o.rating_count} ratings, avg {o.average_rating.toFixed(2)} -- {o.reason}
+                    {o.rating_count} ratings, avg {o.average_rating.toFixed(2)}{" "}
+                    -- {o.reason}
                   </p>
                 </li>
               ))}
@@ -165,19 +211,31 @@ export default function AdminAnalyticsPage() {
               <div className="flex flex-wrap gap-3 text-sm">
                 <Badge variant="outline">{modules.active_modules} active</Badge>
                 <Badge variant="outline">{modules.draft_modules} draft</Badge>
-                <Badge variant="outline">{modules.archived_modules} archived</Badge>
-                <Badge variant="outline">{modules.completions_passed} passed</Badge>
-                <Badge variant="outline">{modules.completions_failed} failed</Badge>
-                <Badge variant="outline">{modules.completions_in_progress} in progress</Badge>
+                <Badge variant="outline">
+                  {modules.archived_modules} archived
+                </Badge>
+                <Badge variant="outline">
+                  {modules.completions_passed} passed
+                </Badge>
+                <Badge variant="outline">
+                  {modules.completions_failed} failed
+                </Badge>
+                <Badge variant="outline">
+                  {modules.completions_in_progress} in progress
+                </Badge>
               </div>
               {modules.ftc_module_readiness ? (
                 <p className="text-sm text-muted-foreground">
-                  FTC launch readiness: {modules.ftc_module_readiness.pass_percentage ?? 0}% of reps who have
-                  touched a campaign have passed the FTC module ({modules.ftc_module_readiness.passed_reps}/
+                  FTC launch readiness:{" "}
+                  {modules.ftc_module_readiness.pass_percentage ?? 0}% of
+                  talents who have touched a campaign have passed the FTC module
+                  ({modules.ftc_module_readiness.passed_reps}/
                   {modules.ftc_module_readiness.attempted_reps}).
                 </p>
               ) : (
-                <p className="text-sm text-muted-foreground">FTC_MODULE_ID not configured yet.</p>
+                <p className="text-sm text-muted-foreground">
+                  FTC_MODULE_ID not configured yet.
+                </p>
               )}
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -191,14 +249,25 @@ export default function AdminAnalyticsPage() {
                   </thead>
                   <tbody>
                     {modules.per_module.map((m) => {
-                      const lowPassRate = modules.modules_flagged_low_pass_rate.includes(m.module_id);
-                      const highAttempts = modules.modules_flagged_high_attempts.includes(m.module_id);
+                      const lowPassRate =
+                        modules.modules_flagged_low_pass_rate.includes(
+                          m.module_id,
+                        );
+                      const highAttempts =
+                        modules.modules_flagged_high_attempts.includes(
+                          m.module_id,
+                        );
                       return (
-                        <tr key={m.module_id} className="border-b border-border/60">
+                        <tr
+                          key={m.module_id}
+                          className="border-b border-border/60"
+                        >
                           <td className="py-2 pr-4">{m.title}</td>
                           <td className="py-2 pr-4">{m.completion_count}</td>
                           <td className="py-2 pr-4">
-                            {m.pass_rate !== null ? `${Math.round(m.pass_rate * 100)}%` : "—"}
+                            {m.pass_rate !== null
+                              ? `${Math.round(m.pass_rate * 100)}%`
+                              : "—"}
                             {lowPassRate ? (
                               <Badge variant="destructive" className="ml-2">
                                 Review content

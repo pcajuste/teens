@@ -1,4 +1,4 @@
-"""Campaign/rep category vocabulary (Section 3.1 lists the base set;
+"""Campaign/talent category vocabulary (Section 3.1 lists the base set;
 Build Prompt 4A deliverable 4 adds the parent-only, blockable-only
 categories). Stored as TEXT[] in Postgres, not a DB enum -- Section 7's
 "same centrally-defined enum" language refers to this app-level set,
@@ -11,7 +11,7 @@ BASE_CATEGORIES = frozenset(
 )
 
 # Can appear in a campaign's target_categories and be blocked via a
-# parent's values_filters, but are never a rep's own self-selected
+# parent's values_filters, but are never a talent's own self-selected
 # interest category.
 PARENT_ONLY_BLOCKABLE_CATEGORIES = frozenset(
     {

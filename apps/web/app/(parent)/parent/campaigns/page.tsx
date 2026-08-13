@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { Countdown } from "@/components/rep/countdown";
+import { Countdown } from "@/components/talent/countdown";
 import { parentApi, ParentApiError } from "@/lib/parent-api";
 import { trackEvent } from "@/lib/analytics";
 import type { ParentPendingCampaign } from "@/lib/parent-types";
@@ -97,7 +97,7 @@ export default function ParentCampaignsPage() {
                 ) : null}
                 <p>
                   <span className="font-medium">Payout: </span>
-                  {money(c.payout_per_rep_cents)}
+                  {money(c.payout_per_talent_cents)}
                 </p>
                 <p>
                   <span className="font-medium">Timeline: </span>

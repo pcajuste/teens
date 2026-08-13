@@ -56,7 +56,7 @@ class Settings(BaseSettings):
     jobs_runner_secret: str
 
     # ── Feature flags ────────────────────────────────────────────
-    min_rep_age: int = 14
+    min_talent_age: int = 14
     parental_consent_required_under: int = 16
 
     # ── Parent Portal ────────────────────────────────────────────
@@ -90,7 +90,7 @@ class Settings(BaseSettings):
     exclusivity_max_days: int = 90
 
     # ── Skill Challenges (Build Prompt 8G) ──────────────────────────
-    # Platform-funded bonus paid to a rep when their challenge
+    # Platform-funded bonus paid to a talent when their challenge
     # submission converts to a campaign invitation. Funded from
     # platform margin, not charged to brand.
     challenge_conversion_bonus_cents: int = 750

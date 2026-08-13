@@ -18,7 +18,7 @@ vi.mock("@/lib/auth-context", () => ({
   useAuth: () => ({ signOut: vi.fn() }),
 }));
 
-import RepDashboardPage from "@/app/(rep)/rep/page";
+import RepDashboardPage from "@/app/(talent)/talent/page";
 
 const ALLOWED_CAMPAIGN = {
   id: "camp-allowed",
@@ -28,13 +28,13 @@ const ALLOWED_CAMPAIGN = {
   deliverables_description: "One post",
   target_categories: ["gaming"],
   target_cities: [],
-  payout_per_rep_cents: 3000,
+  payout_per_talent_cents: 3000,
   start_date: "2026-09-01",
   end_date: "2026-09-30",
 };
 
 // A parent has "alcohol_adjacent" in values_filters -- the backend
-// (GET /reps/campaigns/available) never returns campaigns in a
+// (GET /talents/campaigns/available) never returns campaigns in a
 // blocked category in the first place (Section 9A). This test proves
 // the rendered panel reflects exactly what the API returns and never
 // independently re-adds or caches a blocked campaign back in.
@@ -46,7 +46,7 @@ const BLOCKED_CAMPAIGN = {
   deliverables_description: "One post",
   target_categories: ["alcohol_adjacent"],
   target_cities: [],
-  payout_per_rep_cents: 3000,
+  payout_per_talent_cents: 3000,
   start_date: "2026-09-01",
   end_date: "2026-09-30",
 };
@@ -54,10 +54,10 @@ const BLOCKED_CAMPAIGN = {
 describe("available-campaigns panel", () => {
   it("never renders a campaign the API excluded for a parent-blocked category", async () => {
     getMock.mockImplementation((path: string) => {
-      if (path === "/reps/me")
+      if (path === "/talents/me")
         return Promise.resolve({
           id: "r1",
-          display_name: "Test Rep",
+          display_name: "Test Talent",
           school_name: "Test High",
           school_type: "public",
           city: "Austin",
@@ -73,13 +73,20 @@ describe("available-campaigns panel", () => {
           average_rating: null,
           profile_completeness_score: 80,
         });
-      // The blocked-category campaign is never in this response --
+      // The blocked-category campaign is never in this response  --
       // the server-side values-filter exclusion already happened.
-      if (path === "/reps/campaigns/available") return Promise.resolve([ALLOWED_CAMPAIGN]);
-      if (path === "/reps/campaigns/active") return Promise.resolve([]);
-      if (path === "/reps/earnings") return Promise.resolve({ pending_cents: 0, confirmed_cents: 0, paid_cents: 0, lifetime_paid_cents: 0 });
-      if (path === "/reps/challenges/available") return Promise.resolve([]);
-      if (path === "/reps/challenges/submitted") return Promise.resolve([]);
+      if (path === "/talents/campaigns/available")
+        return Promise.resolve([ALLOWED_CAMPAIGN]);
+      if (path === "/talents/campaigns/active") return Promise.resolve([]);
+      if (path === "/talents/earnings")
+        return Promise.resolve({
+          pending_cents: 0,
+          confirmed_cents: 0,
+          paid_cents: 0,
+          lifetime_paid_cents: 0,
+        });
+      if (path === "/talents/challenges/available") return Promise.resolve([]);
+      if (path === "/talents/challenges/submitted") return Promise.resolve([]);
       return Promise.reject(new Error(`unexpected path ${path}`));
     });
 

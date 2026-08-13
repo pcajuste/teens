@@ -1,8 +1,8 @@
 # /demo
 
 Empty scaffold. This directory will hold the seed data and script that power
-the **public-facing demo experiences** — the interactive rep demo
-(`apps/web/app/(marketing)/demo/rep/`, Prompt 6A) and the recruiter
+the **public-facing demo experiences** — the interactive Talent demo
+(`apps/web/app/(marketing)/demo/talent/`, Prompt 6A) and the recruiter
 preview / brand sales page (`apps/web/app/(marketing)/demo/recruiter/`,
 `.../demo/brand/`, Prompt 12A) — plus the marketing/investor/sales demo more
 generally.
@@ -14,7 +14,7 @@ generally.
   This directory seeds the public demo surfaces that anyone can load without
   authentication.
 - **Never contains anything that looks like a real minor's data.** Every demo
-  rep, brand, and campaign must be unmistakably fictional — invented names,
+  talent, brand, and campaign must be unmistakably fictional — invented names,
   invented schools, no resemblance to a real person or company.
 - **Must stay stable release-over-release.** Demo links are shared externally
   (sales, investors, marketing). Do not restructure or remove existing demo

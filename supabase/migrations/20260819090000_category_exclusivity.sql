@@ -75,7 +75,7 @@ $$;
 -- DATABASE_URL connection that bypasses RLS per app/db/pool.py's own
 -- module docstring), enforcing the purchase/cancellation business
 -- rules (conflict check, proration, Stripe PaymentIntent/Refund) before
--- ever writing a row. Reps, recruiters, and parents get no policy at
+-- ever writing a row. Talents, recruiters, and parents get no policy at
 -- all, so default-deny applies to them, matching this codebase's
 -- parent_auth_tokens / milestone_disputes convention.
 CREATE POLICY "Brand reads own exclusivity agreements"

@@ -24,7 +24,9 @@ export default function AdminSafetyPage() {
   const [note, setNote] = useState("");
 
   async function load() {
-    const rows = await api.get<AdminSafetyReport[]>("/admin/safety-reports?open_only=true");
+    const rows = await api.get<AdminSafetyReport[]>(
+      "/admin/safety-reports?open_only=true",
+    );
     setReports(rows);
   }
 
@@ -35,22 +37,29 @@ export default function AdminSafetyPage() {
   async function resolve(id: string, status: "resolved" | "dismissed") {
     setError(null);
     try {
-      await api.post(`/admin/safety-reports/${id}/resolve`, { status, resolution_note: note || null });
+      await api.post(`/admin/safety-reports/${id}/resolve`, {
+        status,
+        resolution_note: note || null,
+      });
       setResolvingId(null);
       setNote("");
       await load();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not resolve report.");
+      setError(
+        err instanceof ApiError ? err.message : "Could not resolve report.",
+      );
     }
   }
 
   return (
     <AdminShell>
       <div className="rounded-xl border-2 border-destructive bg-destructive/10 px-4 py-3">
-        <p className="text-sm font-semibold text-destructive">Safety report queue -- highest priority</p>
+        <p className="text-sm font-semibold text-destructive">
+          Safety report queue -- highest priority
+        </p>
         <p className="text-xs text-destructive/80">
-          Filed via the rep portal&apos;s one-tap report mechanism. Review and resolve before working campaign
-          disputes or payment issues.
+          Filed via the Talent portal&apos;s one-tap report mechanism. Review
+          and resolve before working campaign disputes or payment issues.
         </p>
       </div>
 
@@ -58,7 +67,10 @@ export default function AdminSafetyPage() {
       {reports === null ? (
         <Skeleton className="h-32 w-full" />
       ) : reports.length === 0 ? (
-        <EmptyState title="No open safety reports" description="The queue is clear." />
+        <EmptyState
+          title="No open safety reports"
+          description="The queue is clear."
+        />
       ) : (
         <div className="flex flex-col gap-3">
           {reports.map((r) => (
@@ -66,14 +78,18 @@ export default function AdminSafetyPage() {
               <CardContent className="flex flex-col gap-2 p-4">
                 <div className="flex items-center justify-between gap-4">
                   <div>
-                    <p className="text-sm font-medium">{r.reporter_display_name}</p>
+                    <p className="text-sm font-medium">
+                      {r.reporter_display_name}
+                    </p>
                     <p className="text-xs text-muted-foreground">
                       {new Date(r.created_at).toLocaleString()} -- {r.reason}
                     </p>
                   </div>
                   <Badge variant="destructive">open</Badge>
                 </div>
-                {r.description ? <p className="text-sm">{r.description}</p> : null}
+                {r.description ? (
+                  <p className="text-sm">{r.description}</p>
+                ) : null}
 
                 {resolvingId === r.id ? (
                   <div className="flex flex-col gap-2">
@@ -83,19 +99,37 @@ export default function AdminSafetyPage() {
                       onChange={(e) => setNote(e.target.value)}
                     />
                     <div className="flex gap-2">
-                      <Button size="sm" onClick={() => resolve(r.id, "resolved")}>
+                      <Button
+                        size="sm"
+                        onClick={() => resolve(r.id, "resolved")}
+                      >
                         Mark resolved
                       </Button>
-                      <Button size="sm" variant="outline" onClick={() => resolve(r.id, "dismissed")}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => resolve(r.id, "dismissed")}
+                      >
                         Dismiss
                       </Button>
-                      <Button size="sm" variant="ghost" onClick={() => { setResolvingId(null); setNote(""); }}>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          setResolvingId(null);
+                          setNote("");
+                        }}
+                      >
                         Cancel
                       </Button>
                     </div>
                   </div>
                 ) : (
-                  <Button size="sm" variant="destructive" onClick={() => setResolvingId(r.id)}>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => setResolvingId(r.id)}
+                  >
                     Review
                   </Button>
                 )}

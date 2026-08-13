@@ -9,15 +9,24 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { BrandShell } from "@/components/brand/brand-shell";
 import { api, ApiError } from "@/lib/api";
-import { BASE_CATEGORIES, CATEGORY_LABELS, type Category } from "@/lib/categories";
-import type { Challenge, ChallengeCreateRequest, ChallengeSubmissionFormat } from "@/lib/types";
+import {
+  BASE_CATEGORIES,
+  CATEGORY_LABELS,
+  type Category,
+} from "@/lib/categories";
+import type {
+  Challenge,
+  ChallengeCreateRequest,
+  ChallengeSubmissionFormat,
+} from "@/lib/types";
 
 export default function NewChallengePage() {
   const router = useRouter();
   const [title, setTitle] = useState("");
   const [brief, setBrief] = useState("");
   const [category, setCategory] = useState<Category>(BASE_CATEGORIES[0]);
-  const [submissionFormat, setSubmissionFormat] = useState<ChallengeSubmissionFormat>("both");
+  const [submissionFormat, setSubmissionFormat] =
+    useState<ChallengeSubmissionFormat>("both");
   const [submissionPrompt, setSubmissionPrompt] = useState("");
   const [maxSubmissions, setMaxSubmissions] = useState<string>("");
   const [closesAt, setClosesAt] = useState<string>("");
@@ -44,7 +53,11 @@ export default function NewChallengePage() {
       }
       router.push(`/brand/challenges/${created.id}`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not create this challenge.");
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : "Could not create this challenge.",
+      );
     } finally {
       setPending(false);
     }
@@ -58,11 +71,20 @@ export default function NewChallengePage() {
         <Card className="flex flex-col gap-4 p-5">
           <div>
             <Label htmlFor="title">Title</Label>
-            <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} />
+            <Input
+              id="title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+            />
           </div>
           <div>
             <Label htmlFor="brief">Brief</Label>
-            <Textarea id="brief" rows={4} value={brief} onChange={(e) => setBrief(e.target.value)} />
+            <Textarea
+              id="brief"
+              rows={4}
+              value={brief}
+              onChange={(e) => setBrief(e.target.value)}
+            />
           </div>
           <div>
             <Label htmlFor="category">Category</Label>
@@ -85,7 +107,9 @@ export default function NewChallengePage() {
               id="submission_format"
               className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
               value={submissionFormat}
-              onChange={(e) => setSubmissionFormat(e.target.value as ChallengeSubmissionFormat)}
+              onChange={(e) =>
+                setSubmissionFormat(e.target.value as ChallengeSubmissionFormat)
+              }
             >
               <option value="both">Text and/or file</option>
               <option value="text">Text only</option>
@@ -104,7 +128,9 @@ export default function NewChallengePage() {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label htmlFor="max_submissions">Max submissions (optional)</Label>
+              <Label htmlFor="max_submissions">
+                Max submissions (optional)
+              </Label>
               <Input
                 id="max_submissions"
                 type="number"
@@ -115,36 +141,62 @@ export default function NewChallengePage() {
             </div>
             <div>
               <Label htmlFor="closes_at">Close date (optional)</Label>
-              <Input id="closes_at" type="date" value={closesAt} onChange={(e) => setClosesAt(e.target.value)} />
+              <Input
+                id="closes_at"
+                type="date"
+                value={closesAt}
+                onChange={(e) => setClosesAt(e.target.value)}
+              />
             </div>
           </div>
 
-          {error ? <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p> : null}
+          {error ? (
+            <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {error}
+            </p>
+          ) : null}
 
           <div className="flex gap-3 pt-2">
-            <Button variant="outline" disabled={!canSubmit || pending} onClick={() => handleCreate(false)}>
+            <Button
+              variant="outline"
+              disabled={!canSubmit || pending}
+              onClick={() => handleCreate(false)}
+            >
               Save as draft
             </Button>
-            <Button disabled={!canSubmit || pending} onClick={() => handleCreate(true)}>
+            <Button
+              disabled={!canSubmit || pending}
+              onClick={() => handleCreate(true)}
+            >
               Create and activate
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">
-            Challenges are free -- no Stripe charge. They&apos;re a brand acquisition tool at this stage.
+            Challenges are free -- no Stripe charge. They&apos;re a brand
+            acquisition tool at this stage.
           </p>
         </Card>
 
-        {/* Preview panel -- exactly what a rep will see. */}
+        {/* Preview panel -- exactly what a talent will see. */}
         <Card className="p-5">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Rep preview</p>
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Talent preview
+          </p>
           <p className="text-lg font-semibold">{title || "Challenge title"}</p>
-          <p className="mt-1 text-sm text-muted-foreground">{CATEGORY_LABELS[category]}</p>
-          <p className="mt-3 text-sm">{brief || "Your brief will appear here."}</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {CATEGORY_LABELS[category]}
+          </p>
+          <p className="mt-3 text-sm">
+            {brief || "Your brief will appear here."}
+          </p>
           <p className="mt-3 text-sm font-medium">What to submit</p>
-          <p className="text-sm text-muted-foreground">{submissionPrompt || "Your submission prompt will appear here."}</p>
+          <p className="text-sm text-muted-foreground">
+            {submissionPrompt || "Your submission prompt will appear here."}
+          </p>
           <div className="mt-4 rounded-lg border-2 border-primary/40 bg-primary/5 p-3 text-xs text-muted-foreground">
-            This challenge is unpaid. Reps see a mandatory disclosure before they can submit, and Teenure pays a
-            $7.50 discovery bonus only if you convert their submission to a paid campaign invitation.
+            This challenge is unpaid. Talents see a mandatory disclosure before
+            they can submit, and Teenure pays a $7.50 discovery bonus only if
+            you convert their submission to a paid campaign invitation.
           </div>
         </Card>
       </div>

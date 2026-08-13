@@ -1,9 +1,9 @@
 """Data access for public.recruiter_profiles (Build Prompt 11). Same
-shape as brand_profiles_repository.py/rep_profiles_repository.py:
+shape as brand_profiles_repository.py/talent_profiles_repository.py:
 every function takes an explicit asyncpg connection, frozen/slots
 dataclass with `from_row`.
 
-Credit deduction (GET /recruiters/reps/:id, POST .../contact) uses a
+Credit deduction (GET /recruiters/talents/:id, POST .../contact) uses a
 single atomic conditional UPDATE with a WHERE-clause precondition and
 RETURNING -- the same pattern as campaigns_repository.set_pending_payment
 -- rather than an explicit transaction/row lock. A single UPDATE
@@ -222,7 +222,7 @@ async def clear_subscription(conn: asyncpg.Connection, recruiter_id: str) -> Rec
 
 
 async def add_credits(conn: asyncpg.Connection, recruiter_id: str, *, credits: int) -> RecruiterProfile | None:
-    """Stripe one-time credit top-up webhook -- increments (not resets)
+    """Stripe one-time credit top-up webhook -- increments (not rest)
     the balance, distinct from reset_credits."""
     row = await conn.fetchrow(
         f"""

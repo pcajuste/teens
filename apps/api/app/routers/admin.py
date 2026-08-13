@@ -26,12 +26,12 @@ from app.repositories import (
     admin_repository,
     brand_profiles_repository,
     campaign_milestones_repository,
-    campaign_reps_repository,
+    campaign_talents_repository,
     campaigns_repository,
     challenges_repository,
     exclusivity_repository,
     intelligence_repository,
-    rep_profiles_repository,
+    talent_profiles_repository,
     users_repository,
 )
 from app.schemas.admin import (
@@ -47,7 +47,7 @@ from app.schemas.admin import (
     QueueEntryResponse,
     RejectRequest,
     ReleasePayoutResponse,
-    RepsByCityCategoryResponse,
+    TalentsByCityCategoryResponse,
     ResolveCampaignRequest,
     ResolveMilestoneDisputeRequest,
     ResolveSafetyReportRequest,
@@ -100,7 +100,7 @@ def _queue_to_response(entries: list[admin_repository.QueueEntry]) -> list[Queue
 # ══════════════════════════════════════════════════════════════════
 
 
-@admin_router.get("/queue/reps", response_model=list[QueueEntryResponse])
+@admin_router.get("/queue/talents", response_model=list[QueueEntryResponse])
 async def queue_reps(conn: asyncpg.Connection = Depends(get_connection)) -> list[QueueEntryResponse]:
     return _queue_to_response(await admin_repository.queue_reps(conn))
 
@@ -116,24 +116,24 @@ async def queue_recruiters(conn: asyncpg.Connection = Depends(get_connection)) -
 
 
 def _require_reviewable_type(account_type: AccountType) -> None:
-    """Reps never sit in an admin-approval pending state (Section 5
-    Phase 1 / Section 8: a rep goes 'active' either immediately at
+    """Talents never sit in an admin-approval pending state (Section 5
+    Phase 1 / Section 8: a talent goes 'active' either immediately at
     signup, at 16+, or the moment a parent completes double opt-in --
-    never via admin review). POST /admin/approve|reject/rep is
+    never via admin review). POST /admin/approve|reject/talent is
     therefore intentionally unsupported rather than a silent no-op --
-    a 400 makes the "reps don't go through this path" decision visible
+    a 400 makes the "talents don't go through this path" decision visible
     to any caller, instead of quietly accepting a request that can
     never do anything (queue_reps never returns a row that
-    approve_account's WHERE account_status='pending' AND the rep
+    approve_account's WHERE account_status='pending' AND the talent
     branch could act on in a way that means anything -- see
     admin_repository.queue_reps's own docstring for the full
     reasoning)."""
-    if account_type == "rep":
+    if account_type == "talent":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
-                "code": "reps_not_admin_reviewed",
-                "message": "Rep accounts activate via parental consent, not admin approval -- there is nothing to approve or reject here.",
+                "code": "talents_not_admin_reviewed",
+                "message":   "Talent accounts activate via parental consent, not admin approval -- there is nothing to approve or reject here.",
             },
         )
 
@@ -240,8 +240,8 @@ async def resolve_campaign(
     those flows enforce -- FTC disclosure, payout math -- still holds;
     an admin override changes *who* triggers the transition, never
     what's required for it to be legal. force_confirm therefore only
-    ever candidate-applies to campaign_reps rows already sitting in
-    'submitted' (the same precondition campaign_reps_repository.confirm
+    ever candidate-applies to campaign_talents rows already sitting in
+    'submitted' (the same precondition campaign_talents_repository.confirm
     enforces for the brand path); rows in any other state are left
     untouched rather than silently skipped without a trace."""
     existing = await admin_repository.get_admin_campaign(conn, campaign_id)
@@ -252,20 +252,20 @@ async def resolve_campaign(
         await campaigns_repository.set_cancelled(conn, campaign_id)
     else:  # force_confirm
         campaign = await campaigns_repository.get_by_id(conn, campaign_id)
-        payout_cents = (campaign.payout_per_rep_cents if campaign else None) or 0
-        for cr in await campaign_reps_repository.list_for_campaign(conn, campaign_id):
+        payout_cents = (campaign.payout_per_talent_cents if campaign else None) or 0
+        for cr in await campaign_talents_repository.list_for_campaign(conn, campaign_id):
             if cr.status != "submitted" or not cr.ftc_disclosure_accepted:
                 # Mirrors app/routers/brands.py's own confirm_submission
                 # precondition, and CLAUDE.md's compliance posture ("no
                 # submission endpoint or admin override can create a
-                # 'submitted' campaign_reps row without
+                # 'submitted' campaign_talents row without
                 # ftc_disclosure_accepted") -- an admin force-confirm
                 # cannot manufacture a legal confirmation for a row that
                 # never legally reached 'submitted' in the first place,
                 # so rows outside that state are left untouched rather
                 # than silently skipped without a trace.
                 continue
-            confirmed = await campaign_reps_repository.confirm(
+            confirmed = await campaign_talents_repository.confirm(
                 conn, cr.id, campaign_id, payout_cents=payout_cents, at=datetime.now(timezone.utc)
             )
             if confirmed is not None:
@@ -297,7 +297,7 @@ async def release_payment(
     if row is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail={"code": "transfer_not_found", "message": "No campaign_reps row with that Stripe transfer id."},
+            detail={"code": "transfer_not_found", "message": "No campaign_talents row with that Stripe transfer id."},
         )
 
     result = await payout_service.admin_release_payout(conn, settings, str(row["id"]), admin_id=admin.id)
@@ -305,11 +305,11 @@ async def release_payment(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"code": "not_confirmed", "message": "This row isn't in a confirmed, payable state."})
     if result.outcome == "already_processed":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"code": "not_stuck", "message": "This transfer isn't currently processing or failed."})
-    if result.outcome == "rep_not_onboarded":
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"code": "rep_not_onboarded", "message": "The rep has no completed Stripe Connect account."})
+    if result.outcome == "talent_not_onboarded":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"code": "talent_not_onboarded", "message": "The talent has no completed Stripe Connect account."})
 
     return ReleasePayoutResponse(
-        campaign_rep_id=result.campaign_rep.id,
+        campaign_talent_id=result.campaign_rep.id,
         payout_status=result.campaign_rep.payout_status,
         admin_released=True,
     )
@@ -326,10 +326,10 @@ async def analytics_revenue(conn: asyncpg.Connection = Depends(get_connection)) 
     return [RevenuePeriodResponse(**r) for r in rows]
 
 
-@admin_router.get("/analytics/reps", response_model=RepsByCityCategoryResponse)
-async def analytics_reps(conn: asyncpg.Connection = Depends(get_connection)) -> RepsByCityCategoryResponse:
+@admin_router.get("/analytics/talents", response_model=TalentsByCityCategoryResponse)
+async def analytics_reps(conn: asyncpg.Connection = Depends(get_connection)) -> TalentsByCityCategoryResponse:
     result = await admin_repository.reps_by_city_and_category(conn)
-    return RepsByCityCategoryResponse(**result)
+    return TalentsByCityCategoryResponse(**result)
 
 
 @admin_router.get("/analytics/campaigns", response_model=CampaignsByStatusCategoryResponse)
@@ -368,9 +368,9 @@ async def parent_suspensions(conn: asyncpg.Connection = Depends(get_connection))
     return [ParentSuspendedRepResponse(**asdict(r)) for r in rows]
 
 
-@admin_router.post("/parent-suspensions/{rep_id}/reverse", response_model=ReverseSuspensionResponse)
+@admin_router.post("/parent-suspensions/{talent_id}/reverse", response_model=ReverseSuspensionResponse)
 async def reverse_parent_suspension(
-    rep_id: str,
+    talent_id: str,
     admin: AuthenticatedUser = Depends(require_role("admin")),
     settings: Settings = Depends(get_settings),
     conn: asyncpg.Connection = Depends(get_connection),
@@ -382,22 +382,22 @@ async def reverse_parent_suspension(
     reverse an admin suspension, and this route can only ever reverse a
     parent one (admin_repository.reverse_parent_suspension's WHERE
     clause is the enforcement, not a convention)."""
-    row = await admin_repository.reverse_parent_suspension(conn, rep_id, admin_id=admin.id)
+    row = await admin_repository.reverse_parent_suspension(conn, talent_id, admin_id=admin.id)
     if row is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail={"code": "not_found_or_not_parent_suspended", "message": "No parent-suspended rep with that id."},
+            detail={"code": "not_found_or_not_parent_suspended", "message": "No parent-suspended talent with that id."},
         )
 
-    rep = await rep_profiles_repository.get_by_id(conn, rep_id)
-    if rep is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"code": "rep_not_found", "message": "Rep profile not found."})
+    talent = await talent_profiles_repository.get_by_id(conn, talent_id)
+    if talent is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"code": "talent_not_found", "message":   "Talent profile not found."})
 
-    updated_user = await users_repository.set_account_status(conn, rep.user_id, "active")
+    updated_user = await users_repository.set_account_status(conn, talent.user_id, "active")
     auth_client = get_supabase_auth_client(settings, conn)
-    await auth_client.update_app_metadata(rep.user_id, {"role": "rep", "account_status": "active"})
+    await auth_client.update_app_metadata(talent.user_id, {"role": "talent", "account_status": "active"})
 
-    return ReverseSuspensionResponse(rep_id=rep_id, account_status=updated_user.account_status)
+    return ReverseSuspensionResponse(talent_id=talent_id, account_status=updated_user.account_status)
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -415,13 +415,13 @@ async def safety_reports(
 
 
 @admin_router.post("/safety-reports/{report_id}/resolve", response_model=SafetyReportResponse)
-async def resolve_safety_report(
+async def tresolve_safety_report(
     report_id: str,
     body: ResolveSafetyReportRequest,
     admin: AuthenticatedUser = Depends(require_role("admin")),
     conn: asyncpg.Connection = Depends(get_connection),
 ) -> SafetyReportResponse:
-    updated = await admin_repository.resolve_safety_report(
+    updated = await admin_repository.tresolve_safety_report(
         conn, report_id, admin_id=admin.id, status=body.status, resolution_note=body.resolution_note
     )
     if updated is None:
@@ -453,10 +453,10 @@ async def resolve_milestone_dispute(
     resend_client: ResendClient = Depends(_resend_client_dependency),
 ) -> MilestoneDisputeResponse:
     """Build Prompt 8B deliverable 7's resolution step: admin reviews
-    the rep's submission evidence and either confirms (triggering
+    the talent's submission evidence and either confirms (triggering
     payout the same way the brand-initiated confirm route does) or
     declines (resets the milestone to 'submitted', notifying both
-    parties -- never a silent decline). No self-serve brand/rep
+    parties -- never a silent decline). No self-serve brand/talent
     resolution exists anywhere in this codebase for milestone disputes;
     this route is the only way one is ever closed."""
     dispute = await admin_repository.get_milestone_dispute(conn, dispute_id)
@@ -466,7 +466,7 @@ async def resolve_milestone_dispute(
             detail={"code": "not_found_or_not_open", "message": "No open milestone dispute with that id."},
         )
 
-    crm = await campaign_milestones_repository.get_by_id(conn, dispute.campaign_rep_milestone_id)
+    crm = await campaign_milestones_repository.get_by_id(conn, dispute.campaign_talent_milestone_id)
     if crm is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"code": "milestone_not_found", "message": "Underlying milestone row no longer exists."})
 
@@ -478,11 +478,11 @@ async def resolve_milestone_dispute(
         )
         if confirmed_row is not None:
             await payout_service.release_milestone_payout(conn, settings, confirmed_row.id)
-            cr = await campaign_reps_repository.get_by_id(conn, confirmed_row.campaign_rep_id)
+            cr = await campaign_talents_repository.get_by_id(conn, confirmed_row.campaign_talent_id)
             if cr is not None:
-                agg = await campaign_milestones_repository.bump_campaign_rep_milestone_totals(conn, cr.id)
+                agg = await campaign_milestones_repository.bump_campaign_talent_milestone_totals(conn, cr.id)
                 if agg["completed_count"] >= agg["total_milestones"]:
-                    await campaign_reps_repository.mark_confirmed_via_final_milestone(conn, cr.id, at=datetime.now(timezone.utc))
+                    await campaign_talents_repository.mark_confirmed_via_final_milestone(conn, cr.id, at=datetime.now(timezone.utc))
     else:
         await campaign_milestones_repository.reset_to_submitted(conn, crm.id)
 
@@ -493,14 +493,14 @@ async def resolve_milestone_dispute(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"code": "already_resolved", "message": "This dispute was already resolved."})
 
     # Notify both parties -- brand (who raised the dispute) and the
-    # rep (whose milestone was disputed) -- regardless of outcome.
-    rep = await rep_profiles_repository.get_by_id(conn, dispute.rep_id)
+    # talent (whose milestone was disputed) -- regardless of outcome.
+    talent = await talent_profiles_repository.get_by_id(conn, dispute.talent_id)
     brand_user = await users_repository.get_user_by_id(conn, dispute.raised_by)
-    if rep is not None:
-        rep_user = await users_repository.get_user_by_id(conn, rep.user_id)
-        if rep_user is not None:
+    if talent is not None:
+        talent_user = await users_repository.get_user_by_id(conn, talent.user_id)
+        if talent_user is not None:
             await send_milestone_dispute_resolved_email(
-                rep_user.email, dispute.milestone_title, confirmed=confirmed, client=resend_client
+                talent_user.email, dispute.milestone_title, confirmed=confirmed, client=resend_client
             )
     if brand_user is not None:
         await send_milestone_dispute_resolved_email(
@@ -525,7 +525,7 @@ async def analytics_challenges(conn: asyncpg.Connection = Depends(get_connection
 # Build Prompt 14 deliverable 4: Intelligence Layer trend reports.
 # Every route below queries ONLY public.intelligence_events_anonymized
 # (via app/repositories/intelligence_repository.py) -- never a join to
-# rep_profiles/users/campaign_reps/campaigns. Each group smaller than
+# talent_profiles/users/campaign_talents/campaigns. Each group smaller than
 # 10 underlying events comes back as the literal "insufficient sample
 # size" marker (Section 9), not a real number and not an empty result.
 # ══════════════════════════════════════════════════════════════════

@@ -1,6 +1,6 @@
 export type SchoolType = "public" | "private" | "charter" | "homeschool";
 
-export interface RepProfile {
+export interface TalentProfile {
   id: string;
   display_name: string;
   school_name: string;
@@ -24,8 +24,8 @@ export interface RepProfile {
   badges_earned_count: number;
 }
 
-export type RepProfilePreview = Omit<
-  RepProfile,
+export type TalentProfilePreview = Omit<
+  TalentProfile,
   "id" | "recruiter_visible" | "total_earnings_cents"
 >;
 
@@ -56,7 +56,7 @@ export interface ContentBlockPublic {
 export type ModuleStatus = "draft" | "active" | "archived";
 export type CompletionStatus = "in_progress" | "passed" | "failed";
 
-export interface RepProgress {
+export interface TalentProgress {
   status: CompletionStatus;
   attempts: number;
   quiz_score: number | null;
@@ -74,7 +74,7 @@ export interface ModuleAvailable {
   badge_icon: string | null;
   estimated_minutes: number;
   passing_score: number | null;
-  rep_progress: RepProgress | null;
+  talent_progress: TalentProgress | null;
 }
 
 export interface ModuleCompleted {
@@ -106,13 +106,13 @@ export interface ModuleContent {
 
 export interface ModuleStartResponse {
   module: ModuleContent;
-  completion: RepProgress;
+  completion: TalentProgress;
 }
 
 export interface WrongAnswerEntry {
   question_index: number;
   correct_index: number;
-  rep_answer_index: number;
+  talent_answer_index: number;
 }
 
 export interface ModuleCompleteResponse {
@@ -150,16 +150,16 @@ export interface AdminModule {
   in_progress_count: number;
 }
 
-// GET /reps/me/achievement-record -- wraps RepProfilePreview rather
+// GET /talents/me/achievement-record -- wraps TalentProfilePreview rather
 // than repeating its fields, matching the backend's
-// AchievementRecordResponse shape (see apps/api/app/schemas/reps.py)
+// AchievementRecordResponse shape (see apps/api/app/schemas/talents.py)
 // so this can never drift from the profile-preview data.
 export interface AchievementRecord {
   generated_at: string;
-  record: RepProfilePreview;
+  record: TalentProfilePreview;
 }
 
-export interface RepProfileUpdateRequest {
+export interface TalentProfileUpdateRequest {
   display_name: string;
   school_name: string;
   school_type: SchoolType | null;
@@ -174,7 +174,7 @@ export interface RepProfileUpdateRequest {
 
 // ── Milestone payments (Build Prompt 8B) ────────────────────────────
 
-export type VerificationMethod = "brand_confirmation" | "rep_submission";
+export type VerificationMethod = "brand_confirmation" | "talent_submission";
 
 /** One row of the `milestones` array sent in POST /brands/campaigns
  * when payment_type='milestone' -- matches
@@ -190,7 +190,7 @@ export interface MilestoneRequest {
   verification_method: VerificationMethod;
   payout_percentage: number;
   sequence_required: boolean;
-  /** Optional count-based milestone support: when set, the rep must
+  /** Optional count-based milestone support: when set, the talent must
    * submit this many times before the milestone is considered
    * complete (e.g. 3 for "publish 3 pieces of content"). Leave
    * undefined for an ordinary single-submission milestone -- most
@@ -198,9 +198,9 @@ export interface MilestoneRequest {
   threshold_count?: number | null;
 }
 
-/** Per-milestone entry within GET /reps/campaigns/active for a
+/** Per-milestone entry within GET /talents/campaigns/active for a
  * milestone campaign -- matches
- * apps/api/app/schemas/reps.py's MilestoneParticipationResponse.
+ * apps/api/app/schemas/talents.py's MilestoneParticipationResponse.
  * `actionable` is server-computed sequence awareness; the frontend
  * never re-derives it. */
 export interface MilestoneParticipation {
@@ -217,7 +217,7 @@ export interface MilestoneParticipation {
   payout_cents: number | null;
   payout_status: string;
   /** Set only for a count-based milestone (see MilestoneRequest). When
-   * present, the rep UI should render "current_count of threshold_count"
+   * present, the talent UI should render "current_count of threshold_count"
    * progress instead of a flat pending/actionable state. */
   threshold_count: number | null;
   current_count: number;
@@ -226,8 +226,8 @@ export interface MilestoneParticipation {
   paid_at: string | null;
 }
 
-/** Brand's per-rep milestone progress view -- GET
- * /brands/campaigns/:id/reps/:rep_id/milestones, matches
+/** Brand's per-talent milestone progress view -- GET
+ * /brands/campaigns/:id/talents/:talent_id/milestones, matches
  * apps/api/app/schemas/brands.py's MilestoneProgressResponse. */
 export interface MilestoneProgress {
   id: string;
@@ -237,8 +237,8 @@ export interface MilestoneProgress {
   verification_method: VerificationMethod;
   payout_percentage: number;
   status: string;
-  rep_submission_text: string | null;
-  rep_submission_file_urls: string[];
+  talent_submission_text: string | null;
+  talent_submission_file_urls: string[];
   payout_cents: number | null;
   payout_status: string;
   dispute_flag: boolean;
@@ -255,12 +255,12 @@ export interface SubmitMilestoneRequest {
 }
 
 /** One campaign's milestone-level earnings detail within GET
- * /reps/earnings -- matches
- * apps/api/app/schemas/reps.py's MilestoneEarningsEntry. */
+ * /talents/earnings -- matches
+ * apps/api/app/schemas/talents.py's MilestoneEarningsEntry. */
 export interface MilestoneEarningsEntry {
   campaign_id: string;
   campaign_title: string;
-  payout_per_rep_cents: number | null;
+  payout_per_talent_cents: number | null;
   milestones_completed_count: number;
   total_milestone_payout_cents: number;
   milestones: MilestoneParticipation[];
@@ -274,12 +274,16 @@ export interface CampaignSummary {
   deliverables_description: string;
   target_categories: string[];
   target_cities: string[];
-  payout_per_rep_cents: number | null;
+  payout_per_talent_cents: number | null;
   start_date: string;
   end_date: string;
 }
 
-export type ParentApprovalStatus = "not_required" | "pending" | "approved" | "blocked";
+export type ParentApprovalStatus =
+  | "not_required"
+  | "pending"
+  | "approved"
+  | "blocked";
 
 export interface CampaignParticipation {
   campaign_id: string;
@@ -322,7 +326,7 @@ export interface MeResponse {
 export interface SignupRequest {
   email: string;
   password: string;
-  role: "rep" | "brand" | "recruiter";
+  role: "talent" | "brand" | "recruiter";
   date_of_birth: string;
   parent_email?: string;
 }
@@ -365,12 +369,12 @@ export type CampaignStatus =
 
 export type PaymentType = "flat" | "milestone";
 
-/** Structural shape shared by the rep-facing CampaignSummary and the
+/** Structural shape shared by the talent-facing CampaignSummary and the
  * brand-facing Campaign -- components that only render the brief
  * itself (goal/deliverables/categories/payout) accept this instead of
  * either concrete type, so the same renderer (components/campaigns/campaign-brief.tsx)
  * works for both portals (Build Prompt 9 deliverable 2: reuse the
- * rep-facing renderer, don't build a second one). */
+ * talent-facing renderer, don't build a second one). */
 export interface CampaignBriefLike {
   title: string;
   product_name: string;
@@ -378,18 +382,18 @@ export interface CampaignBriefLike {
   deliverables_description: string;
   prohibited_content?: string | null;
   target_categories: string[];
-  payout_per_rep_cents: number | null;
+  payout_per_talent_cents: number | null;
 }
 
 export interface Campaign extends CampaignBriefLike {
   id: string;
   status: CampaignStatus;
   target_cities: string[];
-  max_reps: number;
-  reps_accepted_count: number;
+  max_talents: number;
+  talents_accepted_count: number;
   budget_cents: number;
   platform_fee_cents: number;
-  rep_pool_cents: number;
+  talent_pool_cents: number;
   start_date: string;
   end_date: string;
   payment_type: PaymentType;
@@ -406,7 +410,7 @@ export interface CampaignBriefRequest {
   deliverables_description: string;
   target_categories: string[];
   target_cities: string[];
-  max_reps: number;
+  max_talents: number;
   budget_cents: number;
   start_date: string;
   end_date: string;
@@ -426,8 +430,8 @@ export interface CancelCampaignResponse {
   refund_pending: boolean;
 }
 
-export interface RepBrowseCard {
-  rep_id: string;
+export interface TalentBrowseCard {
+  talent_id: string;
   city: string;
   state: string;
   graduation_year: number;
@@ -439,14 +443,14 @@ export interface RepBrowseCard {
 }
 
 export interface InviteResult {
-  rep_id: string;
-  campaign_rep_id: string | null;
-  status: "invited" | "already_invited" | "campaign_full" | "rep_not_found";
+  talent_id: string;
+  campaign_talent_id: string | null;
+  status: "invited" | "already_invited" | "campaign_full" | "talent_not_found";
 }
 
-export interface CampaignRep {
+export interface campaignTalent {
   id: string;
-  rep_id: string;
+  talent_id: string;
   status: string;
   ftc_disclosure_accepted: boolean;
   parent_approval_status: ParentApprovalStatus;
@@ -490,9 +494,9 @@ export interface RecruiterCredits {
   low_credit_warning: boolean;
 }
 
-/** GET /recruiters/reps/search -- no PII, no credit cost. */
+/** GET /recruiters/talents/search -- no PII, no credit cost. */
 export interface RecruiterSearchCard {
-  rep_id: string;
+  talent_id: string;
   city: string;
   state: string;
   graduation_year: number;
@@ -503,12 +507,12 @@ export interface RecruiterSearchCard {
   total_campaigns_completed: number;
 }
 
-/** GET /recruiters/reps/:id -- full identifying profile, costs 1 credit
+/** GET /recruiters/talents/:id -- full identifying profile, costs 1 credit
  * (deducted server-side before this is ever returned -- lib/api.ts's
- * response is the only source of truth for the new credit balance,
+ * response  is the only source of truth for the new credit balance,
  * never a locally-decremented counter). */
 export interface RecruiterRepDetail {
-  rep_id: string;
+  talent_id: string;
   display_name: string;
   school_name: string;
   school_type: SchoolType | null;
@@ -530,7 +534,7 @@ export interface RecruiterContactRequest {
 
 export interface RecruiterContactResponse {
   id: string;
-  rep_id: string;
+  talent_id: string;
   message_text: string;
   messaged_at: string;
 }
@@ -540,7 +544,7 @@ export interface RecruiterSaveRequest {
 }
 
 export interface RecruiterSavedProfile {
-  rep_id: string;
+  talent_id: string;
   list_name: string | null;
   saved_at: string;
 }
@@ -578,14 +582,14 @@ export interface SubscriptionCheckoutResponse {
  * with read-receipt status (Build Prompt 12 deliverable 4). */
 export interface RecruiterMessage {
   id: string;
-  rep_id: string;
-  rep_display_name: string;
+  talent_id: string;
+  talent_display_name: string;
   message_text: string;
   read_at: string | null;
   messaged_at: string;
 }
 
-// Matches apps/api/app/core/errors.py's response shape exactly --
+// Matches apps/api/app/core/errors.py's response  shape exactly --
 // lib/api.ts's parseError reads this shape directly (not this type,
 // which exists for callers that want to type a raw error body).
 export interface ApiErrorBody {
@@ -624,9 +628,9 @@ export interface AdminCampaign {
 }
 
 export interface AdminStuckPayment {
-  campaign_rep_id: string;
+  campaign_talent_id: string;
   campaign_id: string;
-  rep_id: string;
+  talent_id: string;
   payout_cents: number | null;
   payout_status: string;
   stripe_transfer_id: string | null;
@@ -679,7 +683,11 @@ export interface AdminModuleAnalytics {
   modules_flagged_low_pass_rate: string[];
   modules_flagged_high_attempts: string[];
   badge_distribution: AdminModuleAnalyticsBadgeEntry[];
-  ftc_module_readiness: { attempted_reps: number; passed_reps: number; pass_percentage: number | null } | null;
+  ftc_module_readiness: {
+    attempted_reps: number;
+    passed_reps: number;
+    pass_percentage: number | null;
+  } | null;
 }
 
 export interface AdminOutlierBrand {
@@ -691,8 +699,8 @@ export interface AdminOutlierBrand {
 }
 
 export interface AdminParentSuspendedRep {
-  rep_id: string;
-  rep_user_id: string;
+  talent_id: string;
+  talent_user_id: string;
   display_name: string;
   parent_id: string;
   suspended_by_parent_at: string;
@@ -700,7 +708,7 @@ export interface AdminParentSuspendedRep {
 
 export interface AdminSafetyReport {
   id: string;
-  reporter_rep_id: string;
+  reporter_talent_id: string;
   reporter_display_name: string;
   campaign_id: string | null;
   reason: string;
@@ -743,7 +751,12 @@ export interface ExclusivityPurchaseResponse {
 }
 
 export type ExclusivityAgreementStatus = "active" | "expired" | "cancelled";
-export type ExclusivityPaymentStatus = "pending" | "paid" | "refunded" | "partially_refunded" | "failed";
+export type ExclusivityPaymentStatus =
+  | "pending"
+  | "paid"
+  | "refunded"
+  | "partially_refunded"
+  | "failed";
 
 export interface ExclusivityAgreement {
   id: string;
@@ -835,8 +848,8 @@ export interface ChallengeCreateRequest {
   closes_at: string | null;
 }
 
-export interface ChallengeSubmissionRepCard {
-  rep_id: string;
+export interface ChallengeSubmissionTalentCard {
+  talent_id: string;
   display_name: string;
   city: string;
   categories: string[];
@@ -850,7 +863,7 @@ export interface ChallengeSubmissionRepCard {
 export interface BrandChallengeSubmission {
   id: string;
   challenge_id: string;
-  rep: ChallengeSubmissionRepCard;
+  talent: ChallengeSubmissionTalentCard;
   submission_text: string | null;
   submission_file_urls: string[];
   status: "submitted" | "reviewed" | "converted";
@@ -880,7 +893,7 @@ export interface RepSubmittedChallenge {
   status: "submitted" | "converted";
   campaign_id: string | null;
   campaign_title: string | null;
-  payout_per_rep_cents: number | null;
+  payout_per_talent_cents: number | null;
   bonus_cents: number | null;
 }
 

@@ -1,5 +1,5 @@
 """Brand portal backend (Build Prompt 8): profile CRUD, campaign CRUD +
-server-side fee-split + activation/retry-payment/pause/cancel, rep
+server-side fee-split + activation/retry-payment/pause/cancel, talent
 discovery/invite, submission review/confirm/revision/rate.
 
 Every route requires account_status='active' (require_role("brand")) --
@@ -12,10 +12,10 @@ would review. Discovered as a real gap while building the frontend for
 this prompt -- a freshly signed-up brand (always 'pending' at signup)
 could not reach PUT /brands/me at all under the original require_role
 everywhere, meaning no brand account could ever progress past signup.
-A brand's own rep_profiles-equivalent row (brand_profiles) is looked up
+A brand's own talent_profiles-equivalent row (brand_profiles) is looked up
 from the authenticated user's id on every request, never trusted from
 the URL, so a brand can never read or write another brand's campaigns
-(mirrors Build Prompt 5's rep-ownership acceptance criterion).
+(mirrors Build Prompt 5's talent-ownership acceptance criterion).
 """
 from __future__ import annotations
 
@@ -32,9 +32,9 @@ from app.repositories import (
     admin_repository,
     brand_profiles_repository,
     campaign_milestones_repository,
-    campaign_reps_repository,
+    campaign_talents_repository,
     campaigns_repository,
-    rep_profiles_repository,
+    talent_profiles_repository,
     users_repository,
 )
 from app.services import exclusivity_service
@@ -52,7 +52,7 @@ from app.schemas.brands import (
     MilestoneProgressResponse,
     RateRequest,
     ReceiptResponse,
-    RepBrowseCardResponse,
+    TalentBrowseCardResponse,
     RevisionRequest,
     SubmissionResponse,
 )
@@ -167,12 +167,12 @@ def _to_campaign_response(c: campaigns_repository.Campaign) -> CampaignResponse:
         deliverables_description=c.deliverables_description,
         target_categories=c.target_categories,
         target_cities=c.target_cities,
-        max_reps=c.max_reps,
-        reps_accepted_count=c.reps_accepted_count,
+        max_talents=c.max_talents,
+        talents_accepted_count=c.talents_accepted_count,
         budget_cents=c.budget_cents,
         platform_fee_cents=c.platform_fee_cents,
-        rep_pool_cents=c.rep_pool_cents,
-        payout_per_rep_cents=c.payout_per_rep_cents,
+        talent_pool_cents=c.talent_pool_cents,
+        payout_per_talent_cents=c.payout_per_talent_cents,
         start_date=c.start_date,
         end_date=c.end_date,
         payment_type=c.payment_type,
@@ -181,10 +181,10 @@ def _to_campaign_response(c: campaigns_repository.Campaign) -> CampaignResponse:
     )
 
 
-def _to_campaign_rep_response(cr: campaign_reps_repository.CampaignRep) -> CampaignRepResponse:
+def _to_campaign_talent_response(cr: campaign_talents_repository.CampaignTalent) -> CampaignRepResponse:
     return CampaignRepResponse(
         id=cr.id,
-        rep_id=cr.rep_id,
+        talent_id=cr.talent_id,
         status=cr.status,
         ftc_disclosure_accepted=cr.ftc_disclosure_accepted,
         parent_approval_status=cr.parent_approval_status,
@@ -227,7 +227,7 @@ async def put_me(
     conn: asyncpg.Connection = Depends(get_connection),
 ) -> BrandProfileResponse:
     """Creates brand_profiles on first call (onboarding) or updates it
-    on subsequent calls, mirroring reps.py's PUT /reps/me. Uses
+    on subsequent calls, mirroring talents.py's PUT /talents/me. Uses
     require_role_any_status, not require_role: a brand must be able to
     submit their profile for review while still account_status='pending'
     -- that submission is what admin review (Prompt 13) actually
@@ -318,8 +318,8 @@ async def create_campaign(
             detail={"code": "milestones_not_allowed", "message": "milestones must be absent/empty for payment_type='flat'."},
         )
 
-    platform_fee_cents, rep_pool_cents, payout_per_rep_cents = compute_campaign_fee_split(
-        budget_cents=body.budget_cents, max_reps=body.max_reps, platform_fee_percent=settings.stripe_platform_fee_percent
+    platform_fee_cents, talent_pool_cents, payout_per_talent_cents = compute_campaign_fee_split(
+        budget_cents=body.budget_cents, max_talents=body.max_talents, platform_fee_percent=settings.stripe_platform_fee_percent
     )
 
     # Build Prompt 8C deliverable 5: the exclusivity conflict check must
@@ -354,11 +354,11 @@ async def create_campaign(
                     deliverables_description=body.deliverables_description,
                     target_categories=body.target_categories,
                     target_cities=body.target_cities,
-                    max_reps=body.max_reps,
+                    max_talents=body.max_talents,
                     budget_cents=body.budget_cents,
                     platform_fee_cents=platform_fee_cents,
-                    rep_pool_cents=rep_pool_cents,
-                    payout_per_rep_cents=payout_per_rep_cents,
+                    talent_pool_cents=talent_pool_cents,
+                    payout_per_talent_cents=payout_per_talent_cents,
                     start_date=body.start_date,
                     end_date=body.end_date,
                     payment_type=body.payment_type,
@@ -423,8 +423,8 @@ async def update_campaign(
             },
         )
 
-    platform_fee_cents, rep_pool_cents, payout_per_rep_cents = compute_campaign_fee_split(
-        budget_cents=body.budget_cents, max_reps=body.max_reps, platform_fee_percent=settings.stripe_platform_fee_percent
+    platform_fee_cents, talent_pool_cents, payout_per_talent_cents = compute_campaign_fee_split(
+        budget_cents=body.budget_cents, max_talents=body.max_talents, platform_fee_percent=settings.stripe_platform_fee_percent
     )
 
     updated = await campaigns_repository.update_campaign(
@@ -439,11 +439,11 @@ async def update_campaign(
         deliverables_description=body.deliverables_description,
         target_categories=body.target_categories,
         target_cities=body.target_cities,
-        max_reps=body.max_reps,
+        max_talents=body.max_talents,
         budget_cents=body.budget_cents,
         platform_fee_cents=platform_fee_cents,
-        rep_pool_cents=rep_pool_cents,
-        payout_per_rep_cents=payout_per_rep_cents,
+        talent_pool_cents=talent_pool_cents,
+        payout_per_talent_cents=payout_per_talent_cents,
         start_date=body.start_date,
         end_date=body.end_date,
     )
@@ -483,10 +483,10 @@ async def activate_campaign(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"code": "start_date_not_future", "message": "start_date must be in the future to activate."},
         )
-    if campaign.max_reps <= 0:
+    if campaign.max_talents <= 0:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"code": "invalid_max_reps", "message": "max_reps must be greater than 0."},
+            detail={"code": "invalid_max_reps", "message": "max_talents must be greater than 0."},
         )
 
     # Build Prompt 8C deliverable 5: the conflict check also fires at
@@ -581,15 +581,15 @@ async def cancel_campaign(
     """See docs/campaign-cancellation-refund-policy.md, updated by Build
     Prompt 10 to resolve what was left an open question in Prompt 8:
     the *un-paid remainder* of budget_cents is refunded -- budget_cents
-    minus whatever's already been transferred or is in flight to reps
+    minus whatever's already been transferred or is in flight to talents
     (payout_status IN ('processing','paid')), which also refunds the
     portion of the platform fee attributable to that unpaid remainder
     (nothing was delivered for it, so nothing should be kept for it).
-    Money already transferred to a rep is never clawed back. This is
+    Money already transferred to a talent is never clawed back. This is
     Prompt 10's own proposed fallback ("partial refund for un-paid
-    remainder when some reps already paid"), not a guess -- see the doc
+    remainder when some talents already paid"), not a guess -- see the doc
     for the full writeup and what's still open (e.g. whether a brand
-    should be able to dispute a specific rep's already-paid transfer,
+    should be able to dispute a specific talent's already-paid transfer,
     which is out of scope here)."""
     brand = await _get_own_brand_profile(conn, user)
     campaign = await _require_owned_campaign(conn, campaign_id, brand.id)
@@ -604,7 +604,7 @@ async def cancel_campaign(
 
     refund_amount_cents = 0
     if has_captured_payment and updated.stripe_payment_intent_id is not None:
-        committed_cents = await campaign_reps_repository.sum_committed_payouts_for_campaign(conn, campaign_id)
+        committed_cents = await campaign_talents_repository.sum_committed_payouts_for_campaign(conn, campaign_id)
         refund_amount_cents = max(0, updated.budget_cents - committed_cents)
         if refund_amount_cents > 0:
             await stripe_service.refund_campaign(
@@ -642,40 +642,40 @@ async def get_receipt(
 
 
 # ══════════════════════════════════════════════════════════════════
-# /brands/campaigns/:id/reps/*
+# /brands/campaigns/:id/talents/*
 # ══════════════════════════════════════════════════════════════════
 
 
-@brands_router.get("/campaigns/{campaign_id}/reps", response_model=list[CampaignRepResponse])
-async def list_campaign_reps(
+@brands_router.get("/campaigns/{campaign_id}/talents", response_model=list[CampaignRepResponse])
+async def list_campaign_talents(
     campaign_id: str,
     user: AuthenticatedUser = Depends(require_role("brand")),
     conn: asyncpg.Connection = Depends(get_connection),
 ) -> list[CampaignRepResponse]:
     brand = await _get_own_brand_profile(conn, user)
     await _require_owned_campaign(conn, campaign_id, brand.id)
-    rows = await campaign_reps_repository.list_for_campaign(conn, campaign_id)
-    return [_to_campaign_rep_response(r) for r in rows]
+    rows = await campaign_talents_repository.list_for_campaign(conn, campaign_id)
+    return [_to_campaign_talent_response(r) for r in rows]
 
 
-@brands_router.get("/campaigns/{campaign_id}/reps/browse", response_model=list[RepBrowseCardResponse])
+@brands_router.get("/campaigns/{campaign_id}/talents/browse", response_model=list[TalentBrowseCardResponse])
 async def browse_reps(
     campaign_id: str,
     user: AuthenticatedUser = Depends(require_role("brand")),
     conn: asyncpg.Connection = Depends(get_connection),
-) -> list[RepBrowseCardResponse]:
-    """No PII returned -- see rep_profiles_repository.RepBrowseCard's
+) -> list[TalentBrowseCardResponse]:
+    """No PII returned -- see talent_profiles_repository.TalentBrowseCard's
     docstring for the exact field-set decision. Matches against this
     campaign's own target_categories/target_cities so a brand is
-    browsing reps relevant to what they're actually running, not every
-    opted-in rep on the platform."""
+    browsing talents relevant to what they're actually running, not every
+    opted-in talent on the platform."""
     brand = await _get_own_brand_profile(conn, user)
     campaign = await _require_owned_campaign(conn, campaign_id, brand.id)
     city = campaign.target_cities[0] if len(campaign.target_cities) == 1 else None
-    cards = await rep_profiles_repository.browse_for_brand(conn, categories=campaign.target_categories, city=city)
+    cards = await talent_profiles_repository.browse_for_brand(conn, categories=campaign.target_categories, city=city)
     return [
-        RepBrowseCardResponse(
-            rep_id=c.rep_id,
+        TalentBrowseCardResponse(
+            talent_id=c.talent_id,
             city=c.city,
             state=c.state,
             graduation_year=c.graduation_year,
@@ -693,7 +693,7 @@ async def browse_reps(
     ]
 
 
-@brands_router.post("/campaigns/{campaign_id}/reps/invite", response_model=list[InviteResultResponse])
+@brands_router.post("/campaigns/{campaign_id}/talents/invite", response_model=list[InviteResultResponse])
 async def invite_reps(
     campaign_id: str,
     body: InviteRepsRequest,
@@ -701,11 +701,11 @@ async def invite_reps(
     conn: asyncpg.Connection = Depends(get_connection),
     resend_client: ResendClient = Depends(resend_client_dependency),
 ) -> list[InviteResultResponse]:
-    """Invites are processed one rep_id at a time so a bad id in a
-    batch doesn't fail the whole request -- results report per-rep
+    """Invites are processed one talent_id at a time so a bad id in a
+    batch doesn't fail the whole request -- results report per-talent
     outcome instead. Capacity is enforced against a live COUNT of
-    non-declined campaign_reps rows (campaign_reps_repository.count_non_declined_for_campaign),
-    not the reps_accepted_count cache column, which nothing in this
+    non-declined campaign_talents rows (campaign_talents_repository.count_non_declined_for_campaign),
+    not the talents_accepted_count cache column, which nothing in this
     codebase currently keeps up to date (a pre-existing gap, flagged
     rather than silently worked around by also fixing that column
     here -- out of this prompt's stated deliverables)."""
@@ -713,55 +713,55 @@ async def invite_reps(
     campaign = await _require_owned_campaign(conn, campaign_id, brand.id)
 
     results: list[InviteResultResponse] = []
-    for rep_id in body.rep_ids:
-        rep_profile = await rep_profiles_repository.get_by_id(conn, rep_id)
-        if rep_profile is None:
-            results.append(InviteResultResponse(rep_id=rep_id, campaign_rep_id=None, status="rep_not_found"))
+    for talent_id in body.talent_ids:
+        talent_profile = await talent_profiles_repository.get_by_id(conn, talent_id)
+        if talent_profile is None:
+            results.append(InviteResultResponse(talent_id=talent_id, campaign_talent_id=None, status="talent_not_found"))
             continue
 
-        existing = await campaign_reps_repository.get_for_rep_and_campaign(conn, rep_id, campaign_id)
+        existing = await campaign_talents_repository.get_for_talent_and_campaign(conn, talent_id, campaign_id)
         if existing is not None:
-            results.append(InviteResultResponse(rep_id=rep_id, campaign_rep_id=existing.id, status="already_invited"))
+            results.append(InviteResultResponse(talent_id=talent_id, campaign_talent_id=existing.id, status="already_invited"))
             continue
 
-        current_count = await campaign_reps_repository.count_non_declined_for_campaign(conn, campaign_id)
-        if current_count >= campaign.max_reps:
-            results.append(InviteResultResponse(rep_id=rep_id, campaign_rep_id=None, status="campaign_full"))
+        current_count = await campaign_talents_repository.count_non_declined_for_campaign(conn, campaign_id)
+        if current_count >= campaign.max_talents:
+            results.append(InviteResultResponse(talent_id=talent_id, campaign_talent_id=None, status="campaign_full"))
             continue
 
-        parent_approval_status, parent_approval_deadline = await determine_parent_approval(conn, rep_id)
-        created = await campaign_reps_repository.create_invite(
+        parent_approval_status, parent_approval_deadline = await determine_parent_approval(conn, talent_id)
+        created = await campaign_talents_repository.create_invite(
             conn,
             campaign_id=campaign_id,
-            rep_id=rep_id,
+            talent_id=talent_id,
             parent_approval_status=parent_approval_status,
             parent_approval_deadline=parent_approval_deadline,
         )
         if parent_approval_status == "pending":
-            await send_campaign_approval_request(conn, resend_client, rep_id=rep_id, campaign_id=campaign_id)
-        results.append(InviteResultResponse(rep_id=rep_id, campaign_rep_id=created.id, status="invited"))
+            await send_campaign_approval_request(conn, resend_client, talent_id=talent_id, campaign_id=campaign_id)
+        results.append(InviteResultResponse(talent_id=talent_id, campaign_talent_id=created.id, status="invited"))
 
     return results
 
 
-@brands_router.get("/campaigns/{campaign_id}/reps/{rep_id}/submission", response_model=SubmissionResponse)
+@brands_router.get("/campaigns/{campaign_id}/talents/{talent_id}/submission", response_model=SubmissionResponse)
 async def get_submission(
     campaign_id: str,
-    rep_id: str,
+    talent_id: str,
     user: AuthenticatedUser = Depends(require_role("brand")),
     conn: asyncpg.Connection = Depends(get_connection),
 ) -> SubmissionResponse:
     brand = await _get_own_brand_profile(conn, user)
     await _require_owned_campaign(conn, campaign_id, brand.id)
-    cr = await campaign_reps_repository.get_by_rep_and_campaign_id(conn, rep_id, campaign_id)
+    cr = await campaign_talents_repository.get_by_talent_and_campaign_id(conn, talent_id, campaign_id)
     if cr is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail={"code": "campaign_rep_not_found", "message": "No campaign_reps row for that rep on this campaign."},
+            detail={"code": "campaign_talent_not_found", "message": "No campaign_talents row for that talent on this campaign."},
         )
     return SubmissionResponse(
-        campaign_rep_id=cr.id,
-        rep_id=cr.rep_id,
+        campaign_talent_id=cr.id,
+        talent_id=cr.talent_id,
         status=cr.status,
         submission_text=cr.submission_text,
         submission_file_urls=cr.submission_file_urls,
@@ -769,34 +769,34 @@ async def get_submission(
     )
 
 
-@brands_router.post("/campaigns/{campaign_id}/reps/{rep_id}/confirm", response_model=CampaignRepResponse)
+@brands_router.post("/campaigns/{campaign_id}/talents/{talent_id}/confirm", response_model=CampaignRepResponse)
 async def confirm_submission(
     campaign_id: str,
-    rep_id: str,
+    talent_id: str,
     user: AuthenticatedUser = Depends(require_role("brand")),
     settings: Settings = Depends(get_settings),
     conn: asyncpg.Connection = Depends(get_connection),
 ) -> CampaignRepResponse:
     """payout_cents is recorded server-computed from the campaign's own
-    payout_per_rep_cents (never client-submitted), then
+    payout_per_talent_cents (never client-submitted), then
     payout_service.release_payout initiates the Stripe transfer in the
     same request (Build Prompt 10 deliverable 4). release_payout's own
-    'rep_not_onboarded' outcome doesn't fail this call -- the rep is
+    'talent_not_onboarded' outcome doesn't fail this call -- the talent is
     still confirmed and owed the payout, it just can't be transferred
-    yet, so it stays payout_status='pending' until the rep finishes
+    yet, so it stays payout_status='pending' until the talent finishes
     Connect onboarding (nothing currently retries this automatically --
     flagged, not a Prompt 10 deliverable)."""
     brand = await _get_own_brand_profile(conn, user)
     campaign = await _require_owned_campaign(conn, campaign_id, brand.id)
-    cr = await campaign_reps_repository.get_by_rep_and_campaign_id(conn, rep_id, campaign_id)
+    cr = await campaign_talents_repository.get_by_talent_and_campaign_id(conn, talent_id, campaign_id)
     if cr is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail={"code": "campaign_rep_not_found", "message": "No campaign_reps row for that rep on this campaign."},
+            detail={"code": "campaign_talent_not_found", "message": "No campaign_talents row for that talent on this campaign."},
         )
 
-    payout_cents = campaign.payout_per_rep_cents or 0
-    updated = await campaign_reps_repository.confirm(
+    payout_cents = campaign.payout_per_talent_cents or 0
+    updated = await campaign_talents_repository.confirm(
         conn, cr.id, campaign_id, payout_cents=payout_cents, at=datetime.now(timezone.utc)
     )
     if updated is None:
@@ -806,51 +806,51 @@ async def confirm_submission(
         )
 
     result = await payout_service.release_payout(conn, settings, updated.id)
-    return _to_campaign_rep_response(result.campaign_rep or updated)
+    return _to_campaign_talent_response(result.campaign_rep or updated)
 
 
-@brands_router.post("/campaigns/{campaign_id}/reps/{rep_id}/revision", response_model=CampaignRepResponse)
+@brands_router.post("/campaigns/{campaign_id}/talents/{talent_id}/revision", response_model=CampaignRepResponse)
 async def request_revision(
     campaign_id: str,
-    rep_id: str,
+    talent_id: str,
     body: RevisionRequest,
     user: AuthenticatedUser = Depends(require_role("brand")),
     conn: asyncpg.Connection = Depends(get_connection),
 ) -> CampaignRepResponse:
     brand = await _get_own_brand_profile(conn, user)
     await _require_owned_campaign(conn, campaign_id, brand.id)
-    cr = await campaign_reps_repository.get_by_rep_and_campaign_id(conn, rep_id, campaign_id)
+    cr = await campaign_talents_repository.get_by_talent_and_campaign_id(conn, talent_id, campaign_id)
     if cr is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail={"code": "campaign_rep_not_found", "message": "No campaign_reps row for that rep on this campaign."},
+            detail={"code": "campaign_talent_not_found", "message": "No campaign_talents row for that talent on this campaign."},
         )
-    updated = await campaign_reps_repository.request_revision(conn, cr.id, campaign_id, note=body.note)
+    updated = await campaign_talents_repository.request_revision(conn, cr.id, campaign_id, note=body.note)
     if updated is None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={"code": "illegal_transition", "message": f"Cannot request revision from status '{cr.status}'."},
         )
-    return _to_campaign_rep_response(updated)
+    return _to_campaign_talent_response(updated)
 
 
-@brands_router.post("/campaigns/{campaign_id}/reps/{rep_id}/rate", response_model=CampaignRepResponse)
+@brands_router.post("/campaigns/{campaign_id}/talents/{talent_id}/rate", response_model=CampaignRepResponse)
 async def rate_rep(
     campaign_id: str,
-    rep_id: str,
+    talent_id: str,
     body: RateRequest,
     user: AuthenticatedUser = Depends(require_role("brand")),
     conn: asyncpg.Connection = Depends(get_connection),
 ) -> CampaignRepResponse:
     brand = await _get_own_brand_profile(conn, user)
     await _require_owned_campaign(conn, campaign_id, brand.id)
-    cr = await campaign_reps_repository.get_by_rep_and_campaign_id(conn, rep_id, campaign_id)
+    cr = await campaign_talents_repository.get_by_talent_and_campaign_id(conn, talent_id, campaign_id)
     if cr is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail={"code": "campaign_rep_not_found", "message": "No campaign_reps row for that rep on this campaign."},
+            detail={"code": "campaign_talent_not_found", "message": "No campaign_talents row for that talent on this campaign."},
         )
-    updated = await campaign_reps_repository.rate(
+    updated = await campaign_talents_repository.rate(
         conn, cr.id, campaign_id, brand_rating=body.brand_rating, brand_rating_note=body.brand_rating_note
     )
     if updated is None:
@@ -861,11 +861,11 @@ async def rate_rep(
                 "message": "Rating requires status 'confirmed' or 'paid', and can only be set once.",
             },
         )
-    return _to_campaign_rep_response(updated)
+    return _to_campaign_talent_response(updated)
 
 
 # ══════════════════════════════════════════════════════════════════
-# /brands/campaigns/:id/reps/:rep_id/milestones/* (Build Prompt 8B)
+# /brands/campaigns/:id/talents/:talent_id/milestones/* (Build Prompt 8B)
 # ══════════════════════════════════════════════════════════════════
 
 
@@ -880,8 +880,8 @@ def _to_milestone_progress_response(
         verification_method=m.verification_method,
         payout_percentage=m.payout_percentage,
         status=crm.status,
-        rep_submission_text=crm.rep_submission_text,
-        rep_submission_file_urls=crm.rep_submission_file_urls,
+        talent_submission_text=crm.talent_submission_text,
+        talent_submission_file_urls=crm.talent_submission_file_urls,
         payout_cents=crm.payout_cents,
         payout_status=crm.payout_status,
         dispute_flag=crm.dispute_flag,
@@ -893,14 +893,14 @@ def _to_milestone_progress_response(
     )
 
 
-async def _require_campaign_rep_milestone(
-    conn: asyncpg.Connection, campaign_id: str, rep_id: str, milestone_id: str
-) -> tuple[campaign_reps_repository.CampaignRep, campaign_milestones_repository.CampaignRepMilestone]:
-    cr = await campaign_reps_repository.get_by_rep_and_campaign_id(conn, rep_id, campaign_id)
+async def _require_campaign_talent_milestone(
+    conn: asyncpg.Connection, campaign_id: str, talent_id: str, milestone_id: str
+) -> tuple[campaign_talents_repository.CampaignTalent, campaign_milestones_repository.CampaignRepMilestone]:
+    cr = await campaign_talents_repository.get_by_talent_and_campaign_id(conn, talent_id, campaign_id)
     if cr is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail={"code": "campaign_rep_not_found", "message": "No campaign_reps row for that rep on this campaign."},
+            detail={"code": "campaign_talent_not_found", "message": "No campaign_talents row for that talent on this campaign."},
         )
     milestone = await campaign_milestones_repository.get_by_id_and_campaign(conn, milestone_id, campaign_id)
     if milestone is None:
@@ -908,32 +908,32 @@ async def _require_campaign_rep_milestone(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"code": "milestone_not_found", "message": "No milestone found for that id on this campaign."},
         )
-    crm = await campaign_milestones_repository.get_by_campaign_rep_and_milestone(conn, cr.id, milestone.id)
+    crm = await campaign_milestones_repository.get_by_campaign_talent_and_milestone(conn, cr.id, milestone.id)
     if crm is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail={"code": "campaign_rep_milestone_not_found", "message": "This rep has no row for that milestone."},
+            detail={"code": "campaign_talent_milestone_not_found", "message": "This talent has no row for that milestone."},
         )
     return cr, crm
 
 
-@brands_router.get("/campaigns/{campaign_id}/reps/{rep_id}/milestones", response_model=list[MilestoneProgressResponse])
-async def list_rep_milestones(
+@brands_router.get("/campaigns/{campaign_id}/talents/{talent_id}/milestones", response_model=list[MilestoneProgressResponse])
+async def list_talent_milestones(
     campaign_id: str,
-    rep_id: str,
+    talent_id: str,
     user: AuthenticatedUser = Depends(require_role("brand")),
     conn: asyncpg.Connection = Depends(get_connection),
 ) -> list[MilestoneProgressResponse]:
-    """Brand's per-rep milestone progress view (frontend note under
+    """Brand's per-talent milestone progress view (frontend note under
     Build Prompt 8B: "which milestones are pending, submitted, or
-    confirmed per rep")."""
+    confirmed per talent")."""
     brand = await _get_own_brand_profile(conn, user)
     await _require_owned_campaign(conn, campaign_id, brand.id)
-    cr = await campaign_reps_repository.get_by_rep_and_campaign_id(conn, rep_id, campaign_id)
+    cr = await campaign_talents_repository.get_by_talent_and_campaign_id(conn, talent_id, campaign_id)
     if cr is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail={"code": "campaign_rep_not_found", "message": "No campaign_reps row for that rep on this campaign."},
+            detail={"code": "campaign_talent_not_found", "message": "No campaign_talents row for that talent on this campaign."},
         )
     milestones = {m.id: m for m in await campaign_milestones_repository.list_for_campaign(conn, campaign_id)}
     rows = await campaign_milestones_repository.list_for_campaign_rep(conn, cr.id)
@@ -945,11 +945,11 @@ async def list_rep_milestones(
 
 
 @brands_router.post(
-    "/campaigns/{campaign_id}/reps/{rep_id}/milestones/{milestone_id}/confirm", response_model=MilestoneProgressResponse
+    "/campaigns/{campaign_id}/talents/{talent_id}/milestones/{milestone_id}/confirm", response_model=MilestoneProgressResponse
 )
 async def confirm_milestone(
     campaign_id: str,
-    rep_id: str,
+    talent_id: str,
     milestone_id: str,
     user: AuthenticatedUser = Depends(require_role("brand")),
     settings: Settings = Depends(get_settings),
@@ -958,13 +958,13 @@ async def confirm_milestone(
     """POST .../milestones/:milestone_id/confirm (Build Prompt 8B
     deliverable 5). Brand-only, legal only from 'submitted'.
     payout_cents is computed server-side (percentage of
-    payout_per_rep_cents, rounded down, with the rounding remainder
+    payout_per_talent_cents, rounded down, with the rounding remainder
     added on the final milestone by milestone_number --
     campaign_milestones_repository.compute_payout_cents) then
     payout_service.release_milestone_payout initiates the Transfer in
     the same request, mirroring how confirm_submission above pairs
-    campaign_reps_repository.confirm with payout_service.release_payout
-    for flat campaigns. After the final milestone, campaign_reps.status
+    campaign_talents_repository.confirm with payout_service.release_payout
+    for flat campaigns. After the final milestone, campaign_talents.status
     advances to 'confirmed' so the flat rating/status pipeline keeps
     working unmodified (deliverable 5's own instruction)."""
     brand = await _get_own_brand_profile(conn, user)
@@ -974,7 +974,7 @@ async def confirm_milestone(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"code": "not_a_milestone_campaign", "message": "This campaign is not a milestone campaign."},
         )
-    cr, crm = await _require_campaign_rep_milestone(conn, campaign_id, rep_id, milestone_id)
+    cr, crm = await _require_campaign_talent_milestone(conn, campaign_id, talent_id, milestone_id)
     if crm.status != "submitted":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -992,9 +992,9 @@ async def confirm_milestone(
         )
 
     await payout_service.release_milestone_payout(conn, settings, updated.id)
-    agg = await campaign_milestones_repository.bump_campaign_rep_milestone_totals(conn, cr.id)
+    agg = await campaign_milestones_repository.bump_campaign_talent_milestone_totals(conn, cr.id)
     if agg is not None and agg["completed_count"] == agg["total_milestones"]:
-        # Final milestone confirmed -- campaign_reps.status advances to
+        # Final milestone confirmed -- campaign_talents.status advances to
         # 'confirmed' the same way the flat-campaign confirm route does,
         # so the rating flow and every other status-gated route (rate,
         # withdraw's terminal-state guard, etc.) keep working unmodified
@@ -1002,7 +1002,7 @@ async def confirm_milestone(
         # through the flat /submit endpoint, so this transitions from
         # 'accepted', not 'submitted' -- see
         # mark_confirmed_via_final_milestone's own docstring.
-        await campaign_reps_repository.mark_confirmed_via_final_milestone(conn, cr.id, at=datetime.now(timezone.utc))
+        await campaign_talents_repository.mark_confirmed_via_final_milestone(conn, cr.id, at=datetime.now(timezone.utc))
 
     milestone = await campaign_milestones_repository.get_by_id_and_campaign(conn, milestone_id, campaign_id)
     final_crm = await campaign_milestones_repository.get_by_id(conn, updated.id)
@@ -1010,11 +1010,11 @@ async def confirm_milestone(
 
 
 @brands_router.post(
-    "/campaigns/{campaign_id}/reps/{rep_id}/milestones/{milestone_id}/dispute", response_model=MilestoneProgressResponse
+    "/campaigns/{campaign_id}/talents/{talent_id}/milestones/{milestone_id}/dispute", response_model=MilestoneProgressResponse
 )
 async def dispute_milestone(
     campaign_id: str,
-    rep_id: str,
+    talent_id: str,
     milestone_id: str,
     body: MilestoneDisputeRequest,
     user: AuthenticatedUser = Depends(require_role("brand")),
@@ -1023,17 +1023,17 @@ async def dispute_milestone(
 ) -> MilestoneProgressResponse:
     """POST .../milestones/:milestone_id/dispute (Build Prompt 8B
     deliverable 7). Brand-only, legal only within
-    MILESTONE_DISPUTE_WINDOW_HOURS of the rep's submission (the same
+    MILESTONE_DISPUTE_WINDOW_HOURS of the talent's submission (the same
     24h window the auto-release job uses) -- past that window the
     milestone has already auto-released (or been brand-confirmed) and
     there is nothing left to dispute. Sets dispute_flag, which both
     pauses the auto-release job (list_eligible_for_auto_release filters
     on dispute_flag=false) and creates the admin-queue entry; resolution
-    is admin-only (no self-serve brand/rep resolution at MVP, per the
+    is admin-only (no self-serve brand/talent resolution at MVP, per the
     spec's own instruction)."""
     brand = await _get_own_brand_profile(conn, user)
     campaign = await _require_owned_campaign(conn, campaign_id, brand.id)
-    cr, crm = await _require_campaign_rep_milestone(conn, campaign_id, rep_id, milestone_id)
+    cr, crm = await _require_campaign_talent_milestone(conn, campaign_id, talent_id, milestone_id)
     if crm.status != "submitted":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -1054,14 +1054,14 @@ async def dispute_milestone(
             status_code=status.HTTP_409_CONFLICT,
             detail={"code": "illegal_transition", "message": f"Cannot dispute from status '{crm.status}'."},
         )
-    await admin_repository.create_milestone_dispute(conn, campaign_rep_milestone_id=crm.id, raised_by=user.id, reason=body.reason)
+    await admin_repository.create_milestone_dispute(conn, campaign_talent_milestone_id=crm.id, raised_by=user.id, reason=body.reason)
 
     milestone = await campaign_milestones_repository.get_by_id_and_campaign(conn, milestone_id, campaign_id)
-    rep = await rep_profiles_repository.get_by_id(conn, rep_id)
-    if rep is not None:
-        rep_user = await users_repository.get_user_by_id(conn, rep.user_id)
-        if rep_user is not None:
+    talent = await talent_profiles_repository.get_by_id(conn, talent_id)
+    if talent is not None:
+        talent_user = await users_repository.get_user_by_id(conn, talent.user_id)
+        if talent_user is not None:
             await send_milestone_disputed_email(
-                rep_user.email, campaign_title=campaign.title, milestone_title=milestone.title, client=resend_client
+                talent_user.email, campaign_title=campaign.title, milestone_title=milestone.title, client=resend_client
             )
     return _to_milestone_progress_response(updated, milestone)

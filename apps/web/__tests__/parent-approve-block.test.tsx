@@ -29,7 +29,7 @@ const PENDING_CAMPAIGN = {
   key_messaging: "Wear them everywhere",
   prohibited_content: null,
   deliverables_description: "One post",
-  payout_per_rep_cents: 5000,
+  payout_per_talent_cents: 5000,
   start_date: "2026-09-01",
   end_date: "2026-09-30",
   requires_in_person_activation: false,
@@ -45,7 +45,10 @@ describe("parent portal approve/block actions", () => {
   it("calls the approve endpoint and refreshes the list after confirming", async () => {
     const user = userEvent.setup();
     getMock.mockResolvedValueOnce([PENDING_CAMPAIGN]).mockResolvedValueOnce([]);
-    postMock.mockResolvedValueOnce({ campaign_id: "camp-1", parent_approval_status: "approved" });
+    postMock.mockResolvedValueOnce({
+      campaign_id: "camp-1",
+      parent_approval_status: "approved",
+    });
 
     render(<ParentCampaignsPage />);
 
@@ -55,14 +58,19 @@ describe("parent portal approve/block actions", () => {
     const dialog = await screen.findByRole("dialog");
     await user.click(within(dialog).getByRole("button", { name: "Approve" }));
 
-    await waitFor(() => expect(postMock).toHaveBeenCalledWith("/parent/campaigns/camp-1/approve"));
+    await waitFor(() =>
+      expect(postMock).toHaveBeenCalledWith("/parent/campaigns/camp-1/approve"),
+    );
     await waitFor(() => expect(getMock).toHaveBeenCalledTimes(2));
   });
 
   it("calls the block endpoint and refreshes the list after confirming", async () => {
     const user = userEvent.setup();
     getMock.mockResolvedValueOnce([PENDING_CAMPAIGN]).mockResolvedValueOnce([]);
-    postMock.mockResolvedValueOnce({ campaign_id: "camp-1", parent_approval_status: "blocked" });
+    postMock.mockResolvedValueOnce({
+      campaign_id: "camp-1",
+      parent_approval_status: "blocked",
+    });
 
     render(<ParentCampaignsPage />);
 
@@ -72,7 +80,9 @@ describe("parent portal approve/block actions", () => {
     const dialog = await screen.findByRole("dialog");
     await user.click(within(dialog).getByRole("button", { name: "Block" }));
 
-    await waitFor(() => expect(postMock).toHaveBeenCalledWith("/parent/campaigns/camp-1/block"));
+    await waitFor(() =>
+      expect(postMock).toHaveBeenCalledWith("/parent/campaigns/camp-1/block"),
+    );
     await waitFor(() => expect(getMock).toHaveBeenCalledTimes(2));
   });
 

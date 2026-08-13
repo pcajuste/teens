@@ -57,14 +57,14 @@ class ChallengeResponse(BaseModel):
     updated_at: datetime
 
 
-class ChallengeSubmissionRepCardResponse(BaseModel):
-    """GET /brands/challenges/:id/submissions per-submission rep card --
+class ChallengeSubmissionTalentCardResponse(BaseModel):
+    """GET /brands/challenges/:id/submissions per-submission talent card --
     no PII beyond display_name/city (spec deliverable 2: warm discovery,
-    the rep initiated contact by submitting -- see the router's own
+    the talent initiated contact by submitting -- see the router's own
     docstring). Never includes Instagram/TikTok handles, school name,
     or date of birth."""
 
-    rep_id: str
+    talent_id: str
     display_name: str
     city: str
     categories: list[str]
@@ -81,11 +81,11 @@ class BrandSubmissionResponse(BaseModel):
     submissions show as 'reviewed' from the brand's list perspective --
     the decline was their action") -- never brand_note echoed back
     beyond what the brand itself just wrote (brand_note IS included
-    here; this is the brand's own internal note, not rep-facing)."""
+    here; this is the brand's own internal note, not talent-facing)."""
 
     id: str
     challenge_id: str
-    rep: ChallengeSubmissionRepCardResponse
+    talent: ChallengeSubmissionTalentCardResponse
     submission_text: str | None
     submission_file_urls: list[str]
     status: Literal["submitted", "reviewed", "converted"]
@@ -113,8 +113,8 @@ class ConvertSubmissionResponse(BaseModel):
     stripe_transfer_id: str | None
 
 
-class RepChallengeAvailableResponse(BaseModel):
-    """GET /reps/challenges/available."""
+class TalentChallengeAvailableResponse(BaseModel):
+    """GET /talents/challenges/available."""
 
     id: str
     title: str
@@ -126,9 +126,9 @@ class RepChallengeAvailableResponse(BaseModel):
     closes_at: datetime | None
 
 
-class RepChallengeSubmittedResponse(BaseModel):
-    """GET /reps/challenges/submitted. status is remapped per the spec:
-    'submitted'/'reviewed' both surface as 'submitted' -- a rep sees no
+class TalentChallengeSubmittedResponse(BaseModel):
+    """GET /talents/challenges/submitted. status is remapped per the spec:
+    'submitted'/'reviewed' both surface as 'submitted' -- a talent sees no
     difference between reviewed and unreviewed (intentional); 'declined'
     rows are excluded entirely by the router before this is ever built."""
 
@@ -139,7 +139,7 @@ class RepChallengeSubmittedResponse(BaseModel):
     status: Literal["submitted", "converted"]
     campaign_id: str | None = None
     campaign_title: str | None = None
-    payout_per_rep_cents: int | None = None
+    payout_per_talent_cents: int | None = None
     bonus_cents: int | None = None
 
 
@@ -149,7 +149,7 @@ class SubmitChallengeRequest(BaseModel):
     disclosure_acknowledged: bool = False
 
 
-class RepChallengeSubmissionResponse(BaseModel):
+class TalentChallengeSubmissionResponse(BaseModel):
     id: str
     challenge_id: str
     status: Literal["submitted"]

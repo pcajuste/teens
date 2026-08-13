@@ -86,8 +86,8 @@ service; it's not meant for interactive use or real login flows.
 ## Design notes
 
 - [`docs/parent_records_creation_timing.md`](docs/parent_records_creation_timing.md) — when a `parent_records` row gets created relative to signup vs. onboarding.
-- [`docs/rep_profiles_cache_recompute.md`](docs/rep_profiles_cache_recompute.md) — how cached `rep_profiles` fields (completeness score, earnings, etc.) get recomputed.
-- [`docs/stripe-minors-policy.md`](docs/stripe-minors-policy.md) — Stripe Connect's actual policy on account holders under 18, and an open product/legal question this surfaced (Teenure's own age gate is narrower than Stripe's Representative requirement) that needs sign-off before real (non-test-mode) Connect payouts go live for any rep under 18.
+- [`docs/talent_profiles_cache_recompute.md`](docs/talent_profiles_cache_recompute.md) — how cached `talent_profiles` fields (completeness score, earnings, etc.) get recomputed.
+- [`docs/stripe-minors-policy.md`](docs/stripe-minors-policy.md) — Stripe Connect's actual policy on account holders under 18, and an open product/legal question this surfaced (Teenure's own age gate is narrower than Stripe's Representative requirement) that needs sign-off before real (non-test-mode) Connect payouts go live for any Talent under 18.
 
 ## Tests
 

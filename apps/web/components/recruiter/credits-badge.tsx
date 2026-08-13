@@ -31,8 +31,12 @@ export function CreditsBadge({ refreshKey }: { refreshKey?: number }) {
   if (credits === null) return null;
 
   return (
-    <Badge variant={credits.low_credit_warning ? "warning" : "outline"} className="px-3 py-1.5">
-      {credits.contact_credits_remaining} credit{credits.contact_credits_remaining === 1 ? "" : "s"} remaining
+    <Badge
+      variant={credits.low_credit_warning ? "warning" : "outline"}
+      className="px-3 py-1.5"
+    >
+      {credits.contact_credits_remaining} credit
+      {credits.contact_credits_remaining === 1 ? "" : "s"} remaining
       {credits.low_credit_warning ? " · low" : ""}
     </Badge>
   );

@@ -7,12 +7,12 @@ function money(cents: number | null): string {
 }
 
 /** Renders a campaign brief -- goal, deliverables, categories, payout.
- * Shared by the rep-facing campaign detail page and the brand-facing
+ * Shared by the talent-facing campaign detail page and the brand-facing
  * brief-builder preview step (Build Prompt 9 deliverable 2: reuse the
- * rep-facing renderer rather than building a second one). Both portals
+ * talent-facing renderer rather than building a second one). Both portals
  * see exactly the same layout for exactly the same data, which is the
  * point -- a brand previewing their own campaign should see precisely
- * what a rep will see, not an approximation of it. */
+ * what a talent will see, not an approximation of it. */
 export function CampaignBrief({ campaign }: { campaign: CampaignBriefLike }) {
   return (
     <section className="flex flex-col gap-4 rounded-xl border border-border bg-card p-5">
@@ -25,12 +25,16 @@ export function CampaignBrief({ campaign }: { campaign: CampaignBriefLike }) {
         <p className="text-sm">{campaign.campaign_goal}</p>
       </div>
       <div>
-        <p className="text-xs font-medium text-muted-foreground">Deliverables</p>
+        <p className="text-xs font-medium text-muted-foreground">
+          Deliverables
+        </p>
         <p className="text-sm">{campaign.deliverables_description}</p>
       </div>
       {campaign.prohibited_content ? (
         <div>
-          <p className="text-xs font-medium text-muted-foreground">Prohibited content</p>
+          <p className="text-xs font-medium text-muted-foreground">
+            Prohibited content
+          </p>
           <p className="text-sm">{campaign.prohibited_content}</p>
         </div>
       ) : null}
@@ -42,8 +46,12 @@ export function CampaignBrief({ campaign }: { campaign: CampaignBriefLike }) {
         ))}
       </div>
       <div className="flex items-center justify-between border-t border-border pt-3">
-        <p className="text-xs font-medium text-muted-foreground">Payout per rep</p>
-        <p className="text-lg font-semibold text-foreground">{money(campaign.payout_per_rep_cents)}</p>
+        <p className="text-xs font-medium text-muted-foreground">
+          Payout per talent
+        </p>
+        <p className="text-lg font-semibold text-foreground">
+          {money(campaign.payout_per_talent_cents)}
+        </p>
       </div>
     </section>
   );

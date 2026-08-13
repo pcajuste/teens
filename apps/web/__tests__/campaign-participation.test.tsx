@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { ParticipationSection } from "@/components/rep/participation-section";
+import { ParticipationSection } from "@/components/talent/participation-section";
 import type { CampaignParticipation } from "@/lib/types";
 
-function participation(overrides: Partial<CampaignParticipation> = {}): CampaignParticipation {
+function participation(
+  overrides: Partial<CampaignParticipation> = {},
+): CampaignParticipation {
   return {
     campaign_id: "c1",
     status: "applied",
@@ -31,7 +33,7 @@ describe("FTC disclosure gate", () => {
         onDecline={vi.fn()}
         onWithdrawn={vi.fn()}
         pending={false}
-      />
+      />,
     );
 
     const acceptButton = screen.getByRole("button", { name: "Accept" });
@@ -52,7 +54,7 @@ describe("FTC disclosure gate", () => {
         onDecline={vi.fn()}
         onWithdrawn={vi.fn()}
         pending={false}
-      />
+      />,
     );
 
     expect(screen.getByRole("button", { name: "Accept" })).not.toBeDisabled();
@@ -63,18 +65,25 @@ describe("parent-approval-pending state", () => {
   it("renders a waiting-on-parent message instead of the FTC/accept controls", () => {
     render(
       <ParticipationSection
-        participation={participation({ parent_approval_status: "pending", parent_approval_deadline: "2026-08-20T00:00:00Z" })}
+        participation={participation({
+          parent_approval_status: "pending",
+          parent_approval_deadline: "2026-08-20T00:00:00Z",
+        })}
         ftcAccepted={false}
         setFtcAccepted={vi.fn()}
         onAccept={vi.fn()}
         onDecline={vi.fn()}
         onWithdrawn={vi.fn()}
         pending={false}
-      />
+      />,
     );
 
-    expect(screen.getByText(/waiting on a parent's approval/i)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Accept" })).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/waiting on a parent's approval/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Accept" }),
+    ).not.toBeInTheDocument();
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
   });
 
@@ -88,10 +97,14 @@ describe("parent-approval-pending state", () => {
         onDecline={vi.fn()}
         onWithdrawn={vi.fn()}
         pending={false}
-      />
+      />,
     );
 
-    expect(screen.getByText(/your parent has blocked this campaign/i)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Accept" })).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/your parent has blocked this campaign/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Accept" }),
+    ).not.toBeInTheDocument();
   });
 });

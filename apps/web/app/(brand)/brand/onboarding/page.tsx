@@ -8,7 +8,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { BrandShell } from "@/components/brand/brand-shell";
 import { api, ApiError } from "@/lib/api";
-import { BASE_CATEGORIES, CATEGORY_LABELS, type Category } from "@/lib/categories";
+import {
+  BASE_CATEGORIES,
+  CATEGORY_LABELS,
+  type Category,
+} from "@/lib/categories";
 import type { BrandProfile } from "@/lib/types";
 
 export default function BrandOnboardingPage() {
@@ -45,7 +49,9 @@ export default function BrandOnboardingPage() {
   }, []);
 
   function toggleCategory(c: Category) {
-    setCategories((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]));
+    setCategories((prev) =>
+      prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c],
+    );
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -64,7 +70,9 @@ export default function BrandOnboardingPage() {
       setEin("");
       setSaved(true);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not save your profile.");
+      setError(
+        err instanceof ApiError ? err.message : "Could not save your profile.",
+      );
     } finally {
       setPending(false);
     }
@@ -82,13 +90,19 @@ export default function BrandOnboardingPage() {
     <BrandShell title="Company profile">
       <form onSubmit={handleSubmit} className="flex max-w-xl flex-col gap-5">
         <p className="text-sm text-muted-foreground">
-          This information is reviewed as part of account approval, and EIN is encrypted at rest --
-          it&apos;s never shown back to you or anyone else after you save it.
+          This information is reviewed as part of account approval, and EIN is
+          encrypted at talents -- it&apos;s never shown back to you or anyone
+          else after you save it.
         </p>
 
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="companyName">Company name</Label>
-          <Input id="companyName" required value={companyName} onChange={(e) => setCompanyName(e.target.value)} />
+          <Input
+            id="companyName"
+            required
+            value={companyName}
+            onChange={(e) => setCompanyName(e.target.value)}
+          />
         </div>
 
         <div className="flex flex-col gap-1.5">
@@ -104,14 +118,27 @@ export default function BrandOnboardingPage() {
 
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="industry">Industry</Label>
-          <Input id="industry" value={industry} onChange={(e) => setIndustry(e.target.value)} />
+          <Input
+            id="industry"
+            value={industry}
+            onChange={(e) => setIndustry(e.target.value)}
+          />
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="ein">EIN {hasEinOnFile ? <span className="font-normal text-muted-foreground">(on file)</span> : null}</Label>
+          <Label htmlFor="ein">
+            EIN{" "}
+            {hasEinOnFile ? (
+              <span className="font-normal text-muted-foreground">
+                (on file)
+              </span>
+            ) : null}
+          </Label>
           <Input
             id="ein"
-            placeholder={hasEinOnFile ? "Enter a new EIN to replace it" : "XX-XXXXXXX"}
+            placeholder={
+              hasEinOnFile ? "Enter a new EIN to replace it" : "XX-XXXXXXX"
+            }
             value={ein}
             onChange={(e) => setEin(e.target.value)}
           />
@@ -122,7 +149,10 @@ export default function BrandOnboardingPage() {
           <div className="flex flex-wrap gap-2">
             {BASE_CATEGORIES.map((c) => (
               <button key={c} type="button" onClick={() => toggleCategory(c)}>
-                <Badge variant={categories.includes(c) ? "default" : "outline"} className="px-3 py-1.5">
+                <Badge
+                  variant={categories.includes(c) ? "default" : "outline"}
+                  className="px-3 py-1.5"
+                >
                   {CATEGORY_LABELS[c]}
                 </Badge>
               </button>
@@ -131,17 +161,26 @@ export default function BrandOnboardingPage() {
         </div>
 
         {error ? (
-          <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>
+          <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {error}
+          </p>
         ) : null}
         {saved ? (
-          <p className="rounded-lg bg-success/10 px-3 py-2 text-sm text-success">Saved.</p>
+          <p className="rounded-lg bg-success/10 px-3 py-2 text-sm text-success">
+            Saved.
+          </p>
         ) : null}
 
         <div className="flex gap-3">
           <Button type="submit" disabled={pending} size="lg">
             {pending ? "Saving..." : "Save"}
           </Button>
-          <Button type="button" variant="outline" size="lg" onClick={() => router.push("/brand")}>
+          <Button
+            type="button"
+            variant="outline"
+            size="lg"
+            onClick={() => router.push("/brand")}
+          >
             Back to dashboard
           </Button>
         </div>

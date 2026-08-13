@@ -19,7 +19,9 @@ export default function AdminCampaignsPage() {
   const [error, setError] = useState<string | null>(null);
 
   async function load() {
-    const rows = await api.get<AdminCampaign[]>(`/admin/campaigns${flaggedOnly ? "?flagged_only=true" : ""}`);
+    const rows = await api.get<AdminCampaign[]>(
+      `/admin/campaigns${flaggedOnly ? "?flagged_only=true" : ""}`,
+    );
     setCampaigns(rows);
   }
 
@@ -37,18 +39,29 @@ export default function AdminCampaignsPage() {
       setFlagReason("");
       await load();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not flag campaign.");
+      setError(
+        err instanceof ApiError ? err.message : "Could not flag campaign.",
+      );
     }
   }
 
-  async function resolve(id: string, action: "force_confirm" | "force_cancel_refund") {
+  async function resolve(
+    id: string,
+    action: "force_confirm" | "force_cancel_refund",
+  ) {
     setError(null);
-    if (action === "force_cancel_refund" && !confirm("Force-cancel this campaign and refund the un-paid remainder?")) return;
+    if (
+      action === "force_cancel_refund" &&
+      !confirm("Force-cancel this campaign and refund the un-paid remainder?")
+    )
+      return;
     try {
       await api.post(`/admin/campaigns/${id}/resolve`, { action });
       await load();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not resolve campaign.");
+      setError(
+        err instanceof ApiError ? err.message : "Could not resolve campaign.",
+      );
     }
   }
 
@@ -56,7 +69,11 @@ export default function AdminCampaignsPage() {
     <AdminShell
       title="Campaign oversight"
       action={
-        <Button size="sm" variant={flaggedOnly ? "default" : "outline"} onClick={() => setFlaggedOnly((v) => !v)}>
+        <Button
+          size="sm"
+          variant={flaggedOnly ? "default" : "outline"}
+          onClick={() => setFlaggedOnly((v) => !v)}
+        >
           {flaggedOnly ? "Showing flagged only" : "Show flagged only"}
         </Button>
       }
@@ -65,7 +82,12 @@ export default function AdminCampaignsPage() {
       {campaigns === null ? (
         <Skeleton className="h-40 w-full" />
       ) : campaigns.length === 0 ? (
-        <EmptyState title="No campaigns" description={flaggedOnly ? "No flagged campaigns." : "No campaigns exist yet."} />
+        <EmptyState
+          title="No campaigns"
+          description={
+            flaggedOnly ? "No flagged campaigns." : "No campaigns exist yet."
+          }
+        />
       ) : (
         <div className="flex flex-col gap-3">
           {campaigns.map((c) => (
@@ -75,17 +97,26 @@ export default function AdminCampaignsPage() {
                   <div>
                     <p className="text-sm font-medium">{c.title}</p>
                     <p className="text-xs text-muted-foreground">
-                      {c.brand_name} -- ${(c.budget_cents / 100).toFixed(2)} -- {c.target_categories.join(", ")}
+                      {c.brand_name} -- ${(c.budget_cents / 100).toFixed(2)} --{" "}
+                      {c.target_categories.join(", ")}
                     </p>
                   </div>
                   <div className="flex gap-2">
                     <Badge variant="outline">{c.status}</Badge>
-                    {c.flagged_at && !c.resolved_at ? <Badge variant="destructive">flagged</Badge> : null}
-                    {c.resolved_at ? <Badge variant="success">resolved: {c.resolution_action}</Badge> : null}
+                    {c.flagged_at && !c.resolved_at ? (
+                      <Badge variant="destructive">flagged</Badge>
+                    ) : null}
+                    {c.resolved_at ? (
+                      <Badge variant="success">
+                        resolved: {c.resolution_action}
+                      </Badge>
+                    ) : null}
                   </div>
                 </div>
                 {c.flagged_reason ? (
-                  <p className="text-xs text-muted-foreground">Flag reason: {c.flagged_reason}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Flag reason: {c.flagged_reason}
+                  </p>
                 ) : null}
 
                 {flaggingId === c.id ? (
@@ -96,10 +127,21 @@ export default function AdminCampaignsPage() {
                       onChange={(e) => setFlagReason(e.target.value)}
                     />
                     <div className="flex gap-2">
-                      <Button size="sm" disabled={!flagReason.trim()} onClick={() => flag(c.id)}>
+                      <Button
+                        size="sm"
+                        disabled={!flagReason.trim()}
+                        onClick={() => flag(c.id)}
+                      >
                         Confirm flag
                       </Button>
-                      <Button size="sm" variant="outline" onClick={() => { setFlaggingId(null); setFlagReason(""); }}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setFlaggingId(null);
+                          setFlagReason("");
+                        }}
+                      >
                         Cancel
                       </Button>
                     </div>
@@ -107,16 +149,27 @@ export default function AdminCampaignsPage() {
                 ) : (
                   <div className="flex flex-wrap gap-2">
                     {!c.flagged_at || c.resolved_at ? (
-                      <Button size="sm" variant="outline" onClick={() => setFlaggingId(c.id)}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setFlaggingId(c.id)}
+                      >
                         Flag for review
                       </Button>
                     ) : null}
                     {c.flagged_at && !c.resolved_at ? (
                       <>
-                        <Button size="sm" onClick={() => resolve(c.id, "force_confirm")}>
+                        <Button
+                          size="sm"
+                          onClick={() => resolve(c.id, "force_confirm")}
+                        >
                           Force confirm
                         </Button>
-                        <Button size="sm" variant="destructive" onClick={() => resolve(c.id, "force_cancel_refund")}>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => resolve(c.id, "force_cancel_refund")}
+                        >
                           Force cancel + refund
                         </Button>
                       </>

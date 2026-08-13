@@ -9,7 +9,7 @@ from app.core.categories import BASE_CATEGORIES
 
 CampaignStatus = Literal["draft", "pending_payment", "payment_failed", "active", "paused", "completed", "cancelled"]
 PaymentType = Literal["flat", "milestone"]
-VerificationMethod = Literal["brand_confirmation", "rep_submission"]
+VerificationMethod = Literal["brand_confirmation", "talent_submission"]
 
 _MIN_MAX_REPS = 1
 
@@ -33,7 +33,7 @@ class MilestoneRequest(BaseModel):
     """Optional count-based milestone support (fills the 8B FRONTEND
     ADDITIONS > UX guidance gap: 'publish 3 pieces of content' should
     show '2 of 3' progress, not a flat pending/done state). Only
-    meaningful for milestones the rep completes by repeated submission
+    meaningful for milestones the talent completes by repeated submission
     -- most milestones leave this unset, and an unset threshold_count
     behaves identically to how every milestone worked before this was
     added."""
@@ -104,8 +104,8 @@ class BrandProfileResponse(BaseModel):
 
 class CampaignBriefRequest(BaseModel):
     """POST /brands/campaigns body -- exact field set from Section 8's
-    documented request body, plus max_reps validated > 0 here (the
-    'max_reps > 0' acceptance criterion is enforced again server-side
+    documented request body, plus max_talents validated > 0 here (the
+    'max_talents > 0' acceptance criterion is enforced again server-side
     at /activate, not just here, since a draft can be created then later
     validated at activation time per deliverable 4)."""
 
@@ -117,7 +117,7 @@ class CampaignBriefRequest(BaseModel):
     deliverables_description: str
     target_categories: list[str]
     target_cities: list[str] = []
-    max_reps: int
+    max_talents: int
     budget_cents: int
     start_date: date
     end_date: date
@@ -132,11 +132,11 @@ class CampaignBriefRequest(BaseModel):
             raise ValueError(f"invalid category values: {invalid}")
         return value
 
-    @field_validator("max_reps")
+    @field_validator("max_talents")
     @classmethod
     def _positive_max_reps(cls, value: int) -> int:
         if value < _MIN_MAX_REPS:
-            raise ValueError("max_reps must be >= 1")
+            raise ValueError("max_talents must be >= 1")
         return value
 
     @field_validator("budget_cents")
@@ -158,12 +158,12 @@ class CampaignResponse(BaseModel):
     deliverables_description: str
     target_categories: list[str]
     target_cities: list[str]
-    max_reps: int
-    reps_accepted_count: int
+    max_talents: int
+    talents_accepted_count: int
     budget_cents: int
     platform_fee_cents: int
-    rep_pool_cents: int
-    payout_per_rep_cents: int | None
+    talent_pool_cents: int
+    payout_per_talent_cents: int | None
     start_date: date
     end_date: date
     payment_type: PaymentType
@@ -172,10 +172,10 @@ class CampaignResponse(BaseModel):
 
 
 class MilestoneProgressResponse(BaseModel):
-    """GET /brands/campaigns/:id/reps/:rep_id/milestones -- brand's
-    per-rep milestone progress view (Build Prompt 8B frontend note:
+    """GET /brands/campaigns/:id/talents/:talent_id/milestones -- brand's
+    per-talent milestone progress view (Build Prompt 8B frontend note:
     "milestone progress view -- which milestones are pending, submitted,
-    or confirmed per rep")."""
+    or confirmed per talent")."""
 
     id: str
     campaign_milestone_id: str
@@ -184,8 +184,8 @@ class MilestoneProgressResponse(BaseModel):
     verification_method: VerificationMethod
     payout_percentage: int
     status: str
-    rep_submission_text: str | None
-    rep_submission_file_urls: list[str]
+    talent_submission_text: str | None
+    talent_submission_file_urls: list[str]
     payout_cents: int | None
     payout_status: str
     dispute_flag: bool
@@ -217,12 +217,12 @@ class ReceiptResponse(BaseModel):
     receipt_url: str | None
 
 
-class RepBrowseCardResponse(BaseModel):
-    """GET /brands/campaigns/:id/reps/browse -- see
-    rep_profiles_repository.RepBrowseCard's docstring for exactly why
-    this field set and not the fuller RepProfilePreviewResponse."""
+class TalentBrowseCardResponse(BaseModel):
+    """GET /brands/campaigns/:id/talents/browse -- see
+    talent_profiles_repository.TalentBrowseCard's docstring for exactly why
+    this field set and not the fuller TalentProfilePreviewResponse."""
 
-    rep_id: str
+    talent_id: str
     city: str
     state: str
     graduation_year: int
@@ -238,25 +238,25 @@ class RepBrowseCardResponse(BaseModel):
 
 
 class InviteRepsRequest(BaseModel):
-    rep_ids: list[str]
+    talent_ids: list[str]
 
 
 class InviteResultResponse(BaseModel):
-    rep_id: str
-    campaign_rep_id: str | None
-    status: Literal["invited", "already_invited", "campaign_full", "rep_not_found"]
+    talent_id: str
+    campaign_talent_id: str | None
+    status: Literal["invited", "already_invited", "campaign_full", "talent_not_found"]
 
 
 class CampaignRepResponse(BaseModel):
-    """GET /brands/campaigns/:id/reps -- brand's own view of a
-    campaign_reps row. Distinct from reps.py's CampaignParticipationResponse
+    """GET /brands/campaigns/:id/talents -- brand's own view of a
+    campaign_talents row. Distinct from talents.py's CampaignParticipationResponse
     only in that this is explicitly the brand-facing shape (same
     underlying fields today, but kept as its own schema so the two can
     diverge -- e.g. if a brand-only internal note field is ever added --
-    without a rep-facing response accidentally inheriting it)."""
+    without a talent-facing response  accidentally inheriting it)."""
 
     id: str
-    rep_id: str
+    talent_id: str
     status: str
     ftc_disclosure_accepted: bool
     parent_approval_status: str
@@ -277,12 +277,12 @@ class CampaignRepResponse(BaseModel):
 
 
 class SubmissionResponse(BaseModel):
-    """GET .../reps/:rep_id/submission -- deliberately narrower than
+    """GET .../talents/:talent_id/submission -- deliberately narrower than
     CampaignRepResponse: only what a brand needs to review a submission,
     not the full participation row."""
 
-    campaign_rep_id: str
-    rep_id: str
+    campaign_talent_id: str
+    talent_id: str
     status: str
     submission_text: str | None
     submission_file_urls: list[str]

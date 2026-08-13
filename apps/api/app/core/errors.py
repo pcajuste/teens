@@ -1,4 +1,4 @@
-"""Global exception handlers: every 4xx/5xx response body is shaped
+"""Global exception handlers: every 4xx/5xx response  body is shaped
 {"error": {"code": ..., "message": ...}}, regardless of whether it
 originated from an HTTPException(detail={"code", "message"}) raised in
 app code (e.g. app/core/security.py), FastAPI's request validation, or

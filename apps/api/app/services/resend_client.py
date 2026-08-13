@@ -29,12 +29,12 @@ class HttpResendClient:
 
     async def send_email(self, *, to: str, subject: str, html: str) -> None:
         async with httpx.AsyncClient() as client:
-            response = await client.post(
+            response  = await client.post(
                 "https://api.resend.com/emails",
                 headers={"Authorization": f"Bearer {self._api_key}"},
                 json={"from": self._from_email, "to": [to], "subject": subject, "html": html},
             )
-        response.raise_for_status()
+        response .raise_for_status()
 
 
 @dataclass

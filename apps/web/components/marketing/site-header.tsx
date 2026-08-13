@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 const NAV_LINKS = [
-  { href: "/reps", label: "Reps" },
+  { href: "/talents", label: "Talents" },
   { href: "/brands", label: "Brands" },
   { href: "/recruiters", label: "Recruiters" },
   { href: "/parents", label: "Parents" },
@@ -35,7 +35,7 @@ export function SiteHeader() {
             Log in
           </Link>
           <Link
-            href="/rep/signup"
+            href="/talent/signup"
             className="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-3.5 text-sm font-medium text-primary-foreground shadow-sm transition-all hover:bg-primary-hover hover:shadow-md"
           >
             Get started

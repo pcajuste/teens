@@ -100,7 +100,7 @@ async def update_brand_profile(
     industry: str | None,
     target_categories: list[str],
 ) -> BrandProfile:
-    """Full-record update, mirroring rep_profiles_repository.update_rep_profile's
+    """Full-record update, mirroring talent_profiles_repository.update_talent_profile's
     shape. `verified`/`verified_at`/`verified_by`/`stripe_customer_id` are
     deliberately absent -- never writable from this function, only from
     the admin-approval flow (Prompt 13) and Stripe customer creation."""

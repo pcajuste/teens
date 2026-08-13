@@ -33,7 +33,7 @@ describe("CreditConfirmDialog", () => {
     render(
       <CreditConfirmDialog
         open={true}
-        title="Contact this rep"
+        title="Contact this talent"
         description="This costs 1 credit."
         onCancel={onCancel}
         onConfirm={onConfirm}

@@ -4,7 +4,7 @@ Two distinct halves, deliberately kept in this one module since they
 share the anonymization boundary as their organizing idea:
 
   - Write path: `list_pending_events` reads the *identifying* source
-    tables (campaign_reps/campaigns/rep_profiles) -- that join is fine,
+    tables (campaign_talents/campaigns/talent_profiles) -- that join is fine,
     it happens entirely server-side before anything is written anywhere
     -- and `insert_events`/`mark_written` write the anonymized rows and
     flip the source-table bookkeeping flag. See
@@ -34,33 +34,33 @@ INSUFFICIENT_SAMPLE_SIZE: Literal["insufficient sample size"] = "insufficient sa
 
 @dataclass(frozen=True, slots=True)
 class PendingIntelligenceSource:
-    """One campaign_reps row that has reached 'confirmed'/'paid' and
+    """One campaign_talents row that has reached 'confirmed'/'paid' and
     hasn't been turned into intelligence_events_anonymized rows yet.
-    Deliberately carries identifying fields (campaign_rep_id, rep_id,
+    Deliberately carries identifying fields (campaign_talent_id, talent_id,
     target_categories) -- this dataclass never itself gets written
     anywhere; app/services/intelligence_service.py strips it down to
     the anonymized columns before anything touches
     intelligence_events_anonymized."""
 
-    campaign_rep_id: str
+    campaign_talent_id: str
     status: str
     payout_cents: int | None
     confirmed_at: datetime | None
     paid_at: datetime | None
     target_categories: list[str]
-    rep_city: str
-    rep_state: str
-    rep_school_type: str | None
+    talent_city: str
+    talent_state: str
+    talent_school_type: str | None
 
 
 _PENDING_QUERY = """
     SELECT
-      cr.id AS campaign_rep_id, cr.status, cr.payout_cents, cr.confirmed_at, cr.paid_at,
+      cr.id AS campaign_talent_id, cr.status, cr.payout_cents, cr.confirmed_at, cr.paid_at,
       c.target_categories,
-      rp.city AS rep_city, rp.state AS rep_state, rp.school_type AS rep_school_type
-    FROM public.campaign_reps cr
+      rp.city AS talent_city, rp.state AS talent_state, rp.school_type AS talent_school_type
+    FROM public.campaign_talents cr
     JOIN public.campaigns c ON c.id = cr.campaign_id
-    JOIN public.rep_profiles rp ON rp.id = cr.rep_id
+    JOIN public.talent_profiles rp ON rp.id = cr.talent_id
     WHERE cr.status IN ('confirmed', 'paid') AND cr.intelligence_event_written_at IS NULL
 """
 
@@ -69,15 +69,15 @@ async def list_pending_events(conn: asyncpg.Connection) -> list[PendingIntellige
     rows = await conn.fetch(_PENDING_QUERY)
     return [
         PendingIntelligenceSource(
-            campaign_rep_id=str(r["campaign_rep_id"]),
+            campaign_talent_id=str(r["campaign_talent_id"]),
             status=r["status"],
             payout_cents=r["payout_cents"],
             confirmed_at=r["confirmed_at"],
             paid_at=r["paid_at"],
             target_categories=list(r["target_categories"] or []),
-            rep_city=r["rep_city"],
-            rep_state=r["rep_state"],
-            rep_school_type=r["rep_school_type"],
+            talent_city=r["talent_city"],
+            talent_state=r["talent_state"],
+            talent_school_type=r["talent_school_type"],
         )
         for r in rows
     ]
@@ -110,12 +110,12 @@ async def insert_events(conn: asyncpg.Connection, events: list[AnonymizedEvent])
     )
 
 
-async def mark_written(conn: asyncpg.Connection, campaign_rep_ids: list[str], *, at: datetime) -> None:
-    if not campaign_rep_ids:
+async def mark_written(conn: asyncpg.Connection, campaign_talent_ids: list[str], *, at: datetime) -> None:
+    if not campaign_talent_ids:
         return
     await conn.execute(
-        "UPDATE public.campaign_reps SET intelligence_event_written_at = $2 WHERE id = ANY($1::uuid[])",
-        campaign_rep_ids,
+        "UPDATE public.campaign_talents SET intelligence_event_written_at = $2 WHERE id = ANY($1::uuid[])",
+        campaign_talent_ids,
         at,
     )
 

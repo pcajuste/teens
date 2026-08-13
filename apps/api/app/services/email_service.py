@@ -12,13 +12,13 @@ from typing import TYPE_CHECKING
 from app.services.resend_client import ResendClient
 
 if TYPE_CHECKING:
-    from app.repositories.campaign_reps_repository import PendingApproval
+    from app.repositories.campaign_talents_repository import PendingApproval
 
 
 async def send_signup_verification_email(to: str, verification_link: str) -> None:
     """Prompt 4A+: post-signup email verification (not required by
-    Prompt 4's signup flow, which activates 16+ reps immediately and
-    gates under-16 reps on parental consent instead)."""
+    Prompt 4's signup flow, which activates 16+ talents immediately and
+    gates under-16 talents on parental consent instead)."""
     raise NotImplementedError
 
 
@@ -74,13 +74,13 @@ async def send_campaign_approval_request_email(
     await client.send_email(to=parent_email, subject=f"Approval needed: {brief.title} on Teenure", html=html)
 
 
-async def send_campaign_blocked_notice_to_rep(rep_email: str, client: ResendClient) -> None:
+async def send_campaign_blocked_notice_to_rep(talent_email: str, client: ResendClient) -> None:
     html = """
     <p>A campaign invitation was declined on your behalf by your
     parent/guardian. You can see your other available campaigns in
     your Teenure dashboard.</p>
     """
-    await client.send_email(to=rep_email, subject="A campaign invitation was declined", html=html)
+    await client.send_email(to=talent_email, subject="A campaign invitation was declined", html=html)
 
 
 async def send_campaign_payment_failed_email(brand_email: str, campaign_title: str, client: ResendClient) -> None:
@@ -90,7 +90,7 @@ async def send_campaign_payment_failed_email(brand_email: str, campaign_title: s
     app/routers/brands.py's activate_campaign explicitly rejects."""
     html = f"""
     <p>The payment for your campaign <strong>{campaign_title}</strong>
-    couldn't be completed. No reps have been charged and nothing else
+    couldn't be completed. No talents have been charged and nothing else
     about your campaign has changed.</p>
     <p>Retry payment from your Teenure dashboard to activate it.</p>
     """
@@ -100,10 +100,10 @@ async def send_campaign_payment_failed_email(brand_email: str, campaign_title: s
 async def send_milestone_submitted_email(brand_email: str, *, campaign_title: str, milestone_title: str, client: ResendClient) -> None:
     """Build Prompt 8B deliverable 4: 'brand_confirmation' milestones
     notify the brand a submission is awaiting review (the
-    'rep_submission' path skips this -- no brand action is required
+    'talent_submission' path skips this -- no brand action is required
     before its 24h auto-release, per the same deliverable)."""
     html = f"""
-    <p>A rep has submitted evidence for the milestone
+    <p>A talent has submitted evidence for the milestone
     <strong>{milestone_title}</strong> on your campaign
     <strong>{campaign_title}</strong>. Review it from your Teenure
     dashboard to confirm and release payout.</p>
@@ -111,8 +111,8 @@ async def send_milestone_submitted_email(brand_email: str, *, campaign_title: st
     await client.send_email(to=brand_email, subject=f"Milestone submitted: {campaign_title}", html=html)
 
 
-async def send_milestone_disputed_email(rep_email: str, *, campaign_title: str, milestone_title: str, client: ResendClient) -> None:
-    """Build Prompt 8B deliverable 7: the rep is notified when a brand
+async def send_milestone_disputed_email(talent_email: str, *, campaign_title: str, milestone_title: str, client: ResendClient) -> None:
+    """Build Prompt 8B deliverable 7: the talent is notified when a brand
     flags their milestone submission for admin review."""
     html = f"""
     <p>The brand behind <strong>{campaign_title}</strong> has flagged
@@ -120,7 +120,7 @@ async def send_milestone_disputed_email(rep_email: str, *, campaign_title: str, 
     for review. An admin will review the evidence and follow up -- no
     action is needed from you right now.</p>
     """
-    await client.send_email(to=rep_email, subject=f"Milestone under review: {campaign_title}", html=html)
+    await client.send_email(to=talent_email, subject=f"Milestone under review: {campaign_title}", html=html)
 
 
 async def send_exclusivity_purchase_confirmed_email(
@@ -163,12 +163,12 @@ async def send_exclusivity_cancelled_email(
     await client.send_email(to=brand_email, subject=f"Category exclusivity cancelled: {category}", html=html)
 
 
-async def send_account_suspended_email(rep_email: str, client: ResendClient) -> None:
+async def send_account_suspended_email(talent_email: str, client: ResendClient) -> None:
     html = """
     <p>Your Teenure account has been suspended by your parent/guardian.
     You won't be able to accept new campaigns until it's reinstated.</p>
     """
-    await client.send_email(to=rep_email, subject="Your Teenure account has been suspended", html=html)
+    await client.send_email(to=talent_email, subject="Your Teenure account has been suspended", html=html)
 
 
 async def send_account_approved_email(to: str, *, account_type: str, client: ResendClient) -> None:
@@ -203,7 +203,7 @@ async def send_milestone_dispute_resolved_email(
     await client.send_email(to=to, subject=f"Milestone dispute resolved: {milestone_title}", html=html)
 
 
-async def send_challenge_converted_email(rep_email: str, *, campaign_title: str, bonus_cents: int, client: ResendClient) -> None:
+async def send_challenge_converted_email(talent_email: str, *, campaign_title: str, bonus_cents: int, client: ResendClient) -> None:
     """Build Prompt 8G deliverable 3k: sent when a brand converts a
     challenge submission into a campaign invitation. Bonus amount is
     always formatted from the caller-supplied cents value (which itself
@@ -215,14 +215,14 @@ async def send_challenge_converted_email(rep_email: str, *, campaign_title: str,
     <p>You've also earned a ${bonus_cents / 100:.2f} discovery bonus
     from Teenure.</p>
     """
-    await client.send_email(to=rep_email, subject=f"You've been invited to {campaign_title}", html=html)
+    await client.send_email(to=talent_email, subject=f"You've been invited to {campaign_title}", html=html)
 
 
 async def send_digest_email(
     parent_email: str,
     client: ResendClient,
     *,
-    rep_display_name: str,
+    talent_display_name: str,
     campaigns_completed_this_month: int,
     earnings_this_month_cents: int,
     lifetime_earnings_cents: int,
@@ -242,7 +242,7 @@ async def send_digest_email(
     )
     categories_line = ", ".join(active_categories) if active_categories else "none this month"
     html = f"""
-    <p>Here's {rep_display_name}'s Teenure activity summary.</p>
+    <p>Here's {talent_display_name}'s Teenure activity summary.</p>
     <ul>
       <li>Campaigns completed this month: {campaigns_completed_this_month}</li>
       <li>Earnings this month: ${earnings_this_month_cents / 100:.2f}</li>

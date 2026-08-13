@@ -17,7 +17,7 @@ interface ParentShellProps {
 }
 
 /** Shared page shell for every authenticated /parent/* screen, mirroring
- * components/rep/rep-shell.tsx's structure/top-bar pattern so the parent
+ * components/talent/talent-shell.tsx's structure/top-bar pattern so the parent
  * portal reads as the same product even though its session mechanism
  * (localStorage token, not Supabase) is entirely different under the
  * hood. */
@@ -38,9 +38,14 @@ export function ParentShell({ title, children }: ParentShellProps) {
             <span className="flex size-7 items-center justify-center rounded-md bg-primary text-xs font-bold text-primary-foreground">
               T
             </span>
-            <span className="text-base font-semibold tracking-tight">Teenure Parent Portal</span>
+            <span className="text-base font-semibold tracking-tight">
+              Teenure Parent Portal
+            </span>
           </Link>
-          <button onClick={handleSignOut} className="text-sm font-medium text-muted-foreground hover:text-foreground">
+          <button
+            onClick={handleSignOut}
+            className="text-sm font-medium text-muted-foreground hover:text-foreground"
+          >
             Sign out
           </button>
         </div>
@@ -50,7 +55,9 @@ export function ParentShell({ title, children }: ParentShellProps) {
               key={item.href}
               href={item.href}
               className={`text-sm font-medium ${
-                pathname === item.href ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+                pathname === item.href
+                  ? "text-foreground"
+                  : "text-muted-foreground hover:text-foreground"
               }`}
             >
               {item.label}
@@ -60,7 +67,9 @@ export function ParentShell({ title, children }: ParentShellProps) {
       </header>
 
       <main className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-8 pb-16">
-        {title ? <h1 className="text-2xl font-semibold tracking-tight">{title}</h1> : null}
+        {title ? (
+          <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
+        ) : null}
         {children}
       </main>
     </div>

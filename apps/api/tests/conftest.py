@@ -126,12 +126,12 @@ def _clean_database(db):
     db.execute(
         "TRUNCATE public.stripe_events, public.safety_reports, public.intelligence_events_anonymized, "
         "public.parent_auth_tokens, public.parent_records, "
-        "public.milestone_disputes, public.campaign_rep_milestones, public.campaign_milestones, "
+        "public.milestone_disputes, public.campaign_talent_milestones, public.campaign_milestones, "
         "public.challenge_submissions, public.challenges, "
-        "public.rep_module_completions, public.learning_modules, "
-        "public.campaign_reps, public.category_exclusivity_agreements, "
+        "public.talent_module_completions, public.learning_modules, "
+        "public.campaign_talents, public.category_exclusivity_agreements, "
         "public.campaigns, public.recruiter_saved_profiles, public.recruiter_contacts, public.recruiter_profiles, "
-        "public.rep_profiles, public.brand_profiles, public.users, auth.users CASCADE"
+        "public.talent_profiles, public.brand_profiles, public.users, auth.users CASCADE"
     )
 
 
@@ -155,7 +155,7 @@ def auth_headers_factory(settings):
     return _factory
 
 
-@pytest.fixture(params=["rep", "brand", "recruiter", "admin"])
+@pytest.fixture(params=["talent", "brand", "recruiter", "admin"])
 def role(request):
     return request.param
 
@@ -163,7 +163,7 @@ def role(request):
 @pytest.fixture()
 def authenticated_headers(auth_headers_factory, role):
     """One fixture per role, parametrized — a test using this fixture
-    runs once per role (rep/brand/recruiter/admin)."""
+    runs once per role (talent/brand/recruiter/admin)."""
     return auth_headers_factory(role)
 
 
@@ -171,7 +171,7 @@ def authenticated_headers(auth_headers_factory, role):
 def parent_session_headers(settings):
     payload = {
         "parent_id": "parent-00000000-0000-0000-0000-000000000001",
-        "rep_id": "rep-00000000-0000-0000-0000-000000000001",
+        "talent_id": "talent-00000000-0000-0000-0000-000000000001",
         "iss": PARENT_SESSION_ISSUER,
         "exp": int(time.time()) + 3600,
     }
@@ -181,10 +181,10 @@ def parent_session_headers(settings):
 
 @pytest.fixture()
 def parent_headers_factory(settings):
-    def _factory(*, parent_id: str, rep_id: str) -> dict[str, str]:
+    def _factory(*, parent_id: str, talent_id: str) -> dict[str, str]:
         payload = {
             "parent_id": parent_id,
-            "rep_id": rep_id,
+            "talent_id": talent_id,
             "iss": PARENT_SESSION_ISSUER,
             "exp": int(time.time()) + 3600,
         }
@@ -196,17 +196,17 @@ def parent_headers_factory(settings):
 
 @dataclass
 class SeededRep:
-    rep_user_id: str
-    rep_email: str
-    rep_id: str
+    talent_user_id: str
+    talent_email: str
+    talent_id: str
     parent_id: str
     parent_email: str
 
 
 @pytest.fixture()
-def seed_rep_with_parent(db):
-    """Direct-SQL seed for a rep + linked parent_records row. Prompt 4A
-    ships before Prompt 5 (rep onboarding) and Prompt 8 (brand
+def seed_talent_with_parent(db):
+    """Direct-SQL seed for a talent + linked parent_records row. Prompt 4A
+    ships before Prompt 5 (talent onboarding) and Prompt 8 (brand
     campaigns) exist, so there's no app flow that produces this state
     yet -- tests build it directly, the same way Prompt 4's tests
     backdate a consent token."""
@@ -224,33 +224,33 @@ def seed_rep_with_parent(db):
         total_earnings_cents: int = 12345,
         total_campaigns_completed: int = 2,
         suspended_by_parent_at: datetime | None = None,
-        rep_account_status: str = "active",
+        talent_account_status: str = "active",
     ) -> SeededRep:
-        rep_user_id = str(uuid.uuid4())
-        rep_id = str(uuid.uuid4())
+        talent_user_id = str(uuid.uuid4())
+        talent_id = str(uuid.uuid4())
         parent_id = str(uuid.uuid4())
-        rep_email = f"rep-{rep_user_id}@example.com"
+        talent_email = f"talent-{talent_user_id}@example.com"
         resolved_parent_email = parent_email or f"parent-{parent_id}@example.com"
         dob = date(date.today().year - age, 6, 1)
 
-        db.execute("INSERT INTO auth.users (id, email) VALUES ($1, $2)", rep_user_id, rep_email)
+        db.execute("INSERT INTO auth.users (id, email) VALUES ($1, $2)", talent_user_id, talent_email)
         db.execute(
             "INSERT INTO public.users (id, email, role, account_status, date_of_birth) "
-            "VALUES ($1, $2, 'rep', $3, $4)",
-            rep_user_id,
-            rep_email,
-            rep_account_status,
+            "VALUES ($1, $2, 'talent', $3, $4)",
+            talent_user_id,
+            talent_email,
+            talent_account_status,
             dob,
         )
         db.execute(
             """
-            INSERT INTO public.rep_profiles
+            INSERT INTO public.talent_profiles
                 (id, user_id, display_name, school_name, city, state, graduation_year,
                  categories, profile_completeness_score, total_earnings_cents, total_campaigns_completed)
-            VALUES ($1, $2, 'Test Rep', 'Test High', 'Austin', 'TX', 2027, $3, $4, $5, $6)
+            VALUES ($1, $2, 'Test Talent', 'Test High', 'Austin', 'TX', 2027, $3, $4, $5, $6)
             """,
-            rep_id,
-            rep_user_id,
+            talent_id,
+            talent_user_id,
             categories or ["gaming"],
             profile_completeness_score,
             total_earnings_cents,
@@ -260,12 +260,12 @@ def seed_rep_with_parent(db):
         db.execute(
             """
             INSERT INTO public.parent_records
-                (parent_id, rep_id, parent_email, campaign_approval_required, values_filters,
+                (parent_id, talent_id, parent_email, campaign_approval_required, values_filters,
                  digest_enabled, portal_expires_at, suspended_by_parent_at)
             VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8)
             """,
             parent_id,
-            rep_id,
+            talent_id,
             resolved_parent_email,
             campaign_approval_required,
             json.dumps(values_filters or []),
@@ -274,9 +274,9 @@ def seed_rep_with_parent(db):
             suspended_by_parent_at,
         )
         return SeededRep(
-            rep_user_id=rep_user_id,
-            rep_email=rep_email,
-            rep_id=rep_id,
+            talent_user_id=talent_user_id,
+            talent_email=talent_email,
+            talent_id=talent_id,
             parent_id=parent_id,
             parent_email=resolved_parent_email,
         )
@@ -286,15 +286,15 @@ def seed_rep_with_parent(db):
 
 @pytest.fixture()
 def seed_pending_campaign(db):
-    """Seeds a brand + campaign + a campaign_reps invitation awaiting
-    parent approval for the given rep."""
+    """Seeds a brand + campaign + a campaign_talents invitation awaiting
+    parent approval for the given talent."""
 
     def _seed(
         *,
-        rep_id: str,
+        talent_id: str,
         target_categories: list[str] | None = None,
         parent_approval_status: str = "pending",
-        payout_per_rep_cents: int = 5000,
+        payout_per_talent_cents: int = 5000,
     ) -> str:
         brand_user_id = str(uuid.uuid4())
         brand_id = str(uuid.uuid4())
@@ -318,23 +318,23 @@ def seed_pending_campaign(db):
             INSERT INTO public.campaigns
                 (id, brand_id, title, status, product_name, campaign_goal, key_messaging,
                  deliverables_description, target_categories, budget_cents, platform_fee_cents,
-                 rep_pool_cents, payout_per_rep_cents, start_date, end_date)
+                 talent_pool_cents, payout_per_talent_cents, start_date, end_date)
             VALUES ($1, $2, 'Test Campaign', 'active', 'Widget', 'Awareness', 'Widgets are great',
                     'One TikTok post', $3, 100000, 35000, 65000, $4, CURRENT_DATE, CURRENT_DATE + 30)
             """,
             campaign_id,
             brand_id,
             target_categories or ["gaming"],
-            payout_per_rep_cents,
+            payout_per_talent_cents,
         )
         db.execute(
             """
-            INSERT INTO public.campaign_reps
-                (campaign_id, rep_id, parent_approval_status, parent_approval_deadline)
+            INSERT INTO public.campaign_talents
+                (campaign_id, talent_id, parent_approval_status, parent_approval_deadline)
             VALUES ($1, $2, $3, now() + interval '48 hours')
             """,
             campaign_id,
-            rep_id,
+            talent_id,
             parent_approval_status,
         )
         return campaign_id
@@ -344,16 +344,16 @@ def seed_pending_campaign(db):
 
 @dataclass
 class SeededIntelligenceSource:
-    campaign_rep_id: str
+    campaign_talent_id: str
     campaign_id: str
-    rep_id: str
-    rep_user_id: str
+    talent_id: str
+    talent_user_id: str
 
 
 @pytest.fixture()
 def seed_confirmed_campaign_rep(db):
-    """Build Prompt 14: seeds a full-PII rep + brand + campaign +
-    campaign_reps row already in 'confirmed' or 'paid' status, for
+    """Build Prompt 14: seeds a full-PII talent + brand + campaign +
+    campaign_talents row already in 'confirmed' or 'paid' status, for
     testing the intelligence write path (write_intelligence_events job)
     directly. Every PII field the build prompt calls out (display_name,
     school_name, instagram_handle, tiktok_handle, city, school_type) is
@@ -364,40 +364,40 @@ def seed_confirmed_campaign_rep(db):
         *,
         status: str = "confirmed",
         target_categories: list[str] | None = None,
-        payout_per_rep_cents: int = 12000,
+        payout_per_talent_cents: int = 12000,
         school_type: str | None = "public",
         city: str = "Austin",
         state: str = "TX",
-        display_name: str = "Jordan PII-Test Rep",
+        display_name: str = "Jordan PII-Test Talent",
         school_name: str = "Identifying High School",
         instagram_handle: str = "jordan_ig_handle",
         tiktok_handle: str = "jordan_tt_handle",
     ) -> SeededIntelligenceSource:
-        rep_user_id = str(uuid.uuid4())
-        rep_id = str(uuid.uuid4())
+        talent_user_id = str(uuid.uuid4())
+        talent_id = str(uuid.uuid4())
         brand_user_id = str(uuid.uuid4())
         brand_id = str(uuid.uuid4())
         campaign_id = str(uuid.uuid4())
-        campaign_rep_id = str(uuid.uuid4())
-        rep_email = f"rep-{rep_user_id}@example.com"
+        campaign_talent_id = str(uuid.uuid4())
+        talent_email = f"talent-{talent_user_id}@example.com"
         brand_email = f"brand-{brand_user_id}@example.com"
 
-        db.execute("INSERT INTO auth.users (id, email) VALUES ($1, $2)", rep_user_id, rep_email)
+        db.execute("INSERT INTO auth.users (id, email) VALUES ($1, $2)", talent_user_id, talent_email)
         db.execute(
             "INSERT INTO public.users (id, email, role, account_status, date_of_birth) "
-            "VALUES ($1, $2, 'rep', 'active', '2008-01-01')",
-            rep_user_id,
-            rep_email,
+            "VALUES ($1, $2, 'talent', 'active', '2008-01-01')",
+            talent_user_id,
+            talent_email,
         )
         db.execute(
             """
-            INSERT INTO public.rep_profiles
+            INSERT INTO public.talent_profiles
                 (id, user_id, display_name, school_name, school_type, city, state, graduation_year,
                  categories, instagram_handle, tiktok_handle)
             VALUES ($1, $2, $3, $4, $5, $6, $7, 2027, $8, $9, $10)
             """,
-            rep_id,
-            rep_user_id,
+            talent_id,
+            talent_user_id,
             display_name,
             school_name,
             school_type,
@@ -424,33 +424,33 @@ def seed_confirmed_campaign_rep(db):
             INSERT INTO public.campaigns
                 (id, brand_id, title, status, product_name, campaign_goal, key_messaging,
                  deliverables_description, target_categories, budget_cents, platform_fee_cents,
-                 rep_pool_cents, payout_per_rep_cents, start_date, end_date)
+                 talent_pool_cents, payout_per_talent_cents, start_date, end_date)
             VALUES ($1, $2, 'Test Campaign', 'active', 'Widget', 'Awareness', 'Widgets are great',
                     'One TikTok post', $3, 100000, 35000, 65000, $4, CURRENT_DATE, CURRENT_DATE + 30)
             """,
             campaign_id,
             brand_id,
             target_categories or ["gaming"],
-            payout_per_rep_cents,
+            payout_per_talent_cents,
         )
         confirmed_at = datetime.now(timezone.utc)
         paid_at = confirmed_at if status == "paid" else None
         db.execute(
             """
-            INSERT INTO public.campaign_reps
-                (id, campaign_id, rep_id, status, payout_cents, confirmed_at, paid_at, ftc_disclosure_accepted)
+            INSERT INTO public.campaign_talents
+                (id, campaign_id, talent_id, status, payout_cents, confirmed_at, paid_at, ftc_disclosure_accepted)
             VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE)
             """,
-            campaign_rep_id,
+            campaign_talent_id,
             campaign_id,
-            rep_id,
+            talent_id,
             status,
-            payout_per_rep_cents,
+            payout_per_talent_cents,
             confirmed_at,
             paid_at,
         )
         return SeededIntelligenceSource(
-            campaign_rep_id=campaign_rep_id, campaign_id=campaign_id, rep_id=rep_id, rep_user_id=rep_user_id
+            campaign_talent_id=campaign_talent_id, campaign_id=campaign_id, talent_id=talent_id, talent_user_id=talent_user_id
         )
 
     return _seed

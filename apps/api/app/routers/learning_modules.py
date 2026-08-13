@@ -1,16 +1,16 @@
 """Learning Modules and Verified Badges (Build Prompt 8H): admin-curated
-educational content reps complete to earn verified profile badges, plus
+educational content talents complete to earn verified profile badges, plus
 the mandatory FTC Disclosure Essentials gate on campaign acceptance.
 
 Three routers, matching this codebase's existing split by URL prefix:
 `admin_modules_router` (mounted under app.routers.admin's existing
 /admin prefix pattern, but kept in its own module here since 8H is a
-big enough addition to warrant one), `reps_modules_router`
-(`/reps/modules/...`), and a small helper used by app/routers/reps.py
+big enough addition to warrant one), `talents_modules_router`
+(`/talents/modules/...`), and a small helper used by app/routers/talents.py
 to gate POST /campaigns/:id/accept.
 
 SECURITY: `correct_index` must never appear in any client-facing
-response, including admin preview. Every response in this file that
+response , including admin preview. Every response  in this file that
 carries content_blocks routes through
 learning_modules_repository.strip_correct_index (or a module's own
 `.public_content_blocks` property, which calls the same function) --
@@ -28,7 +28,7 @@ from app.core.config import Settings, get_settings
 from app.core.profile_score import compute_profile_completeness_score
 from app.core.security import AuthenticatedUser, require_role
 from app.db.pool import get_connection
-from app.repositories import learning_modules_repository, rep_profiles_repository
+from app.repositories import learning_modules_repository, talent_profiles_repository
 from app.schemas.learning_modules import (
     AdminModuleAnalyticsResponse,
     BadgeSummary,
@@ -41,7 +41,7 @@ from app.schemas.learning_modules import (
     ModuleCreateRequest,
     ModuleStartRequest,
     ModuleStartResponse,
-    RepProgressResponse,
+    TalentProgressResponse,
     WrongAnswerEntry,
 )
 
@@ -49,7 +49,7 @@ logger = logging.getLogger(__name__)
 
 admin_modules_router = APIRouter(prefix="/admin/modules", tags=["admin", "learning-modules"], dependencies=[Depends(require_role("admin"))])
 admin_module_analytics_router = APIRouter(prefix="/admin/analytics", tags=["admin", "learning-modules"], dependencies=[Depends(require_role("admin"))])
-reps_modules_router = APIRouter(prefix="/reps/modules", tags=["reps", "learning-modules"])
+talents_modules_router = APIRouter(prefix="/talents/modules", tags=["talents", "learning-modules"])
 
 RETAKE_COOLDOWN = timedelta(hours=24)
 
@@ -242,24 +242,24 @@ async def analytics_modules(
 
 
 # ══════════════════════════════════════════════════════════════════
-# Rep module discovery + progress (spec deliverable 3)
+# talent module discovery + progress (spec deliverable 3)
 # ══════════════════════════════════════════════════════════════════
 
 
-async def _get_own_rep_profile(conn: asyncpg.Connection, user: AuthenticatedUser) -> rep_profiles_repository.RepProfile:
-    profile = await rep_profiles_repository.get_by_user_id(conn, user.id)
+async def _get_own_talent_profile(conn: asyncpg.Connection, user: AuthenticatedUser) -> talent_profiles_repository.TalentProfile:
+    profile = await talent_profiles_repository.get_by_user_id(conn, user.id)
     if profile is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"code": "rep_profile_not_found", "message": "Complete onboarding via PUT /reps/me first."})
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"code": "talent_profile_not_found", "message": "Complete onboarding via PUT /talents/me first."})
     return profile
 
 
-@reps_modules_router.get("/available", response_model=list[ModuleAvailableResponse])
+@talents_modules_router.get("/available", response_model=list[ModuleAvailableResponse])
 async def available_modules(
-    user: AuthenticatedUser = Depends(require_role("rep")),
+    user: AuthenticatedUser = Depends(require_role("talent")),
     conn: asyncpg.Connection = Depends(get_connection),
     settings: Settings = Depends(get_settings),
 ) -> list[ModuleAvailableResponse]:
-    profile = await _get_own_rep_profile(conn, user)
+    profile = await _get_own_talent_profile(conn, user)
     modules = await learning_modules_repository.list_active(conn)
     completions = {c.module_id: c for c in await learning_modules_repository.list_for_rep(conn, profile.id)}
 
@@ -273,8 +273,8 @@ async def available_modules(
         completion = completions.get(m.id)
         if completion is not None and completion.status == "passed":
             continue  # already passed -- not "available"
-        rep_progress = (
-            RepProgressResponse(
+        talent_progress = (
+            TalentProgressResponse(
                 status=completion.status,
                 attempts=completion.attempts,
                 quiz_score=completion.quiz_score,
@@ -295,18 +295,18 @@ async def available_modules(
                 badge_icon=m.badge_icon,
                 estimated_minutes=m.estimated_minutes,
                 passing_score=m.passing_score,
-                rep_progress=rep_progress,
+                talent_progress=talent_progress,
             )
         )
     return result
 
 
-@reps_modules_router.get("/completed", response_model=list[ModuleCompletedResponse])
+@talents_modules_router.get("/completed", response_model=list[ModuleCompletedResponse])
 async def completed_modules(
-    user: AuthenticatedUser = Depends(require_role("rep")),
+    user: AuthenticatedUser = Depends(require_role("talent")),
     conn: asyncpg.Connection = Depends(get_connection),
 ) -> list[ModuleCompletedResponse]:
-    profile = await _get_own_rep_profile(conn, user)
+    profile = await _get_own_talent_profile(conn, user)
     completions = [c for c in await learning_modules_repository.list_for_rep(conn, profile.id) if c.status == "passed"]
     result: list[ModuleCompletedResponse] = []
     for c in completions:
@@ -329,13 +329,13 @@ async def completed_modules(
     return result
 
 
-@reps_modules_router.get("/{module_id}", response_model=ModuleContentResponse)
+@talents_modules_router.get("/{module_id}", response_model=ModuleContentResponse)
 async def get_module_content(
     module_id: str,
-    user: AuthenticatedUser = Depends(require_role("rep")),
+    user: AuthenticatedUser = Depends(require_role("talent")),
     conn: asyncpg.Connection = Depends(get_connection),
 ) -> ModuleContentResponse:
-    await _get_own_rep_profile(conn, user)
+    await _get_own_talent_profile(conn, user)
     module = await learning_modules_repository.get_by_id(conn, module_id)
     if module is None or module.status == "draft":
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"code": "module_not_found", "message": "No module found for that id."})
@@ -347,14 +347,14 @@ async def get_module_content(
 # ══════════════════════════════════════════════════════════════════
 
 
-@reps_modules_router.post("/{module_id}/start", response_model=ModuleStartResponse)
+@talents_modules_router.post("/{module_id}/start", response_model=ModuleStartResponse)
 async def start_module(
     module_id: str,
     body: ModuleStartRequest,
-    user: AuthenticatedUser = Depends(require_role("rep")),
+    user: AuthenticatedUser = Depends(require_role("talent")),
     conn: asyncpg.Connection = Depends(get_connection),
 ) -> ModuleStartResponse:
-    profile = await _get_own_rep_profile(conn, user)
+    profile = await _get_own_talent_profile(conn, user)
 
     if not body.disclosure_acknowledged:
         raise HTTPException(
@@ -373,7 +373,7 @@ async def start_module(
     if module.status != "active":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={"code": "module_not_active", "message": "This module is not currently available to start."})
 
-    existing = await learning_modules_repository.get_for_rep_and_module(conn, profile.id, module_id)
+    existing = await learning_modules_repository.get_for_talent_and_module(conn, profile.id, module_id)
     if existing is not None and existing.status == "passed":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"code": "already_completed", "message": "You have already completed this module."})
 
@@ -392,21 +392,21 @@ async def start_module(
                     "available_at": available_at.isoformat(),
                 },
             )
-        completion = await learning_modules_repository.start_retake(conn, rep_id=profile.id, module_id=module_id, at=now)
+        completion = await learning_modules_repository.start_retake(conn, talent_id=profile.id, module_id=module_id, at=now)
     elif existing is not None:
         # in_progress -- re-acknowledging the disclosure and resuming is
         # fine; treat as idempotent re-start rather than an error (the
-        # rep may have closed the tab mid-module). Row is left as-is.
+        # talent may have closed the tab mid-module). Row is left as-is.
         completion = existing
     else:
-        completion = await learning_modules_repository.start_new(conn, rep_id=profile.id, module_id=module_id, at=now)
+        completion = await learning_modules_repository.start_new(conn, talent_id=profile.id, module_id=module_id, at=now)
 
     if completion is None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"code": "illegal_transition", "message": "Completion state changed before start completed."})
 
     return ModuleStartResponse(
         module=_to_content_response(module),
-        completion=RepProgressResponse(
+        completion=TalentProgressResponse(
             status=completion.status,
             attempts=completion.attempts,
             quiz_score=completion.quiz_score,
@@ -420,16 +420,16 @@ async def start_module(
 # ══════════════════════════════════════════════════════════════════
 
 
-@reps_modules_router.post("/{module_id}/complete", response_model=ModuleCompleteResponse)
+@talents_modules_router.post("/{module_id}/complete", response_model=ModuleCompleteResponse)
 async def complete_module(
     module_id: str,
     body: ModuleCompleteRequest,
-    user: AuthenticatedUser = Depends(require_role("rep")),
+    user: AuthenticatedUser = Depends(require_role("talent")),
     conn: asyncpg.Connection = Depends(get_connection),
 ) -> ModuleCompleteResponse:
-    profile = await _get_own_rep_profile(conn, user)
+    profile = await _get_own_talent_profile(conn, user)
 
-    completion = await learning_modules_repository.get_for_rep_and_module(conn, profile.id, module_id)
+    completion = await learning_modules_repository.get_for_talent_and_module(conn, profile.id, module_id)
     if completion is None or completion.status != "in_progress":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"code": "not_started", "message": "You must start this module before completing it."})
 
@@ -440,7 +440,7 @@ async def complete_module(
     # (c) Fetch content_blocks WITH correct_index -- server-side only,
     # never derived from anything the client submitted. `module` here
     # came straight from the repository's raw row, not a stripped
-    # response, so module.content_blocks (not .public_content_blocks)
+    # response , so module.content_blocks (not .public_content_blocks)
     # is safe to score against.
     quiz_questions: list[dict] = []
     for block in module.content_blocks:
@@ -457,12 +457,12 @@ async def complete_module(
         correct_count = 0
         wrong_answers = []
         for idx, q in enumerate(quiz_questions):
-            rep_answer = body.answers[idx] if idx < len(body.answers) else -1
+            talent_answer = body.answers[idx] if idx < len(body.answers) else -1
             correct_index = q["correct_index"]
-            if rep_answer == correct_index:
+            if talent_answer == correct_index:
                 correct_count += 1
             else:
-                wrong_answers.append(WrongAnswerEntry(question_index=idx, correct_index=correct_index, rep_answer_index=rep_answer))
+                wrong_answers.append(WrongAnswerEntry(question_index=idx, correct_index=correct_index, talent_answer_index=talent_answer))
         quiz_score = round((correct_count / len(quiz_questions)) * 100)
         passed = module.passing_score is not None and quiz_score >= module.passing_score
 
@@ -489,7 +489,7 @@ async def complete_module(
                 total_campaigns_completed=profile.total_campaigns_completed,
                 badges_earned_count=profile.badges_earned_count + 1,
             )
-            updated_profile = await rep_profiles_repository.append_badge_and_recompute_score(conn, profile.id, badge=badge, new_score=new_score)
+            updated_profile = await talent_profiles_repository.append_badge_and_recompute_score(conn, profile.id, badge=badge, new_score=new_score)
             if updated_profile is None:
                 raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={"code": "badge_issuance_failed", "message": "Could not issue badge."})
 
@@ -517,18 +517,18 @@ async def complete_module(
 
 
 # ══════════════════════════════════════════════════════════════════
-# FTC gate helper -- used by app/routers/reps.py's accept_campaign
+# FTC gate helper -- used by app/routers/talents.py's accept_campaign
 # ══════════════════════════════════════════════════════════════════
 
 
-async def enforce_ftc_gate(conn: asyncpg.Connection, settings: Settings, rep_id: str) -> None:
+async def enforce_ftc_gate(conn: asyncpg.Connection, settings: Settings, talent_id: str) -> None:
     """Raises HTTPException(403) if FTC_MODULE_ID is configured and the
-    rep has no 'passed' completion row for it. No-op (with a warning
+    talent has no 'passed' completion row for it. No-op (with a warning
     log) if FTC_MODULE_ID is unset -- spec deliverable 2."""
     if not settings.ftc_module_id:
         logger.warning("FTC_MODULE_ID not configured. FTC gate skipped.")
         return
-    passed = await learning_modules_repository.has_passed(conn, rep_id, settings.ftc_module_id)
+    passed = await learning_modules_repository.has_passed(conn, talent_id, settings.ftc_module_id)
     if not passed:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

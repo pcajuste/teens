@@ -49,7 +49,7 @@ export interface ParentPendingCampaign {
   key_messaging: string;
   prohibited_content: string | null;
   deliverables_description: string;
-  payout_per_rep_cents: number | null;
+  payout_per_talent_cents: number | null;
   start_date: string;
   end_date: string;
   requires_in_person_activation: boolean;

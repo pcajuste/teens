@@ -43,14 +43,21 @@ export default function BrandSignupPage() {
 
       trackEvent("signup_completed", { role: "brand" });
 
-      const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
       if (signInError) {
         router.push("/login");
         return;
       }
       router.push("/brand/onboarding");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : "Something went wrong. Please try again.",
+      );
     } finally {
       setPending(false);
     }
@@ -59,7 +66,7 @@ export default function BrandSignupPage() {
   return (
     <AuthShell
       title="Create your brand account"
-      subtitle="Run authentic campaigns with verified high school reps."
+      subtitle="Run authentic campaigns with verified high school talents."
       footer={
         <>
           Already have an account?{" "}
@@ -72,7 +79,13 @@ export default function BrandSignupPage() {
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="email">Work email</Label>
-          <Input id="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+          <Input
+            id="email"
+            type="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="password">Password</Label>
@@ -87,10 +100,17 @@ export default function BrandSignupPage() {
         </div>
 
         {error ? (
-          <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>
+          <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {error}
+          </p>
         ) : null}
 
-        <Button type="submit" disabled={pending} size="lg" className="mt-1 w-full">
+        <Button
+          type="submit"
+          disabled={pending}
+          size="lg"
+          className="mt-1 w-full"
+        >
           {pending ? "Creating account..." : "Sign up"}
         </Button>
 

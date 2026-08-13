@@ -5,7 +5,7 @@ branch below is covered by tests/test_auth.py, one test per acceptance
 criterion in Build Prompt 4.
 
 parent_records is deliberately NOT created here -- see
-docs/parent_records_creation_timing.md for why (FK to rep_profiles,
+docs/parent_records_creation_timing.md for why (FK to talent_profiles,
 which doesn't exist until Prompt 5).
 """
 from __future__ import annotations
@@ -64,29 +64,29 @@ async def signup(
     today = date.today()  # server-side only -- never trust a client-computed age
     age = compute_age(body.date_of_birth, today=today)
 
-    if age < settings.min_rep_age:
+    if age < settings.min_talent_age:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"code": "age_not_permitted", "message": f"You must be at least {settings.min_rep_age} to sign up for Teenure."},
+            detail={"code": "age_not_permitted", "message": f"You must be at least {settings.min_talent_age} to sign up for Teenure."},
         )
 
-    requires_parental_consent = body.role == "rep" and age < settings.parental_consent_required_under
+    requires_parental_consent = body.role == "talent" and age < settings.parental_consent_required_under
     if requires_parental_consent and not body.parent_email:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"code": "parent_email_required", "message": "parent_email is required for reps under 16."},
+            detail={"code": "parent_email_required", "message": "parent_email is required for talents under 16."},
         )
 
-    if body.role != "rep":
+    if body.role != "talent":
         # Brands and recruiters always land pending admin approval,
         # regardless of age (Section 8).
         account_status = "pending"
     elif requires_parental_consent:
         account_status = "pending"
     else:
-        # 16-17 and 18+ reps both activate immediately; the difference
+        # 16-17 and 18+ talents both activate immediately; the difference
         # (parent_record with campaign-approval gating for 16-17) is a
-        # Prompt 5 concern once rep_profiles exists -- see the design
+        # Prompt 5 concern once talent_profiles exists -- see the design
         # note referenced in this module's docstring.
         account_status = "active"
 
@@ -181,7 +181,7 @@ async def resend_consent(
 ) -> ResendConsentResponse:
     user = await get_user_by_email(conn, body.email)
 
-    # Same-response-regardless-of-existence principle Section 9A applies
+    # Same-response -regardless-of-existence principle Section 9A applies
     # to parent-portal auth ("no enumeration via parent login") -- this
     # also emails a third party, so it gets the same treatment.
     if user is None or user.consent_token is None or user.parent_verified_at is not None:
@@ -211,7 +211,7 @@ async def resend_consent(
 async def me(user: AuthenticatedUser = Depends(get_current_user)) -> MeResponse:
     pending_reason = None
     if user.account_status == "pending":
-        pending_reason = "awaiting_parental_consent" if user.role == "rep" else "pending_admin_approval"
+        pending_reason = "awaiting_parental_consent" if user.role == "talent" else "pending_admin_approval"
 
     return MeResponse(
         id=user.id,

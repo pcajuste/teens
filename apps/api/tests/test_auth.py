@@ -15,7 +15,7 @@ def _dob_for_age(age: int) -> str:
     return d.isoformat()
 
 
-def _signup_body(*, age: int, role: str = "rep", parent_email: str | None = None, email: str | None = None) -> dict:
+def _signup_body(*, age: int, role: str = "talent", parent_email: str | None = None, email: str | None = None) -> dict:
     return {
         "email": email or f"user-{age}-{role}@example.com",
         "password": "correct-horse-battery",
@@ -32,24 +32,24 @@ def _extract_consent_token(html: str) -> str:
 
 
 def test_signup_age_12_returns_400_and_creates_no_row(client, db):
-    response = client.post("/auth/signup", json=_signup_body(age=12))
-    assert response.status_code == 400
-    assert response.json()["error"]["code"] == "age_not_permitted"
+    response  = client.post("/auth/signup", json=_signup_body(age=12))
+    assert response .status_code == 400
+    assert response .json()["error"]["code"] == "age_not_permitted"
 
     count = db.fetchval("SELECT count(*) FROM public.users")
     assert count == 0
 
 
 def test_signup_age_15_without_parent_email_returns_400(client):
-    response = client.post("/auth/signup", json=_signup_body(age=15, parent_email=None))
-    assert response.status_code == 400
-    assert response.json()["error"]["code"] == "parent_email_required"
+    response  = client.post("/auth/signup", json=_signup_body(age=15, parent_email=None))
+    assert response .status_code == 400
+    assert response .json()["error"]["code"] == "parent_email_required"
 
 
 def test_signup_age_15_is_pending_and_sends_consent_email(client, fake_resend_client):
-    response = client.post("/auth/signup", json=_signup_body(age=15, parent_email="parent@example.com"))
-    assert response.status_code == 201
-    body = response.json()
+    response  = client.post("/auth/signup", json=_signup_body(age=15, parent_email="parent@example.com"))
+    assert response .status_code == 201
+    body = response .json()
     assert body["account_status"] == "pending"
 
     assert len(fake_resend_client.sent) == 1
@@ -59,23 +59,23 @@ def test_signup_age_15_is_pending_and_sends_consent_email(client, fake_resend_cl
 
 
 def test_signup_age_16_activates_immediately(client, fake_resend_client):
-    response = client.post("/auth/signup", json=_signup_body(age=16))
-    assert response.status_code == 201
-    assert response.json()["account_status"] == "active"
+    response  = client.post("/auth/signup", json=_signup_body(age=16))
+    assert response .status_code == 201
+    assert response .json()["account_status"] == "active"
     assert fake_resend_client.sent == []
 
 
 def test_signup_age_18_activates_immediately_no_parent_email_needed(client):
-    response = client.post("/auth/signup", json=_signup_body(age=18))
-    assert response.status_code == 201
-    assert response.json()["account_status"] == "active"
+    response  = client.post("/auth/signup", json=_signup_body(age=18))
+    assert response .status_code == 201
+    assert response .json()["account_status"] == "active"
 
 
 @pytest.mark.parametrize("role", ["brand", "recruiter"])
 def test_brand_and_recruiter_always_pending_regardless_of_age(client, role):
-    response = client.post("/auth/signup", json=_signup_body(age=30, role=role))
-    assert response.status_code == 201
-    assert response.json()["account_status"] == "pending"
+    response  = client.post("/auth/signup", json=_signup_body(age=30, role=role))
+    assert response .status_code == 201
+    assert response .json()["account_status"] == "pending"
 
 
 def test_duplicate_email_signup_returns_400(client):
@@ -93,9 +93,9 @@ def test_parent_verify_activates_account(client, fake_resend_client):
     assert signup.json()["account_status"] == "pending"
     token = _extract_consent_token(fake_resend_client.sent[0].html)
 
-    response = client.post(f"/auth/parent-verify/{token}")
-    assert response.status_code == 200
-    assert response.json()["account_status"] == "active"
+    response  = client.post(f"/auth/parent-verify/{token}")
+    assert response .status_code == 200
+    assert response .json()["account_status"] == "active"
 
 
 def test_parent_verify_token_used_twice_returns_already_used(client, fake_resend_client):
@@ -121,15 +121,15 @@ def test_parent_verify_expired_token_returns_expired(client, fake_resend_client,
         token,
     )
 
-    response = client.post(f"/auth/parent-verify/{token}")
-    assert response.status_code == 400
-    assert response.json()["error"]["code"] == "token_expired"
+    response  = client.post(f"/auth/parent-verify/{token}")
+    assert response .status_code == 400
+    assert response .json()["error"]["code"] == "token_expired"
 
 
 def test_parent_verify_invalid_token_returns_invalid(client):
-    response = client.post("/auth/parent-verify/not-a-real-token")
-    assert response.status_code == 404
-    assert response.json()["error"]["code"] == "invalid_token"
+    response  = client.post("/auth/parent-verify/not-a-real-token")
+    assert response .status_code == 404
+    assert response .json()["error"]["code"] == "invalid_token"
 
 
 def test_resend_consent_sends_new_email_and_rotates_token(client, fake_resend_client, db):
@@ -146,9 +146,9 @@ def test_resend_consent_sends_new_email_and_rotates_token(client, fake_resend_cl
         "resend@example.com",
     )
 
-    response = client.post("/auth/resend-consent", json={"email": "resend@example.com"})
-    assert response.status_code == 200
-    assert response.json()["status"] == "sent"
+    response  = client.post("/auth/resend-consent", json={"email": "resend@example.com"})
+    assert response .status_code == 200
+    assert response .json()["status"] == "sent"
     assert len(fake_resend_client.sent) == 2
     new_token = _extract_consent_token(fake_resend_client.sent[1].html)
     assert new_token != old_token
@@ -163,42 +163,42 @@ def test_resend_consent_rate_limited_immediately_after_signup(client, fake_resen
     # must be rejected rather than emailing the parent again right away.
     client.post("/auth/signup", json=_signup_body(age=14, email="rl@example.com", parent_email="parentRL@example.com"))
 
-    response = client.post("/auth/resend-consent", json={"email": "rl@example.com"})
-    assert response.status_code == 429
-    assert response.json()["error"]["code"] == "resend_rate_limited"
+    response  = client.post("/auth/resend-consent", json={"email": "rl@example.com"})
+    assert response .status_code == 429
+    assert response .json()["error"]["code"] == "resend_rate_limited"
 
 
 def test_resend_consent_unknown_email_still_returns_sent(client, fake_resend_client):
-    # No enumeration: unknown email gets the same response as a real one.
-    response = client.post("/auth/resend-consent", json={"email": "nobody@example.com"})
-    assert response.status_code == 200
-    assert response.json()["status"] == "sent"
+    # No enumeration: unknown email gets the same response  as a real one.
+    response  = client.post("/auth/resend-consent", json={"email": "nobody@example.com"})
+    assert response .status_code == 200
+    assert response .json()["status"] == "sent"
     assert fake_resend_client.sent == []
 
 
 def test_me_returns_pending_reason_for_awaiting_consent_rep(client, auth_headers_factory):
-    headers = auth_headers_factory("rep", account_status="pending")
-    response = client.get("/auth/me", headers=headers)
-    assert response.status_code == 200
-    body = response.json()
+    headers = auth_headers_factory("talent", account_status="pending")
+    response  = client.get("/auth/me", headers=headers)
+    assert response .status_code == 200
+    body = response .json()
     assert body["account_status"] == "pending"
     assert body["pending_reason"] == "awaiting_parental_consent"
 
 
 def test_me_returns_pending_reason_for_pending_brand(client, auth_headers_factory):
     headers = auth_headers_factory("brand", account_status="pending")
-    response = client.get("/auth/me", headers=headers)
-    assert response.status_code == 200
-    assert response.json()["pending_reason"] == "pending_admin_approval"
+    response  = client.get("/auth/me", headers=headers)
+    assert response .status_code == 200
+    assert response .json()["pending_reason"] == "pending_admin_approval"
 
 
-def test_me_active_rep_has_no_pending_reason(client, auth_headers_factory):
-    headers = auth_headers_factory("rep", account_status="active")
-    response = client.get("/auth/me", headers=headers)
-    assert response.status_code == 200
-    assert response.json()["pending_reason"] is None
+def test_me_active_talent_has_no_pending_reason(client, auth_headers_factory):
+    headers = auth_headers_factory("talent", account_status="active")
+    response  = client.get("/auth/me", headers=headers)
+    assert response .status_code == 200
+    assert response .json()["pending_reason"] is None
 
 
 def test_me_without_auth_returns_401(client):
-    response = client.get("/auth/me")
-    assert response.status_code == 401
+    response  = client.get("/auth/me")
+    assert response .status_code == 401

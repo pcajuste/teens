@@ -62,16 +62,24 @@ function QueueSection({ type, title }: { type: AccountType; title: string }) {
         {entries === null ? (
           <Skeleton className="h-20 w-full" />
         ) : entries.length === 0 ? (
-          <EmptyState title="Nothing pending" description={`No ${type}s awaiting admin approval.`} />
+          <EmptyState
+            title="Nothing pending"
+            description={`No ${type}s awaiting admin approval.`}
+          />
         ) : (
           entries.map((entry) => (
-            <div key={entry.user_id} className="rounded-lg border border-border p-3">
+            <div
+              key={entry.user_id}
+              className="rounded-lg border border-border p-3"
+            >
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <p className="text-sm font-medium">{entry.display_name}</p>
                   <p className="text-xs text-muted-foreground">{entry.email}</p>
                 </div>
-                <Badge variant="warning">{entry.pending_reason.replace(/_/g, " ")}</Badge>
+                <Badge variant="warning">
+                  {entry.pending_reason.replace(/_/g, " ")}
+                </Badge>
               </div>
               {rejecting === entry.user_id ? (
                 <div className="mt-3 flex flex-col gap-2">
@@ -81,10 +89,22 @@ function QueueSection({ type, title }: { type: AccountType; title: string }) {
                     onChange={(e) => setReason(e.target.value)}
                   />
                   <div className="flex gap-2">
-                    <Button size="sm" variant="destructive" disabled={!reason.trim()} onClick={() => reject(entry.user_id)}>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      disabled={!reason.trim()}
+                      onClick={() => reject(entry.user_id)}
+                    >
                       Confirm reject
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => { setRejecting(null); setReason(""); }}>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setRejecting(null);
+                        setReason("");
+                      }}
+                    >
                       Cancel
                     </Button>
                   </div>
@@ -94,7 +114,11 @@ function QueueSection({ type, title }: { type: AccountType; title: string }) {
                   <Button size="sm" onClick={() => approve(entry.user_id)}>
                     Approve
                   </Button>
-                  <Button size="sm" variant="outline" onClick={() => setRejecting(entry.user_id)}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setRejecting(entry.user_id)}
+                  >
                     Reject
                   </Button>
                 </div>
@@ -111,28 +135,35 @@ function RepConsentQueue() {
   const [entries, setEntries] = useState<AdminQueueEntry[] | null>(null);
 
   useEffect(() => {
-    api.get<AdminQueueEntry[]>("/admin/queue/reps").then(setEntries);
+    api.get<AdminQueueEntry[]>("/admin/queue/talents").then(setEntries);
   }, []);
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Reps awaiting parent consent</CardTitle>
+        <CardTitle>Talents awaiting parent consent</CardTitle>
       </CardHeader>
       <CardContent>
         <p className="mb-3 text-xs text-muted-foreground">
-          Reps never require admin approval -- this is visibility only into who&apos;s waiting on the parental
-          double opt-in.
+          Talents never require admin approval -- this is visibility only into
+          who&apos;s waiting on the parental double opt-in.
         </p>
         {entries === null ? (
           <Skeleton className="h-16 w-full" />
         ) : entries.length === 0 ? (
-          <EmptyState title="No reps waiting" description="Every under-16 signup has been resolved by their parent." />
+          <EmptyState
+            title="No talents waiting"
+            description="Every under-16 signup has been resolved by their parent."
+          />
         ) : (
           <ul className="flex flex-col gap-2">
             {entries.map((e) => (
-              <li key={e.user_id} className="rounded-lg border border-border p-3 text-sm">
-                {e.display_name} -- <span className="text-muted-foreground">{e.email}</span>
+              <li
+                key={e.user_id}
+                className="rounded-lg border border-border p-3 text-sm"
+              >
+                {e.display_name} --{" "}
+                <span className="text-muted-foreground">{e.email}</span>
               </li>
             ))}
           </ul>
@@ -143,11 +174,15 @@ function RepConsentQueue() {
 }
 
 function ParentSuspensionQueue() {
-  const [entries, setEntries] = useState<AdminParentSuspendedRep[] | null>(null);
+  const [entries, setEntries] = useState<AdminParentSuspendedRep[] | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
 
   async function load() {
-    const rows = await api.get<AdminParentSuspendedRep[]>("/admin/parent-suspensions");
+    const rows = await api.get<AdminParentSuspendedRep[]>(
+      "/admin/parent-suspensions",
+    );
     setEntries(rows);
   }
 
@@ -161,7 +196,9 @@ function ParentSuspensionQueue() {
       await api.post(`/admin/parent-suspensions/${repId}/reverse`);
       await load();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not reverse suspension.");
+      setError(
+        err instanceof ApiError ? err.message : "Could not reverse suspension.",
+      );
     }
   }
 
@@ -172,8 +209,9 @@ function ParentSuspensionQueue() {
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         <p className="text-xs text-muted-foreground">
-          Only suspensions a parent initiated can be reversed here -- an admin-initiated suspension can only be
-          lifted by admin editing it directly.
+          Only suspensions a parent initiated can be reversed here -- an
+          admin-initiated suspension can only be lifted by admin editing it
+          directly.
         </p>
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
         {entries === null ? (
@@ -182,14 +220,22 @@ function ParentSuspensionQueue() {
           <EmptyState title="No parent suspensions" />
         ) : (
           entries.map((e) => (
-            <div key={e.rep_id} className="flex items-center justify-between rounded-lg border border-border p-3">
+            <div
+              key={e.talent_id}
+              className="flex items-center justify-between rounded-lg border border-border p-3"
+            >
               <div>
                 <p className="text-sm font-medium">{e.display_name}</p>
                 <p className="text-xs text-muted-foreground">
-                  Suspended {new Date(e.suspended_by_parent_at).toLocaleString()}
+                  Suspended{" "}
+                  {new Date(e.suspended_by_parent_at).toLocaleString()}
                 </p>
               </div>
-              <Button size="sm" variant="outline" onClick={() => reverse(e.rep_id)}>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => reverse(e.talent_id)}
+              >
                 Reverse suspension
               </Button>
             </div>

@@ -1,7 +1,11 @@
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { buttonVariants } from "@/components/ui/button";
-import { MarketingHero, Section, SectionHeading } from "@/components/marketing/page-shell";
+import {
+  MarketingHero,
+  Section,
+  SectionHeading,
+} from "@/components/marketing/page-shell";
 
 const MOTIVATIONS = [
   {
@@ -31,7 +35,10 @@ export default function RecruitersPage() {
         description="Search and contact verified teen profiles built from real, brand-confirmed work. A subscription replaces guesswork with documented performance data."
       >
         <div className="mt-8 flex flex-wrap gap-3">
-          <Link href="/recruiter/signup" className={buttonVariants({ size: "lg" })}>
+          <Link
+            href="/recruiter/signup"
+            className={buttonVariants({ size: "lg" })}
+          >
             Get recruiter access
           </Link>
         </div>
@@ -52,19 +59,26 @@ export default function RecruitersPage() {
       <Section className="max-w-4xl">
         <SectionHeading>How access works</SectionHeading>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-          Reps only appear in recruiter search when they&apos;ve opted in — visibility is never on by default.
-          Contacting a rep deducts a credit from your subscription, calculated and enforced entirely server-side,
-          so there is never a way to see a profile without it being accounted for. Reps can only reply to a
-          recruiter who has already messaged them; they cannot browse or contact recruiters, and recruiters cannot
-          browse rep-to-rep activity because none exists.
+          Talents only appear in recruiter search when they&apos;ve opted in —
+          visibility is never on by default. Contacting a Talent deducts a
+          credit from your subscription, calculated and enforced entirely
+          server-side, so there is never a way to see a profile without it being
+          accounted for. Talents can only reply to a recruiter who has already
+          messaged them; they cannot browse or contact recruiters, and
+          recruiters cannot browse talent-to-talent activity because none exists.
         </p>
       </Section>
 
       <section className="border-t border-border bg-muted/30">
         <div className="mx-auto max-w-3xl px-4 py-14 text-center sm:px-6">
-          <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">Ready to see documented performance?</h2>
+          <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">
+            Ready to see documented performance?
+          </h2>
           <div className="mt-6">
-            <Link href="/recruiter/signup" className={buttonVariants({ size: "lg" })}>
+            <Link
+              href="/recruiter/signup"
+              className={buttonVariants({ size: "lg" })}
+            >
               Sign up as a recruiter
             </Link>
           </div>

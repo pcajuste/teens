@@ -17,7 +17,11 @@ import type {
 } from "@/lib/types";
 
 const PLANS: { plan: SubscriptionPlan; label: string; blurb: string }[] = [
-  { plan: "monthly", label: "Monthly", blurb: "Billed every month, cancel anytime." },
+  {
+    plan: "monthly",
+    label: "Monthly",
+    blurb: "Billed every month, cancel anytime.",
+  },
   { plan: "annual", label: "Annual", blurb: "Billed once a year." },
 ];
 
@@ -48,7 +52,10 @@ export default function RecruiterSubscriptionPage() {
       // recruiter_profile_not_found / subscription not yet created is
       // expected before the dual activation gate passes -- the plan
       // picker below stays usable either way.
-      if (err instanceof ApiError && err.code !== "recruiter_profile_not_found") {
+      if (
+        err instanceof ApiError &&
+        err.code !== "recruiter_profile_not_found"
+      ) {
         setError(err.message);
       }
     } finally {
@@ -60,14 +67,19 @@ export default function RecruiterSubscriptionPage() {
     setSubscribing(plan);
     setError(null);
     try {
-      const { checkout_url } = await api.post<SubscriptionCheckoutResponse>("/recruiters/subscribe", { plan });
+      const { checkout_url } = await api.post<SubscriptionCheckoutResponse>(
+        "/recruiters/subscribe",
+        { plan },
+      );
       // Real Stripe-hosted Checkout Session (test mode) -- account
       // activation itself happens asynchronously on the
       // customer.subscription.created webhook once Stripe confirms
       // payment, not on this redirect.
       window.location.href = checkout_url;
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not start checkout.");
+      setError(
+        err instanceof ApiError ? err.message : "Could not start checkout.",
+      );
       setSubscribing(null);
     }
   }
@@ -80,7 +92,10 @@ export default function RecruiterSubscriptionPage() {
     setTopUpNotice(null);
     setError(null);
     try {
-      const result = await api.post<RecruiterCreditTopUpResponse>("/recruiters/credits/top-up", { credits });
+      const result = await api.post<RecruiterCreditTopUpResponse>(
+        "/recruiters/credits/top-up",
+        { credits },
+      );
       // Card collection isn't wired up in this build yet -- same interim
       // state as the brand campaign-activation flow
       // (app/(brand)/brand/campaigns/[id]/page.tsx's handleActivate).
@@ -89,11 +104,13 @@ export default function RecruiterSubscriptionPage() {
       setTopUpNotice(
         `Top-up started for ${credits} credit${credits === 1 ? "" : "s"} ` +
           `(PaymentIntent ready: ${result.stripe_payment_intent_client_secret.slice(0, 24)}...). ` +
-          "Credits are added automatically once payment confirms."
+          "Credits are added automatically once payment confirms.",
       );
       await loadCredits();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not start the top-up.");
+      setError(
+        err instanceof ApiError ? err.message : "Could not start the top-up.",
+      );
     } finally {
       setTopUpPending(false);
     }
@@ -103,14 +120,21 @@ export default function RecruiterSubscriptionPage() {
     <RecruiterShell title="Subscription & credits">
       {checkoutResult === "success" ? (
         <p className="rounded-lg bg-success/15 px-3 py-2 text-sm text-success">
-          Checkout complete. Your subscription activates as soon as Stripe confirms payment (and, if your
-          institution isn&apos;t verified yet, once admin review finishes too).
+          Checkout complete. Your subscription activates as soon as Stripe
+          confirms payment (and, if your institution isn&apos;t verified yet,
+          once admin review finishes too).
         </p>
       ) : checkoutResult === "cancelled" ? (
-        <p className="rounded-lg bg-warning/15 px-3 py-2 text-sm text-warning-foreground">Checkout was cancelled.</p>
+        <p className="rounded-lg bg-warning/15 px-3 py-2 text-sm text-warning-foreground">
+          Checkout was cancelled.
+        </p>
       ) : null}
 
-      {error ? <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p> : null}
+      {error ? (
+        <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {error}
+        </p>
+      ) : null}
 
       <Card>
         <CardHeader>
@@ -121,11 +145,16 @@ export default function RecruiterSubscriptionPage() {
             <p className="text-sm text-muted-foreground">Loading...</p>
           ) : credits ? (
             <div className="flex flex-wrap items-center gap-3">
-              <Badge variant={credits.low_credit_warning ? "warning" : "outline"} className="px-3 py-1.5 text-sm">
+              <Badge
+                variant={credits.low_credit_warning ? "warning" : "outline"}
+                className="px-3 py-1.5 text-sm"
+              >
                 {credits.contact_credits_remaining} remaining
               </Badge>
               {credits.credits_reset_date ? (
-                <span className="text-sm text-muted-foreground">Resets {credits.credits_reset_date}</span>
+                <span className="text-sm text-muted-foreground">
+                  Resets {credits.credits_reset_date}
+                </span>
               ) : null}
               {credits.low_credit_warning ? (
                 <Badge variant="warning">Below 20% — consider a top-up</Badge>
@@ -133,7 +162,8 @@ export default function RecruiterSubscriptionPage() {
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">
-              No active subscription yet — subscribe below to start receiving contact credits.
+              No active subscription yet — subscribe below to start receiving
+              contact credits.
             </p>
           )}
         </CardContent>
@@ -153,7 +183,9 @@ export default function RecruiterSubscriptionPage() {
                 disabled={subscribing !== null}
                 onClick={() => handleSubscribe(plan)}
               >
-                {subscribing === plan ? "Redirecting to checkout..." : `Subscribe (${label.toLowerCase()})`}
+                {subscribing === plan
+                  ? "Redirecting to checkout..."
+                  : `Subscribe (${label.toLowerCase()})`}
               </Button>
             </CardContent>
           </Card>
@@ -165,7 +197,10 @@ export default function RecruiterSubscriptionPage() {
           <CardTitle>Top up credits</CardTitle>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleTopUp} className="flex flex-wrap items-end gap-3">
+          <form
+            onSubmit={handleTopUp}
+            className="flex flex-wrap items-end gap-3"
+          >
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="topUpCredits">Number of credits</Label>
               <Input
@@ -181,7 +216,9 @@ export default function RecruiterSubscriptionPage() {
               {topUpPending ? "Starting..." : "Buy credits"}
             </Button>
           </form>
-          {topUpNotice ? <p className="mt-3 text-sm text-muted-foreground">{topUpNotice}</p> : null}
+          {topUpNotice ? (
+            <p className="mt-3 text-sm text-muted-foreground">{topUpNotice}</p>
+          ) : null}
         </CardContent>
       </Card>
     </RecruiterShell>

@@ -20,7 +20,8 @@ export default function RecruiterProfilePage() {
   const router = useRouter();
   const { me } = useAuth();
   const [institutionName, setInstitutionName] = useState("");
-  const [institutionType, setInstitutionType] = useState<InstitutionType>("college");
+  const [institutionType, setInstitutionType] =
+    useState<InstitutionType>("college");
   const [website, setWebsite] = useState("");
   const [verified, setVerified] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -38,7 +39,10 @@ export default function RecruiterProfilePage() {
         setVerified(profile.verified);
       })
       .catch((err) => {
-        if (err instanceof ApiError && err.code !== "recruiter_profile_not_found") {
+        if (
+          err instanceof ApiError &&
+          err.code !== "recruiter_profile_not_found"
+        ) {
           setError(err.message);
         }
       })
@@ -58,7 +62,9 @@ export default function RecruiterProfilePage() {
       });
       setSaved(true);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not save your profile.");
+      setError(
+        err instanceof ApiError ? err.message : "Could not save your profile.",
+      );
     } finally {
       setPending(false);
     }
@@ -76,25 +82,40 @@ export default function RecruiterProfilePage() {
     <RecruiterShell title="Institution profile">
       <form onSubmit={handleSubmit} className="flex max-w-xl flex-col gap-5">
         <div className="flex items-center gap-2">
-          <Badge variant={verified ? "success" : "outline"}>{verified ? "Verified" : "Pending verification"}</Badge>
+          <Badge variant={verified ? "success" : "outline"}>
+            {verified ? "Verified" : "Pending verification"}
+          </Badge>
           {me?.account_status === "pending" ? (
             <span className="text-xs text-muted-foreground">
-              Approval and an active subscription are both required before you can search or contact reps.
+              Approval and an active subscription are both required before you
+              can search or contact talents.
             </span>
           ) : null}
         </div>
 
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="institutionName">Institution name</Label>
-          <Input id="institutionName" required value={institutionName} onChange={(e) => setInstitutionName(e.target.value)} />
+          <Input
+            id="institutionName"
+            required
+            value={institutionName}
+            onChange={(e) => setInstitutionName(e.target.value)}
+          />
         </div>
 
         <div className="flex flex-col gap-2">
           <Label>Institution type</Label>
           <div className="flex gap-2">
             {INSTITUTION_TYPES.map((t) => (
-              <button key={t.value} type="button" onClick={() => setInstitutionType(t.value)}>
-                <Badge variant={institutionType === t.value ? "default" : "outline"} className="px-3 py-1.5">
+              <button
+                key={t.value}
+                type="button"
+                onClick={() => setInstitutionType(t.value)}
+              >
+                <Badge
+                  variant={institutionType === t.value ? "default" : "outline"}
+                  className="px-3 py-1.5"
+                >
                   {t.label}
                 </Badge>
               </button>
@@ -104,21 +125,36 @@ export default function RecruiterProfilePage() {
 
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="website">Website</Label>
-          <Input id="website" type="url" placeholder="https://" value={website} onChange={(e) => setWebsite(e.target.value)} />
+          <Input
+            id="website"
+            type="url"
+            placeholder="https://"
+            value={website}
+            onChange={(e) => setWebsite(e.target.value)}
+          />
         </div>
 
         {error ? (
-          <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>
+          <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {error}
+          </p>
         ) : null}
         {saved ? (
-          <p className="rounded-lg bg-success/10 px-3 py-2 text-sm text-success">Saved.</p>
+          <p className="rounded-lg bg-success/10 px-3 py-2 text-sm text-success">
+            Saved.
+          </p>
         ) : null}
 
         <div className="flex gap-3">
           <Button type="submit" disabled={pending} size="lg">
             {pending ? "Saving..." : "Save"}
           </Button>
-          <Button type="button" variant="outline" size="lg" onClick={() => router.push("/recruiter")}>
+          <Button
+            type="button"
+            variant="outline"
+            size="lg"
+            onClick={() => router.push("/recruiter")}
+          >
             Back to search
           </Button>
         </div>

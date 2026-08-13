@@ -6,7 +6,7 @@ POST /recruiters/subscribe route here, since Section 8 doesn't list
 one and subscribing happens via Stripe-hosted billing, not this API.
 
 Every route requires an authenticated recruiter; GET/PUT /recruiters/me
-uses require_role_any_status (mirrors brands.py/reps.py's onboarding
+uses require_role_any_status (mirrors brands.py/talents.py's onboarding
 gap fix -- a freshly signed-up recruiter must be able to submit their
 profile while still 'pending'). Every other route requires 'active',
 which for a recruiter additionally means the dual gate from deliverable
@@ -15,10 +15,10 @@ by the customer.subscription.created webhook handler being what flips
 account_status to 'active' in the first place, not by any check in this
 router.
 
-Credit-spending routes (GET .../reps/:id, POST .../contact) deduct via
+Credit-spending routes (GET .../talents/:id, POST .../contact) deduct via
 recruiter_profiles_repository.decrement_credit's atomic conditional
 UPDATE before doing anything else -- a 402 on zero balance is checked
-first, so a rep's data is never read/messaged without a successful
+first, so a talent's data is never read/messaged without a successful
 deduction (Build Prompt 11 acceptance criteria)."""
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ from app.repositories import (
     recruiter_contacts_repository,
     recruiter_profiles_repository,
     recruiter_saved_profiles_repository,
-    rep_profiles_repository,
+    talent_profiles_repository,
     users_repository,
 )
 from app.schemas.recruiters import (
@@ -233,11 +233,11 @@ async def subscribe(
 
 
 # ══════════════════════════════════════════════════════════════════
-# /recruiters/reps/*
+# /recruiters/talents/*
 # ══════════════════════════════════════════════════════════════════
 
 
-@recruiters_router.get("/reps/search", response_model=list[RecruiterSearchCardResponse])
+@recruiters_router.get("/talents/search", response_model=list[RecruiterSearchCardResponse])
 async def search_reps(
     graduation_year: int | None = None,
     city: str | None = None,
@@ -256,7 +256,7 @@ async def search_reps(
     await _get_own_recruiter_profile(conn, user)
     category_list = [c.strip() for c in categories.split(",") if c.strip()] if categories else None
 
-    cards = await rep_profiles_repository.search_for_recruiter(
+    cards = await talent_profiles_repository.search_for_recruiter(
         conn,
         graduation_year=graduation_year,
         city=city,
@@ -269,7 +269,7 @@ async def search_reps(
     )
     return [
         RecruiterSearchCardResponse(
-            rep_id=c.rep_id,
+            talent_id=c.talent_id,
             city=c.city,
             state=c.state,
             graduation_year=c.graduation_year,
@@ -287,24 +287,24 @@ async def search_reps(
     ]
 
 
-@recruiters_router.get("/reps/{rep_id}", response_model=RecruiterRepDetailResponse)
-async def get_rep_detail(
-    rep_id: str,
+@recruiters_router.get("/talents/{talent_id}", response_model=RecruiterRepDetailResponse)
+async def get_talent_detail(
+    talent_id: str,
     user: AuthenticatedUser = Depends(require_role("recruiter")),
     conn: asyncpg.Connection = Depends(get_connection),
 ) -> RecruiterRepDetailResponse:
     """Costs 1 credit, deducted server-side in the same request as the
     read (Build Prompt 11 deliverable 3) -- the atomic decrement runs
-    BEFORE the profile is fetched, so a rep's identifying fields are
+    BEFORE the profile is fetched, so a talent's identifying fields are
     never returned on a failed/declined charge."""
     recruiter = await _get_own_recruiter_profile(conn, user)
     await _require_subscription_active(recruiter)
 
-    rep = await rep_profiles_repository.get_by_id(conn, rep_id)
-    if rep is None or not rep.recruiter_visible:
+    talent = await talent_profiles_repository.get_by_id(conn, talent_id)
+    if talent is None or not talent.recruiter_visible:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail={"code": "rep_not_found", "message": "No opted-in rep found for that id."},
+            detail={"code": "talent_not_found", "message": "No opted-in talent found for that id."},
         )
 
     charged = await recruiter_profiles_repository.decrement_credit(conn, recruiter.id)
@@ -315,51 +315,51 @@ async def get_rep_detail(
         )
 
     return RecruiterRepDetailResponse(
-        rep_id=rep.id,
-        display_name=rep.display_name,
-        school_name=rep.school_name,
-        school_type=rep.school_type,
-        city=rep.city,
-        state=rep.state,
-        graduation_year=rep.graduation_year,
-        bio=rep.bio,
-        categories=rep.categories,
-        instagram_handle=rep.instagram_handle,
-        tiktok_handle=rep.tiktok_handle,
-        total_campaigns_completed=rep.total_campaigns_completed,
-        average_rating=rep.average_rating,
-        profile_completeness_score=rep.profile_completeness_score,
+        talent_id=talent.id,
+        display_name=talent.display_name,
+        school_name=talent.school_name,
+        school_type=talent.school_type,
+        city=talent.city,
+        state=talent.state,
+        graduation_year=talent.graduation_year,
+        bio=talent.bio,
+        categories=talent.categories,
+        instagram_handle=talent.instagram_handle,
+        tiktok_handle=talent.tiktok_handle,
+        total_campaigns_completed=talent.total_campaigns_completed,
+        average_rating=talent.average_rating,
+        profile_completeness_score=talent.profile_completeness_score,
     )
 
 
-@recruiters_router.post("/reps/{rep_id}/contact", response_model=ContactResponse)
+@recruiters_router.post("/talents/{talent_id}/contact", response_model=ContactResponse)
 async def contact_rep(
-    rep_id: str,
+    talent_id: str,
     body: ContactRequest,
     user: AuthenticatedUser = Depends(require_role("recruiter")),
     conn: asyncpg.Connection = Depends(get_connection),
 ) -> ContactResponse:
-    """Costs 1 credit (same transactional deduction as get_rep_detail).
-    One-directional: a second contact to the same rep is rejected via
-    the recruiter_contacts UNIQUE(recruiter_id, rep_id) constraint
+    """Costs 1 credit (same transactional deduction as get_talent_detail).
+    One-directional: a second contact to the same talent is rejected via
+    the recruiter_contacts UNIQUE(recruiter_id, talent_id) constraint
     (Build Prompt 11 deliverable 4) -- checked BEFORE the credit is
     spent, so a recruiter isn't charged for a contact attempt that was
     always going to fail."""
     recruiter = await _get_own_recruiter_profile(conn, user)
     await _require_subscription_active(recruiter)
 
-    rep = await rep_profiles_repository.get_by_id(conn, rep_id)
-    if rep is None or not rep.recruiter_visible:
+    talent = await talent_profiles_repository.get_by_id(conn, talent_id)
+    if talent is None or not talent.recruiter_visible:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail={"code": "rep_not_found", "message": "No opted-in rep found for that id."},
+            detail={"code": "talent_not_found", "message": "No opted-in talent found for that id."},
         )
 
-    existing = await recruiter_contacts_repository.get_for_recruiter_and_rep(conn, recruiter.id, rep_id)
+    existing = await recruiter_contacts_repository.get_for_recruiter_and_rep(conn, recruiter.id, talent_id)
     if existing is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail={"code": "already_contacted", "message": "You've already contacted this rep."},
+            detail={"code": "already_contacted", "message": "You've already contacted this talent."},
         )
 
     charged = await recruiter_profiles_repository.decrement_credit(conn, recruiter.id)
@@ -370,7 +370,7 @@ async def contact_rep(
         )
 
     contact = await recruiter_contacts_repository.create_contact(
-        conn, recruiter_id=recruiter.id, rep_id=rep_id, message_text=body.message_text
+        conn, recruiter_id=recruiter.id, talent_id=talent_id, message_text=body.message_text
     )
     if contact is None:
         # Lost a race with a duplicate concurrent contact request --
@@ -379,10 +379,10 @@ async def contact_rep(
         # see recruiter_profiles_repository module docstring).
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail={"code": "already_contacted", "message": "You've already contacted this rep."},
+            detail={"code": "already_contacted", "message": "You've already contacted this talent."},
         )
 
-    return ContactResponse(id=contact.id, rep_id=contact.rep_id, message_text=contact.message_text, messaged_at=contact.messaged_at)
+    return ContactResponse(id=contact.id, talent_id=contact.talent_id, message_text=contact.message_text, messaged_at=contact.messaged_at)
 
 
 @recruiters_router.get("/messages", response_model=list[RecruiterMessageResponse])
@@ -397,8 +397,8 @@ async def list_messages(
     return [
         RecruiterMessageResponse(
             id=r.contact.id,
-            rep_id=r.contact.rep_id,
-            rep_display_name=r.rep_display_name,
+            talent_id=r.contact.talent_id,
+            talent_display_name=r.talent_display_name,
             message_text=r.contact.message_text,
             read_at=r.contact.read_at,
             messaged_at=r.contact.messaged_at,
@@ -412,26 +412,26 @@ async def list_messages(
 # ══════════════════════════════════════════════════════════════════
 
 
-@recruiters_router.post("/reps/{rep_id}/save", response_model=SavedProfileResponse)
+@recruiters_router.post("/talents/{talent_id}/save", response_model=SavedProfileResponse)
 async def save_rep(
-    rep_id: str,
+    talent_id: str,
     body: SaveRequest = SaveRequest(),
     user: AuthenticatedUser = Depends(require_role("recruiter")),
     conn: asyncpg.Connection = Depends(get_connection),
 ) -> SavedProfileResponse:
     recruiter = await _get_own_recruiter_profile(conn, user)
-    saved = await recruiter_saved_profiles_repository.save(conn, recruiter_id=recruiter.id, rep_id=rep_id, list_name=body.list_name)
-    return SavedProfileResponse(rep_id=saved.rep_id, list_name=saved.list_name, saved_at=saved.saved_at)
+    saved = await recruiter_saved_profiles_repository.save(conn, recruiter_id=recruiter.id, talent_id=talent_id, list_name=body.list_name)
+    return SavedProfileResponse(talent_id=saved.talent_id, list_name=saved.list_name, saved_at=saved.saved_at)
 
 
-@recruiters_router.delete("/reps/{rep_id}/save", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+@recruiters_router.delete("/talents/{talent_id}/save", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 async def unsave_rep(
-    rep_id: str,
+    talent_id: str,
     user: AuthenticatedUser = Depends(require_role("recruiter")),
     conn: asyncpg.Connection = Depends(get_connection),
 ) -> None:
     recruiter = await _get_own_recruiter_profile(conn, user)
-    await recruiter_saved_profiles_repository.unsave(conn, recruiter_id=recruiter.id, rep_id=rep_id)
+    await recruiter_saved_profiles_repository.unsave(conn, recruiter_id=recruiter.id, talent_id=talent_id)
 
 
 @recruiters_router.get("/saved", response_model=list[SavedProfileResponse])
@@ -441,4 +441,4 @@ async def list_saved(
 ) -> list[SavedProfileResponse]:
     recruiter = await _get_own_recruiter_profile(conn, user)
     rows = await recruiter_saved_profiles_repository.list_for_recruiter(conn, recruiter.id)
-    return [SavedProfileResponse(rep_id=r.rep_id, list_name=r.list_name, saved_at=r.saved_at) for r in rows]
+    return [SavedProfileResponse(talent_id=r.talent_id, list_name=r.list_name, saved_at=r.saved_at) for r in rows]

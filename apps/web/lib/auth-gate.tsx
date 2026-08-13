@@ -28,7 +28,13 @@ export interface AuthGateProps {
  * session/loading/role/suspension control flow itself is not duplicated
  * per portal.
  */
-export function AuthGate({ children, role, publicPaths, pendingState, signInPath = "/login" }: AuthGateProps) {
+export function AuthGate({
+  children,
+  role,
+  publicPaths,
+  pendingState,
+  signInPath = "/login",
+}: AuthGateProps) {
   const { session, me, loading } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
@@ -70,7 +76,10 @@ export function AuthGate({ children, role, publicPaths, pendingState, signInPath
         <p className="max-w-sm text-sm text-muted-foreground">
           This account isn&apos;t a {role} account.
         </p>
-        <a href={signInPath} className="text-sm font-medium text-primary hover:underline">
+        <a
+          href={signInPath}
+          className="text-sm font-medium text-primary hover:underline"
+        >
           Back to sign in
         </a>
       </CenteredMessage>
@@ -88,7 +97,8 @@ export function AuthGate({ children, role, publicPaths, pendingState, signInPath
     return (
       <CenteredMessage title="Account unavailable">
         <p className="max-w-sm text-sm text-muted-foreground">
-          Your account is currently {me.account_status}. Contact support for more information.
+          Your account is currently {me.account_status}. Contact support for
+          more information.
         </p>
       </CenteredMessage>
     );
@@ -97,7 +107,13 @@ export function AuthGate({ children, role, publicPaths, pendingState, signInPath
   return <>{children}</>;
 }
 
-export function CenteredMessage({ title, children }: { title: string; children?: React.ReactNode }) {
+export function CenteredMessage({
+  title,
+  children,
+}: {
+  title: string;
+  children?: React.ReactNode;
+}) {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center gap-3 p-6 text-center">
       <h1 className="text-xl font-semibold">{title}</h1>

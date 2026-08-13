@@ -32,10 +32,10 @@ GRANT USAGE ON SCHEMA rls TO authenticated;
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA rls TO authenticated;
 
 -- ──────────────────────────────────────────────────────────────────
--- TEST 1: a rep cannot read another rep's row.
--- Session = rep aaaaaaaa-...0002 (Sam, 16yo). Expect to see ONLY their
--- own rep_profiles row (via "Rep owns their profile"), even though
--- rep_profiles has 3 rows total and this session isn't a recruiter, so
+-- TEST 1: a talent cannot read another talent's row.
+-- Session = talent aaaaaaaa-...0002 (Sam, 16yo). Expect to see ONLY their
+-- own talent_profiles row (via   "Talent owns their profile"), even though
+-- talent_profiles has 3 rows total and this session isn't a recruiter, so
 -- the recruiter-visibility policy doesn't apply either.
 -- ──────────────────────────────────────────────────────────────────
 
@@ -43,13 +43,13 @@ BEGIN;
   SET LOCAL ROLE authenticated;
   SET LOCAL request.jwt.claims = '{"sub":"11111111-1111-1111-1111-111111111102","role":"authenticated"}';
 
-  \echo '--- TEST 1: rep session (Sam, 16yo) selecting from rep_profiles ---'
-  SELECT id, display_name FROM public.rep_profiles ORDER BY display_name;
+  \echo '--- TEST 1: talent session (Sam, 16yo) selecting from talent_profiles ---'
+  SELECT id, display_name FROM public.talent_profiles ORDER BY display_name;
   \echo '--- expected: exactly 1 row, "Sam Okafor (seed)" ---'
 ROLLBACK;
 
 -- ──────────────────────────────────────────────────────────────────
--- TEST 2: a recruiter sees only recruiter_visible = TRUE reps.
+-- TEST 2: a recruiter sees only recruiter_visible = TRUE talents.
 -- Session = recruiter cccccccc-...0001. Seed data: Jordan (adult,
 -- recruiter_visible=TRUE), Sam (16yo, recruiter_visible=TRUE), Casey
 -- (15yo, recruiter_visible=FALSE). Expect Jordan + Sam only.
@@ -59,8 +59,8 @@ BEGIN;
   SET LOCAL ROLE authenticated;
   SET LOCAL request.jwt.claims = '{"sub":"33333333-3333-3333-3333-333333333301","role":"authenticated"}';
 
-  \echo '--- TEST 2: recruiter session selecting from rep_profiles ---'
-  SELECT id, display_name, recruiter_visible FROM public.rep_profiles ORDER BY display_name;
+  \echo '--- TEST 2: recruiter session selecting from talent_profiles ---'
+  SELECT id, display_name, recruiter_visible FROM public.talent_profiles ORDER BY display_name;
   \echo '--- expected: exactly 2 rows (Jordan, Sam), both recruiter_visible = TRUE; Casey absent ---'
 ROLLBACK;
 
@@ -77,7 +77,7 @@ BEGIN;
   SET LOCAL request.jwt.claims = '{"parent_record_id":"dddddddd-0000-0000-0000-000000000001","role":"parent"}';
 
   \echo '--- TEST 3: parent session selecting from parent_records ---'
-  SELECT parent_id, rep_id, parent_email FROM public.parent_records;
+  SELECT parent_id, talent_id, parent_email FROM public.parent_records;
   \echo '--- expected: exactly 1 row, parent_id = dddddddd-...0001 (linked to Sam) ---'
 
   \echo '--- TEST 3b: same parent session attempting to read the OTHER parent record by id (should be filtered out, not error) ---'
@@ -86,17 +86,17 @@ BEGIN;
 ROLLBACK;
 
 -- ──────────────────────────────────────────────────────────────────
--- TEST 4 (bonus, Build Prompt 2's campaigns addition): a rep whose
--- campaign_reps.parent_approval_status = 'pending' cannot read that
--- campaign row, even though a campaign_reps row links them to it.
--- Session = rep Sam (16yo), whose seed campaign_reps row is 'pending'.
+-- TEST 4 (bonus, Build Prompt 2's campaigns addition): a talent whose
+-- campaign_talents.parent_approval_status = 'pending' cannot read that
+-- campaign row, even though a campaign_talents row links them to it.
+-- Session = talent Sam (16yo), whose seed campaign_talents row is 'pending'.
 -- ──────────────────────────────────────────────────────────────────
 
 BEGIN;
   SET LOCAL ROLE authenticated;
   SET LOCAL request.jwt.claims = '{"sub":"11111111-1111-1111-1111-111111111102","role":"authenticated"}';
 
-  \echo '--- TEST 4: rep session (Sam, pending parent approval) selecting from campaigns ---'
+  \echo '--- TEST 4: talent session (Sam, pending parent approval) selecting from campaigns ---'
   SELECT id, title FROM public.campaigns;
   \echo '--- expected: 0 rows (parent_approval_status = pending blocks visibility) ---'
 ROLLBACK;
@@ -105,7 +105,7 @@ BEGIN;
   SET LOCAL ROLE authenticated;
   SET LOCAL request.jwt.claims = '{"sub":"11111111-1111-1111-1111-111111111101","role":"authenticated"}';
 
-  \echo '--- TEST 4b: rep session (Jordan, adult, not_required) selecting from campaigns ---'
+  \echo '--- TEST 4b: talent session (Jordan, adult, not_required) selecting from campaigns ---'
   SELECT id, title FROM public.campaigns;
   \echo '--- expected: 1 row, "Fall Sneaker Launch (seed)" ---'
 ROLLBACK;

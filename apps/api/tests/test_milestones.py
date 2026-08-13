@@ -5,7 +5,7 @@ Follows tests/test_payout.py's fake_stripe/seed-helper pattern exactly
 suites stay easy to read side by side. Covers the acceptance criteria
 enumerated in Teenure_Build_Prompts.md's 8B section: percentage
 validation (99/101 rejected), atomic accept rollback, rounding never
-exceeds payout_per_rep_cents, sequence-required gating (409), non-
+exceeds payout_per_talent_cents, sequence-required gating (409), non-
 sequential-can't-precede-sequence-required, paid-milestone re-confirm
 idempotent, double release_milestone_payout produces exactly one
 Transfer, transfer.paid webhook isolation between milestone/flat state,
@@ -48,7 +48,7 @@ _MILESTONES = [
         "milestone_number": 2,
         "title": "Story follow-up",
         "description": "Publish one story.",
-        "verification_method": "rep_submission",
+        "verification_method": "talent_submission",
         "payout_percentage": 30,
         "sequence_required": True,
     },
@@ -56,14 +56,14 @@ _MILESTONES = [
         "milestone_number": 3,
         "title": "Bonus content",
         "description": "Publish one bonus post.",
-        "verification_method": "rep_submission",
+        "verification_method": "talent_submission",
         "payout_percentage": 40,
         "sequence_required": False,
     },
 ]
 
 
-def _milestone_campaign_body(*, budget_cents: int = 100_000, max_reps: int = 3, milestones=None) -> dict:
+def _milestone_campaign_body(*, budget_cents: int = 100_000, max_talents: int = 3, milestones=None) -> dict:
     return {
         "title": "Milestone Launch",
         "product_name": "Acme Widget",
@@ -73,7 +73,7 @@ def _milestone_campaign_body(*, budget_cents: int = 100_000, max_reps: int = 3, 
         "deliverables_description": "A series of posts",
         "target_categories": ["gaming"],
         "target_cities": ["Austin"],
-        "max_reps": max_reps,
+        "max_talents": max_talents,
         "budget_cents": budget_cents,
         "start_date": (date.today() + timedelta(days=10)).isoformat(),
         "end_date": (date.today() + timedelta(days=40)).isoformat(),
@@ -92,31 +92,31 @@ def _seed_brand_user(db) -> None:
 
 
 def _seed_rep(db, *, onboarded: bool = True) -> tuple[str, str]:
-    rep_user_id = str(uuid.uuid4())
-    rep_id = str(uuid.uuid4())
-    rep_email = f"rep-{rep_user_id}@example.com"
+    talent_user_id = str(uuid.uuid4())
+    talent_id = str(uuid.uuid4())
+    talent_email = f"talent-{talent_user_id}@example.com"
     dob = date(date.today().year - 20, 6, 1)
-    db.execute("INSERT INTO auth.users (id, email) VALUES ($1, $2)", rep_user_id, rep_email)
+    db.execute("INSERT INTO auth.users (id, email) VALUES ($1, $2)", talent_user_id, talent_email)
     db.execute(
         "INSERT INTO public.users (id, email, role, account_status, date_of_birth) "
-        "VALUES ($1, $2, 'rep', 'active', $3)",
-        rep_user_id,
-        rep_email,
+        "VALUES ($1, $2, 'talent', 'active', $3)",
+        talent_user_id,
+        talent_email,
         dob,
     )
     db.execute(
         """
-        INSERT INTO public.rep_profiles
+        INSERT INTO public.talent_profiles
             (id, user_id, display_name, school_name, city, state, graduation_year, categories,
              stripe_account_id, stripe_onboarding_complete)
-        VALUES ($1, $2, 'Test Rep', 'Test High', 'Austin', 'TX', 2027, '{gaming}', $3, $4)
+        VALUES ($1, $2, 'Test Talent', 'Test High', 'Austin', 'TX', 2027, '{gaming}', $3, $4)
         """,
-        rep_id,
-        rep_user_id,
+        talent_id,
+        talent_user_id,
         "acct_fake_rep" if onboarded else None,
         onboarded,
     )
-    return rep_id, rep_user_id
+    return talent_id, talent_user_id
 
 
 @pytest.fixture()
@@ -125,13 +125,13 @@ def brand_headers(auth_headers_factory):
 
 
 @pytest.fixture()
-def rep_headers_factory(auth_headers_factory, db):
-    """Issues a Supabase-shaped JWT for a specific seeded rep user id,
+def talent_headers_factory(auth_headers_factory, db):
+    """Issues a Supabase-shaped JWT for a specific seeded talent user id,
     since auth_headers_factory always mints sub=...0001 -- milestone
-    tests need the rep's own token to call the /campaigns/:id/... rep
-    routes as that specific rep."""
+    tests need the talent's own token to call the /campaigns/:id/... talent
+    routes as that specific talent."""
 
-    def _factory(rep_user_id: str) -> dict[str, str]:
+    def _factory(talent_user_id: str) -> dict[str, str]:
         import time
 
         import jwt
@@ -140,10 +140,10 @@ def rep_headers_factory(auth_headers_factory, db):
 
         settings = get_settings()
         payload = {
-            "sub": rep_user_id,
-            "email": "rep@example.com",
+            "sub": talent_user_id,
+            "email": "talent@example.com",
             "aud": "authenticated",
-            "app_metadata": {"role": "rep", "account_status": "active"},
+            "app_metadata": {"role": "talent", "account_status": "active"},
             "exp": int(time.time()) + 3600,
         }
         token = jwt.encode(payload, settings.supabase_jwt_secret, algorithm="HS256")
@@ -155,9 +155,9 @@ def rep_headers_factory(auth_headers_factory, db):
 @pytest.fixture()
 def onboarded_brand(client, db, brand_headers):
     _seed_brand_user(db)
-    response = client.put("/brands/me", json=_BRAND_PROFILE_BODY, headers=brand_headers)
-    assert response.status_code == 200
-    return response.json()
+    response  = client.put("/brands/me", json=_BRAND_PROFILE_BODY, headers=brand_headers)
+    assert response .status_code == 200
+    return response .json()
 
 
 @pytest.fixture()
@@ -199,11 +199,11 @@ def _signed_webhook(settings, event: dict) -> tuple[bytes, str]:
 
 
 def _invite_and_accept(client, db, brand_headers, campaign_id, *, onboarded=True) -> tuple[str, str, dict]:
-    """Returns (rep_id, rep_user_id, invite_response_json)."""
-    rep_id, rep_user_id = _seed_rep(db, onboarded=onboarded)
-    invite_resp = client.post(f"/brands/campaigns/{campaign_id}/reps/invite", json={"rep_ids": [rep_id]}, headers=brand_headers)
+    """Returns (talent_id, talent_user_id, invite_response_json)."""
+    talent_id, talent_user_id = _seed_rep(db, onboarded=onboarded)
+    invite_resp = client.post(f"/brands/campaigns/{campaign_id}/talents/invite", json={"talent_ids": [talent_id]}, headers=brand_headers)
     assert invite_resp.status_code == 200
-    return rep_id, rep_user_id, invite_resp.json()[0]
+    return talent_id, talent_user_id, invite_resp.json()[0]
 
 
 # ---------------------------------------------------------------------
@@ -219,9 +219,9 @@ def test_milestone_percentages_summing_to_99_rejected(client, brand_headers, onb
             _MILESTONES[2],
         ]
     )
-    response = client.post("/brands/campaigns", json=body, headers=brand_headers)
-    assert response.status_code == 400
-    assert response.json()["error"]["code"] == "invalid_milestones"
+    response  = client.post("/brands/campaigns", json=body, headers=brand_headers)
+    assert response .status_code == 400
+    assert response .json()["error"]["code"] == "invalid_milestones"
 
 
 def test_milestone_percentages_summing_to_101_rejected(client, brand_headers, onboarded_brand):
@@ -232,16 +232,16 @@ def test_milestone_percentages_summing_to_101_rejected(client, brand_headers, on
             _MILESTONES[2],
         ]
     )
-    response = client.post("/brands/campaigns", json=body, headers=brand_headers)
-    assert response.status_code == 400
-    assert response.json()["error"]["code"] == "invalid_milestones"
+    response  = client.post("/brands/campaigns", json=body, headers=brand_headers)
+    assert response .status_code == 400
+    assert response .json()["error"]["code"] == "invalid_milestones"
 
 
 def test_milestone_count_below_minimum_rejected(client, brand_headers, onboarded_brand):
     body = _milestone_campaign_body(milestones=[{**_MILESTONES[0], "payout_percentage": 100}])
-    response = client.post("/brands/campaigns", json=body, headers=brand_headers)
-    assert response.status_code == 400
-    assert response.json()["error"]["code"] == "invalid_milestones"
+    response  = client.post("/brands/campaigns", json=body, headers=brand_headers)
+    assert response .status_code == 400
+    assert response .json()["error"]["code"] == "invalid_milestones"
 
 
 def test_milestone_non_sequential_before_sequence_required_rejected(client, brand_headers, onboarded_brand):
@@ -251,9 +251,9 @@ def test_milestone_non_sequential_before_sequence_required_rejected(client, bran
             {**_MILESTONES[1], "milestone_number": 2, "sequence_required": True},
         ]
     )
-    response = client.post("/brands/campaigns", json=body, headers=brand_headers)
-    assert response.status_code == 400
-    assert response.json()["error"]["code"] == "invalid_milestones"
+    response  = client.post("/brands/campaigns", json=body, headers=brand_headers)
+    assert response .status_code == 400
+    assert response .json()["error"]["code"] == "invalid_milestones"
 
 
 def test_milestone_requires_at_least_one_sequence_required(client, brand_headers, onboarded_brand):
@@ -263,23 +263,23 @@ def test_milestone_requires_at_least_one_sequence_required(client, brand_headers
             {**_MILESTONES[1], "sequence_required": False, "payout_percentage": 70},
         ]
     )
-    response = client.post("/brands/campaigns", json=body, headers=brand_headers)
-    assert response.status_code == 400
-    assert response.json()["error"]["code"] == "invalid_milestones"
+    response  = client.post("/brands/campaigns", json=body, headers=brand_headers)
+    assert response .status_code == 400
+    assert response .json()["error"]["code"] == "invalid_milestones"
 
 
 def test_flat_campaign_with_milestones_array_rejected(client, brand_headers, onboarded_brand):
     body = _milestone_campaign_body()
     body["payment_type"] = "flat"
-    response = client.post("/brands/campaigns", json=body, headers=brand_headers)
-    assert response.status_code == 400
-    assert response.json()["error"]["code"] == "milestones_not_allowed"
+    response  = client.post("/brands/campaigns", json=body, headers=brand_headers)
+    assert response .status_code == 400
+    assert response .json()["error"]["code"] == "milestones_not_allowed"
 
 
 def test_valid_milestone_campaign_creates_atomically(client, db, brand_headers, onboarded_brand):
-    response = client.post("/brands/campaigns", json=_milestone_campaign_body(), headers=brand_headers)
-    assert response.status_code == 201
-    body = response.json()
+    response  = client.post("/brands/campaigns", json=_milestone_campaign_body(), headers=brand_headers)
+    assert response .status_code == 201
+    body = response .json()
     assert body["payment_type"] == "milestone"
     rows = db.fetch("SELECT milestone_number, payout_percentage FROM public.campaign_milestones WHERE campaign_id = $1 ORDER BY milestone_number", body["id"])
     assert len(rows) == 3
@@ -292,28 +292,28 @@ def test_invalid_milestones_rolls_back_campaign_creation(client, db, brand_heade
     simply that no campaign row exists afterward at all."""
     before = db.fetchval("SELECT COUNT(*) FROM public.campaigns")
     body = _milestone_campaign_body(milestones=[{**_MILESTONES[0], "payout_percentage": 50}, {**_MILESTONES[1], "payout_percentage": 60}])
-    response = client.post("/brands/campaigns", json=body, headers=brand_headers)
-    assert response.status_code == 400
+    response  = client.post("/brands/campaigns", json=body, headers=brand_headers)
+    assert response .status_code == 400
     after = db.fetchval("SELECT COUNT(*) FROM public.campaigns")
     assert after == before
 
 
 # ---------------------------------------------------------------------
-# Accept -> campaign_rep_milestones initialization (deliverable 2)
+# Accept -> campaign_talent_milestones initialization (deliverable 2)
 # ---------------------------------------------------------------------
 
 
-def test_accept_initializes_campaign_rep_milestones(client, db, brand_headers, rep_headers_factory, onboarded_brand):
+def test_accept_initializes_campaign_talent_milestones(client, db, brand_headers, talent_headers_factory, onboarded_brand):
     created = client.post("/brands/campaigns", json=_milestone_campaign_body(), headers=brand_headers).json()
-    rep_id, rep_user_id, invite = _invite_and_accept(client, db, brand_headers, created["id"])
-    rep_headers = rep_headers_factory(rep_user_id)
+    talent_id, talent_user_id, invite = _invite_and_accept(client, db, brand_headers, created["id"])
+    talent_headers = talent_headers_factory(talent_user_id)
 
-    response = client.post(f"/campaigns/{created['id']}/accept", json={"ftc_disclosure_accepted": True}, headers=rep_headers)
-    assert response.status_code == 200
+    response  = client.post(f"/campaigns/{created['id']}/accept", json={"ftc_disclosure_accepted": True}, headers=talent_headers)
+    assert response .status_code == 200
 
     rows = db.fetch(
-        "SELECT crm.status FROM public.campaign_rep_milestones crm JOIN public.campaign_reps cr ON cr.id = crm.campaign_rep_id WHERE cr.rep_id = $1",
-        rep_id,
+        "SELECT crm.status FROM public.campaign_talent_milestones crm JOIN public.campaign_talents cr ON cr.id = crm.campaign_talent_id WHERE cr.talent_id = $1",
+        talent_id,
     )
     assert len(rows) == 3
     assert all(r["status"] == "pending" for r in rows)
@@ -324,50 +324,50 @@ def test_accept_initializes_campaign_rep_milestones(client, db, brand_headers, r
 # ---------------------------------------------------------------------
 
 
-def _accept_milestone_campaign(client, db, brand_headers, rep_headers_factory, onboarded_brand, milestones=None):
+def _accept_milestone_campaign(client, db, brand_headers, talent_headers_factory, onboarded_brand, milestones=None):
     created = client.post("/brands/campaigns", json=_milestone_campaign_body(milestones=milestones), headers=brand_headers).json()
-    rep_id, rep_user_id, _ = _invite_and_accept(client, db, brand_headers, created["id"])
-    rep_headers = rep_headers_factory(rep_user_id)
-    client.post(f"/campaigns/{created['id']}/accept", json={"ftc_disclosure_accepted": True}, headers=rep_headers)
+    talent_id, talent_user_id, _ = _invite_and_accept(client, db, brand_headers, created["id"])
+    talent_headers = talent_headers_factory(talent_user_id)
+    client.post(f"/campaigns/{created['id']}/accept", json={"ftc_disclosure_accepted": True}, headers=talent_headers)
     milestone_rows = db.fetch(
         "SELECT id, milestone_number FROM public.campaign_milestones WHERE campaign_id = $1 ORDER BY milestone_number", created["id"]
     )
-    return created, rep_id, rep_headers, {r["milestone_number"]: str(r["id"]) for r in milestone_rows}
+    return created, talent_id, talent_headers, {r["milestone_number"]: str(r["id"]) for r in milestone_rows}
 
 
-def test_submitting_second_sequence_milestone_before_first_is_409(client, db, brand_headers, rep_headers_factory, onboarded_brand):
-    created, rep_id, rep_headers, milestone_ids = _accept_milestone_campaign(client, db, brand_headers, rep_headers_factory, onboarded_brand)
-    response = client.post(
+def test_submitting_second_sequence_milestone_before_first_is_409(client, db, brand_headers, talent_headers_factory, onboarded_brand):
+    created, talent_id, talent_headers, milestone_ids = _accept_milestone_campaign(client, db, brand_headers, talent_headers_factory, onboarded_brand)
+    response  = client.post(
         f"/campaigns/{created['id']}/milestones/{milestone_ids[2]}/submit",
         json={"submission_text": "story link", "submission_file_urls": []},
-        headers=rep_headers,
+        headers=talent_headers,
     )
-    assert response.status_code == 409
-    assert response.json()["error"]["code"] == "milestone_not_actionable"
+    assert response .status_code == 409
+    assert response .json()["error"]["code"] == "milestone_not_actionable"
 
 
-def test_submitting_non_sequential_milestone_before_sequence_required_done_is_409(client, db, brand_headers, rep_headers_factory, onboarded_brand):
-    created, rep_id, rep_headers, milestone_ids = _accept_milestone_campaign(client, db, brand_headers, rep_headers_factory, onboarded_brand)
-    response = client.post(
+def test_submitting_non_sequential_milestone_before_sequence_required_done_is_409(client, db, brand_headers, talent_headers_factory, onboarded_brand):
+    created, talent_id, talent_headers, milestone_ids = _accept_milestone_campaign(client, db, brand_headers, talent_headers_factory, onboarded_brand)
+    response  = client.post(
         f"/campaigns/{created['id']}/milestones/{milestone_ids[3]}/submit",
         json={"submission_text": "bonus content", "submission_file_urls": []},
-        headers=rep_headers,
+        headers=talent_headers,
     )
-    assert response.status_code == 409
-    assert response.json()["error"]["code"] == "milestone_not_actionable"
+    assert response .status_code == 409
+    assert response .json()["error"]["code"] == "milestone_not_actionable"
 
 
 def test_first_milestone_submission_succeeds_and_notifies_brand(
-    client, db, brand_headers, rep_headers_factory, onboarded_brand, fake_resend_client
+    client, db, brand_headers, talent_headers_factory, onboarded_brand, fake_resend_client
 ):
-    created, rep_id, rep_headers, milestone_ids = _accept_milestone_campaign(client, db, brand_headers, rep_headers_factory, onboarded_brand)
-    response = client.post(
+    created, talent_id, talent_headers, milestone_ids = _accept_milestone_campaign(client, db, brand_headers, talent_headers_factory, onboarded_brand)
+    response  = client.post(
         f"/campaigns/{created['id']}/milestones/{milestone_ids[1]}/submit",
         json={"submission_text": "post link", "submission_file_urls": []},
-        headers=rep_headers,
+        headers=talent_headers,
     )
-    assert response.status_code == 200
-    assert response.json()["status"] == "submitted"
+    assert response .status_code == 200
+    assert response .json()["status"] == "submitted"
     # milestone 1 is 'brand_confirmation' -- brand gets notified.
     assert len(fake_resend_client.sent) == 1
 
@@ -377,18 +377,18 @@ def test_first_milestone_submission_succeeds_and_notifies_brand(
 # ---------------------------------------------------------------------
 
 
-def test_confirm_computes_payout_and_releases_transfer(client, db, brand_headers, rep_headers_factory, onboarded_brand, fake_stripe):
-    created, rep_id, rep_headers, milestone_ids = _accept_milestone_campaign(client, db, brand_headers, rep_headers_factory, onboarded_brand)
+def test_confirm_computes_payout_and_releases_transfer(client, db, brand_headers, talent_headers_factory, onboarded_brand, fake_stripe):
+    created, talent_id, talent_headers, milestone_ids = _accept_milestone_campaign(client, db, brand_headers, talent_headers_factory, onboarded_brand)
     client.post(
         f"/campaigns/{created['id']}/milestones/{milestone_ids[1]}/submit",
         json={"submission_text": "post link", "submission_file_urls": []},
-        headers=rep_headers,
+        headers=talent_headers,
     )
-    response = client.post(f"/brands/campaigns/{created['id']}/reps/{rep_id}/milestones/{milestone_ids[1]}/confirm", headers=brand_headers)
-    assert response.status_code == 200
-    body = response.json()
+    response  = client.post(f"/brands/campaigns/{created['id']}/talents/{talent_id}/milestones/{milestone_ids[1]}/confirm", headers=brand_headers)
+    assert response .status_code == 200
+    body = response .json()
     assert body["status"] == "confirmed"
-    assert body["payout_cents"] == (created["payout_per_rep_cents"] * 30) // 100
+    assert body["payout_cents"] == (created["payout_per_talent_cents"] * 30) // 100
 
     call_names = [name for name, _ in fake_stripe.calls]
     assert call_names == ["Transfer.create"]
@@ -396,58 +396,58 @@ def test_confirm_computes_payout_and_releases_transfer(client, db, brand_headers
     assert kwargs["metadata"]["payment_type"] == "milestone"
 
 
-def test_rounding_never_exceeds_payout_per_rep_cents(client, db, brand_headers, rep_headers_factory, onboarded_brand, fake_stripe):
-    """budget/max_reps chosen so payout_per_rep_cents doesn't divide
+def test_rounding_never_exceeds_payout_per_talent_cents(client, db, brand_headers, talent_headers_factory, onboarded_brand, fake_stripe):
+    """budget/max_talents chosen so payout_per_talent_cents doesn't divide
     evenly by the milestone percentages, forcing a rounding remainder
     onto the final milestone (spec: 'never let rounding silently reduce
-    or increase total rep earnings')."""
-    created, rep_id, rep_headers, milestone_ids = _accept_milestone_campaign(
-        client, db, brand_headers, rep_headers_factory, onboarded_brand
+    or increase total talent earnings')."""
+    created, talent_id, talent_headers, milestone_ids = _accept_milestone_campaign(
+        client, db, brand_headers, talent_headers_factory, onboarded_brand
     )
-    payout_per_rep_cents = created["payout_per_rep_cents"]
+    payout_per_talent_cents = created["payout_per_talent_cents"]
 
     # Confirm milestone 1 (brand_confirmation).
-    client.post(f"/campaigns/{created['id']}/milestones/{milestone_ids[1]}/submit", json={"submission_text": "x"}, headers=rep_headers)
-    r1 = client.post(f"/brands/campaigns/{created['id']}/reps/{rep_id}/milestones/{milestone_ids[1]}/confirm", headers=brand_headers).json()
+    client.post(f"/campaigns/{created['id']}/milestones/{milestone_ids[1]}/submit", json={"submission_text": "x"}, headers=talent_headers)
+    r1 = client.post(f"/brands/campaigns/{created['id']}/talents/{talent_id}/milestones/{milestone_ids[1]}/confirm", headers=brand_headers).json()
 
-    client.post(f"/campaigns/{created['id']}/milestones/{milestone_ids[2]}/submit", json={"submission_text": "x"}, headers=rep_headers)
-    r2 = client.post(f"/brands/campaigns/{created['id']}/reps/{rep_id}/milestones/{milestone_ids[2]}/confirm", headers=brand_headers).json()
+    client.post(f"/campaigns/{created['id']}/milestones/{milestone_ids[2]}/submit", json={"submission_text": "x"}, headers=talent_headers)
+    r2 = client.post(f"/brands/campaigns/{created['id']}/talents/{talent_id}/milestones/{milestone_ids[2]}/confirm", headers=brand_headers).json()
 
-    client.post(f"/campaigns/{created['id']}/milestones/{milestone_ids[3]}/submit", json={"submission_text": "x"}, headers=rep_headers)
-    r3 = client.post(f"/brands/campaigns/{created['id']}/reps/{rep_id}/milestones/{milestone_ids[3]}/confirm", headers=brand_headers).json()
+    client.post(f"/campaigns/{created['id']}/milestones/{milestone_ids[3]}/submit", json={"submission_text": "x"}, headers=talent_headers)
+    r3 = client.post(f"/brands/campaigns/{created['id']}/talents/{talent_id}/milestones/{milestone_ids[3]}/confirm", headers=brand_headers).json()
 
     total = r1["payout_cents"] + r2["payout_cents"] + r3["payout_cents"]
-    assert total == payout_per_rep_cents
+    assert total == payout_per_talent_cents
 
-    cr_row = db.fetch("SELECT total_milestone_payout_cents, status FROM public.campaign_reps WHERE rep_id = $1", rep_id)[0]
-    assert cr_row["total_milestone_payout_cents"] == payout_per_rep_cents
-    # Final milestone confirmed -> campaign_reps.status advances to 'confirmed'.
+    cr_row = db.fetch("SELECT total_milestone_payout_cents, status FROM public.campaign_talents WHERE talent_id = $1", talent_id)[0]
+    assert cr_row["total_milestone_payout_cents"] == payout_per_talent_cents
+    # Final milestone confirmed -> campaign_talents.status advances to 'confirmed'.
     assert cr_row["status"] == "confirmed"
 
 
-def test_confirming_already_paid_milestone_is_idempotent_conflict(client, db, brand_headers, rep_headers_factory, onboarded_brand, fake_stripe):
-    created, rep_id, rep_headers, milestone_ids = _accept_milestone_campaign(client, db, brand_headers, rep_headers_factory, onboarded_brand)
-    client.post(f"/campaigns/{created['id']}/milestones/{milestone_ids[1]}/submit", json={"submission_text": "x"}, headers=rep_headers)
-    first = client.post(f"/brands/campaigns/{created['id']}/reps/{rep_id}/milestones/{milestone_ids[1]}/confirm", headers=brand_headers)
+def test_confirming_already_paid_milestone_is_idempotent_conflict(client, db, brand_headers, talent_headers_factory, onboarded_brand, fake_stripe):
+    created, talent_id, talent_headers, milestone_ids = _accept_milestone_campaign(client, db, brand_headers, talent_headers_factory, onboarded_brand)
+    client.post(f"/campaigns/{created['id']}/milestones/{milestone_ids[1]}/submit", json={"submission_text": "x"}, headers=talent_headers)
+    first = client.post(f"/brands/campaigns/{created['id']}/talents/{talent_id}/milestones/{milestone_ids[1]}/confirm", headers=brand_headers)
     assert first.status_code == 200
 
-    second = client.post(f"/brands/campaigns/{created['id']}/reps/{rep_id}/milestones/{milestone_ids[1]}/confirm", headers=brand_headers)
+    second = client.post(f"/brands/campaigns/{created['id']}/talents/{talent_id}/milestones/{milestone_ids[1]}/confirm", headers=brand_headers)
     assert second.status_code == 409
 
     call_names = [name for name, _ in fake_stripe.calls]
     assert call_names == ["Transfer.create"]
 
 
-def test_double_release_milestone_payout_produces_exactly_one_transfer(client, db, settings, brand_headers, rep_headers_factory, onboarded_brand, fake_stripe):
+def test_double_release_milestone_payout_produces_exactly_one_transfer(client, db, settings, brand_headers, talent_headers_factory, onboarded_brand, fake_stripe):
     """Mirrors Prompt 11's credit-deduction concurrency pattern: two
     concurrent-ish calls to release_milestone_payout for the same
     already-confirmed row must only ever create one Stripe Transfer."""
-    created, rep_id, rep_headers, milestone_ids = _accept_milestone_campaign(client, db, brand_headers, rep_headers_factory, onboarded_brand)
-    client.post(f"/campaigns/{created['id']}/milestones/{milestone_ids[1]}/submit", json={"submission_text": "x"}, headers=rep_headers)
-    client.post(f"/brands/campaigns/{created['id']}/reps/{rep_id}/milestones/{milestone_ids[1]}/confirm", headers=brand_headers)
+    created, talent_id, talent_headers, milestone_ids = _accept_milestone_campaign(client, db, brand_headers, talent_headers_factory, onboarded_brand)
+    client.post(f"/campaigns/{created['id']}/milestones/{milestone_ids[1]}/submit", json={"submission_text": "x"}, headers=talent_headers)
+    client.post(f"/brands/campaigns/{created['id']}/talents/{talent_id}/milestones/{milestone_ids[1]}/confirm", headers=brand_headers)
 
     crm_id = db.fetchval(
-        "SELECT crm.id FROM public.campaign_rep_milestones crm JOIN public.campaign_milestones cm ON cm.id = crm.campaign_milestone_id WHERE cm.id = $1",
+        "SELECT crm.id FROM public.campaign_talent_milestones crm JOIN public.campaign_milestones cm ON cm.id = crm.campaign_milestone_id WHERE cm.id = $1",
         milestone_ids[1],
     )
 
@@ -482,80 +482,80 @@ def test_double_release_milestone_payout_produces_exactly_one_transfer(client, d
 
 
 def test_dispute_within_window_sets_flag_and_creates_admin_queue_entry(
-    client, db, brand_headers, rep_headers_factory, onboarded_brand, fake_resend_client, fake_stripe
+    client, db, brand_headers, talent_headers_factory, onboarded_brand, fake_resend_client, fake_stripe
 ):
-    created, rep_id, rep_headers, milestone_ids = _accept_milestone_campaign(client, db, brand_headers, rep_headers_factory, onboarded_brand)
+    created, talent_id, talent_headers, milestone_ids = _accept_milestone_campaign(client, db, brand_headers, talent_headers_factory, onboarded_brand)
     # milestone 2 requires milestone 1 confirmed first.
-    client.post(f"/campaigns/{created['id']}/milestones/{milestone_ids[1]}/submit", json={"submission_text": "x"}, headers=rep_headers)
-    client.post(f"/brands/campaigns/{created['id']}/reps/{rep_id}/milestones/{milestone_ids[1]}/confirm", headers=brand_headers)
-    client.post(f"/campaigns/{created['id']}/milestones/{milestone_ids[2]}/submit", json={"submission_text": "story"}, headers=rep_headers)
+    client.post(f"/campaigns/{created['id']}/milestones/{milestone_ids[1]}/submit", json={"submission_text": "x"}, headers=talent_headers)
+    client.post(f"/brands/campaigns/{created['id']}/talents/{talent_id}/milestones/{milestone_ids[1]}/confirm", headers=brand_headers)
+    client.post(f"/campaigns/{created['id']}/milestones/{milestone_ids[2]}/submit", json={"submission_text": "story"}, headers=talent_headers)
 
-    response = client.post(
-        f"/brands/campaigns/{created['id']}/reps/{rep_id}/milestones/{milestone_ids[2]}/dispute",
+    response  = client.post(
+        f"/brands/campaigns/{created['id']}/talents/{talent_id}/milestones/{milestone_ids[2]}/dispute",
         json={"reason": "Looks fake"},
         headers=brand_headers,
     )
-    assert response.status_code == 200
-    assert response.json()["dispute_flag"] is True
+    assert response .status_code == 200
+    assert response .json()["dispute_flag"] is True
 
     dispute_row = db.fetch("SELECT status FROM public.milestone_disputes")
     assert len(dispute_row) == 1
     assert dispute_row[0]["status"] == "open"
 
 
-def test_25h_old_submission_no_dispute_is_auto_released(client, db, settings, brand_headers, rep_headers_factory, onboarded_brand, fake_stripe):
-    created, rep_id, rep_headers, milestone_ids = _accept_milestone_campaign(client, db, brand_headers, rep_headers_factory, onboarded_brand)
-    client.post(f"/campaigns/{created['id']}/milestones/{milestone_ids[1]}/submit", json={"submission_text": "x"}, headers=rep_headers)
-    client.post(f"/brands/campaigns/{created['id']}/reps/{rep_id}/milestones/{milestone_ids[1]}/confirm", headers=brand_headers)
-    client.post(f"/campaigns/{created['id']}/milestones/{milestone_ids[2]}/submit", json={"submission_text": "story"}, headers=rep_headers)
+def test_25h_old_submission_no_dispute_is_auto_released(client, db, settings, brand_headers, talent_headers_factory, onboarded_brand, fake_stripe):
+    created, talent_id, talent_headers, milestone_ids = _accept_milestone_campaign(client, db, brand_headers, talent_headers_factory, onboarded_brand)
+    client.post(f"/campaigns/{created['id']}/milestones/{milestone_ids[1]}/submit", json={"submission_text": "x"}, headers=talent_headers)
+    client.post(f"/brands/campaigns/{created['id']}/talents/{talent_id}/milestones/{milestone_ids[1]}/confirm", headers=brand_headers)
+    client.post(f"/campaigns/{created['id']}/milestones/{milestone_ids[2]}/submit", json={"submission_text": "story"}, headers=talent_headers)
 
     # Backdate submitted_at past the 24h window.
     db.execute(
-        "UPDATE public.campaign_rep_milestones SET submitted_at = now() - interval '25 hours' "
+        "UPDATE public.campaign_talent_milestones SET submitted_at = now() - interval '25 hours' "
         "WHERE campaign_milestone_id = $1",
         milestone_ids[2],
     )
 
-    response = client.post("/internal/jobs/run/milestone_auto_release", headers={"X-Jobs-Runner-Secret": settings.jobs_runner_secret})
-    assert response.status_code == 200
+    response  = client.post("/internal/jobs/run/milestone_auto_release", headers={"X-Jobs-Runner-Secret": settings.jobs_runner_secret})
+    assert response .status_code == 200
 
     row = db.fetch(
-        "SELECT status FROM public.campaign_rep_milestones WHERE campaign_milestone_id = $1", milestone_ids[2]
+        "SELECT status FROM public.campaign_talent_milestones WHERE campaign_milestone_id = $1", milestone_ids[2]
     )[0]
     assert row["status"] == "confirmed"
     call_names = [name for name, _ in fake_stripe.calls]
     assert call_names.count("Transfer.create") == 2  # milestone 1 (manual) + milestone 2 (auto)
 
 
-def test_25h_old_submission_with_dispute_not_auto_released(client, db, settings, brand_headers, rep_headers_factory, onboarded_brand, fake_stripe):
-    created, rep_id, rep_headers, milestone_ids = _accept_milestone_campaign(client, db, brand_headers, rep_headers_factory, onboarded_brand)
-    client.post(f"/campaigns/{created['id']}/milestones/{milestone_ids[1]}/submit", json={"submission_text": "x"}, headers=rep_headers)
-    client.post(f"/brands/campaigns/{created['id']}/reps/{rep_id}/milestones/{milestone_ids[1]}/confirm", headers=brand_headers)
-    client.post(f"/campaigns/{created['id']}/milestones/{milestone_ids[2]}/submit", json={"submission_text": "story"}, headers=rep_headers)
+def test_25h_old_submission_with_dispute_not_auto_released(client, db, settings, brand_headers, talent_headers_factory, onboarded_brand, fake_stripe):
+    created, talent_id, talent_headers, milestone_ids = _accept_milestone_campaign(client, db, brand_headers, talent_headers_factory, onboarded_brand)
+    client.post(f"/campaigns/{created['id']}/milestones/{milestone_ids[1]}/submit", json={"submission_text": "x"}, headers=talent_headers)
+    client.post(f"/brands/campaigns/{created['id']}/talents/{talent_id}/milestones/{milestone_ids[1]}/confirm", headers=brand_headers)
+    client.post(f"/campaigns/{created['id']}/milestones/{milestone_ids[2]}/submit", json={"submission_text": "story"}, headers=talent_headers)
     client.post(
-        f"/brands/campaigns/{created['id']}/reps/{rep_id}/milestones/{milestone_ids[2]}/dispute",
+        f"/brands/campaigns/{created['id']}/talents/{talent_id}/milestones/{milestone_ids[2]}/dispute",
         json={"reason": "review"},
         headers=brand_headers,
     )
     db.execute(
-        "UPDATE public.campaign_rep_milestones SET submitted_at = now() - interval '25 hours' WHERE campaign_milestone_id = $1",
+        "UPDATE public.campaign_talent_milestones SET submitted_at = now() - interval '25 hours' WHERE campaign_milestone_id = $1",
         milestone_ids[2],
     )
 
-    response = client.post("/internal/jobs/run/milestone_auto_release", headers={"X-Jobs-Runner-Secret": settings.jobs_runner_secret})
-    assert response.status_code == 200
+    response  = client.post("/internal/jobs/run/milestone_auto_release", headers={"X-Jobs-Runner-Secret": settings.jobs_runner_secret})
+    assert response .status_code == 200
 
-    row = db.fetch("SELECT status FROM public.campaign_rep_milestones WHERE campaign_milestone_id = $1", milestone_ids[2])[0]
+    row = db.fetch("SELECT status FROM public.campaign_talent_milestones WHERE campaign_milestone_id = $1", milestone_ids[2])[0]
     assert row["status"] == "submitted"  # unchanged -- disputed rows are skipped
 
 
-def test_running_auto_release_job_twice_produces_one_transfer(client, db, settings, brand_headers, rep_headers_factory, onboarded_brand, fake_stripe):
-    created, rep_id, rep_headers, milestone_ids = _accept_milestone_campaign(client, db, brand_headers, rep_headers_factory, onboarded_brand)
-    client.post(f"/campaigns/{created['id']}/milestones/{milestone_ids[1]}/submit", json={"submission_text": "x"}, headers=rep_headers)
-    client.post(f"/brands/campaigns/{created['id']}/reps/{rep_id}/milestones/{milestone_ids[1]}/confirm", headers=brand_headers)
-    client.post(f"/campaigns/{created['id']}/milestones/{milestone_ids[2]}/submit", json={"submission_text": "story"}, headers=rep_headers)
+def test_running_auto_release_job_twice_produces_one_transfer(client, db, settings, brand_headers, talent_headers_factory, onboarded_brand, fake_stripe):
+    created, talent_id, talent_headers, milestone_ids = _accept_milestone_campaign(client, db, brand_headers, talent_headers_factory, onboarded_brand)
+    client.post(f"/campaigns/{created['id']}/milestones/{milestone_ids[1]}/submit", json={"submission_text": "x"}, headers=talent_headers)
+    client.post(f"/brands/campaigns/{created['id']}/talents/{talent_id}/milestones/{milestone_ids[1]}/confirm", headers=brand_headers)
+    client.post(f"/campaigns/{created['id']}/milestones/{milestone_ids[2]}/submit", json={"submission_text": "story"}, headers=talent_headers)
     db.execute(
-        "UPDATE public.campaign_rep_milestones SET submitted_at = now() - interval '25 hours' WHERE campaign_milestone_id = $1",
+        "UPDATE public.campaign_talent_milestones SET submitted_at = now() - interval '25 hours' WHERE campaign_milestone_id = $1",
         milestone_ids[2],
     )
 
@@ -572,13 +572,13 @@ def test_running_auto_release_job_twice_produces_one_transfer(client, db, settin
 
 
 def test_transfer_paid_milestone_metadata_does_not_touch_flat_campaign_reps_row(
-    client, db, settings, brand_headers, rep_headers_factory, onboarded_brand, fake_stripe
+    client, db, settings, brand_headers, talent_headers_factory, onboarded_brand, fake_stripe
 ):
-    created, rep_id, rep_headers, milestone_ids = _accept_milestone_campaign(client, db, brand_headers, rep_headers_factory, onboarded_brand)
-    client.post(f"/campaigns/{created['id']}/milestones/{milestone_ids[1]}/submit", json={"submission_text": "x"}, headers=rep_headers)
-    client.post(f"/brands/campaigns/{created['id']}/reps/{rep_id}/milestones/{milestone_ids[1]}/confirm", headers=brand_headers)
+    created, talent_id, talent_headers, milestone_ids = _accept_milestone_campaign(client, db, brand_headers, talent_headers_factory, onboarded_brand)
+    client.post(f"/campaigns/{created['id']}/milestones/{milestone_ids[1]}/submit", json={"submission_text": "x"}, headers=talent_headers)
+    client.post(f"/brands/campaigns/{created['id']}/talents/{talent_id}/milestones/{milestone_ids[1]}/confirm", headers=brand_headers)
     transfer_id = db.fetchval(
-        "SELECT stripe_transfer_id FROM public.campaign_rep_milestones WHERE campaign_milestone_id = $1", milestone_ids[1]
+        "SELECT stripe_transfer_id FROM public.campaign_talent_milestones WHERE campaign_milestone_id = $1", milestone_ids[1]
     )
 
     payload, header = _signed_webhook(
@@ -590,18 +590,18 @@ def test_transfer_paid_milestone_metadata_does_not_touch_flat_campaign_reps_row(
             "data": {"object": {"id": transfer_id, "metadata": {"payment_type": "milestone"}}},
         },
     )
-    response = client.post("/webhooks/stripe", content=payload, headers={"Stripe-Signature": header})
-    assert response.status_code == 200
+    response  = client.post("/webhooks/stripe", content=payload, headers={"Stripe-Signature": header})
+    assert response .status_code == 200
 
-    crm_row = db.fetch("SELECT payout_status, status FROM public.campaign_rep_milestones WHERE campaign_milestone_id = $1", milestone_ids[1])[0]
+    crm_row = db.fetch("SELECT payout_status, status FROM public.campaign_talent_milestones WHERE campaign_milestone_id = $1", milestone_ids[1])[0]
     assert crm_row["payout_status"] == "paid"
     assert crm_row["status"] == "paid"
 
-    # The parent campaign_reps row's own flat payout_status column
+    # The parent campaign_talents row's own flat payout_status column
     # (never used by a milestone campaign) must be untouched -- still
     # its DB default, not accidentally flipped to 'paid' by the
     # milestone webhook branch.
-    cr_row = db.fetch("SELECT payout_status FROM public.campaign_reps WHERE rep_id = $1", rep_id)[0]
+    cr_row = db.fetch("SELECT payout_status FROM public.campaign_talents WHERE talent_id = $1", talent_id)[0]
     assert cr_row["payout_status"] == "pending"
 
 
@@ -610,54 +610,54 @@ def test_transfer_paid_milestone_metadata_does_not_touch_flat_campaign_reps_row(
 # ---------------------------------------------------------------------
 
 
-def test_admin_confirms_dispute_triggers_payout(client, db, settings, brand_headers, rep_headers_factory, onboarded_brand, fake_stripe, auth_headers_factory):
-    created, rep_id, rep_headers, milestone_ids = _accept_milestone_campaign(client, db, brand_headers, rep_headers_factory, onboarded_brand)
-    client.post(f"/campaigns/{created['id']}/milestones/{milestone_ids[1]}/submit", json={"submission_text": "x"}, headers=rep_headers)
-    client.post(f"/brands/campaigns/{created['id']}/reps/{rep_id}/milestones/{milestone_ids[1]}/confirm", headers=brand_headers)
-    client.post(f"/campaigns/{created['id']}/milestones/{milestone_ids[2]}/submit", json={"submission_text": "story"}, headers=rep_headers)
+def test_admin_confirms_dispute_triggers_payout(client, db, settings, brand_headers, talent_headers_factory, onboarded_brand, fake_stripe, auth_headers_factory):
+    created, talent_id, talent_headers, milestone_ids = _accept_milestone_campaign(client, db, brand_headers, talent_headers_factory, onboarded_brand)
+    client.post(f"/campaigns/{created['id']}/milestones/{milestone_ids[1]}/submit", json={"submission_text": "x"}, headers=talent_headers)
+    client.post(f"/brands/campaigns/{created['id']}/talents/{talent_id}/milestones/{milestone_ids[1]}/confirm", headers=brand_headers)
+    client.post(f"/campaigns/{created['id']}/milestones/{milestone_ids[2]}/submit", json={"submission_text": "story"}, headers=talent_headers)
     client.post(
-        f"/brands/campaigns/{created['id']}/reps/{rep_id}/milestones/{milestone_ids[2]}/dispute",
+        f"/brands/campaigns/{created['id']}/talents/{talent_id}/milestones/{milestone_ids[2]}/dispute",
         json={"reason": "review"},
         headers=brand_headers,
     )
 
     admin_headers = auth_headers_factory("admin")
     dispute_id = db.fetchval("SELECT id FROM public.milestone_disputes WHERE status = 'open'")
-    response = client.post(
+    response  = client.post(
         f"/admin/milestone-disputes/{dispute_id}/resolve",
         json={"resolution": "confirm", "resolution_note": "Evidence checks out"},
         headers=admin_headers,
     )
-    assert response.status_code == 200
-    assert response.json()["status"] == "resolved_confirmed"
+    assert response .status_code == 200
+    assert response .json()["status"] == "resolved_confirmed"
 
-    row = db.fetch("SELECT status, payout_status FROM public.campaign_rep_milestones WHERE campaign_milestone_id = $1", milestone_ids[2])[0]
+    row = db.fetch("SELECT status, payout_status FROM public.campaign_talent_milestones WHERE campaign_milestone_id = $1", milestone_ids[2])[0]
     assert row["status"] in ("confirmed", "paid")
     assert row["payout_status"] == "processing"
 
 
-def test_admin_declines_dispute_resets_to_submitted(client, db, brand_headers, rep_headers_factory, onboarded_brand, fake_stripe, auth_headers_factory):
-    created, rep_id, rep_headers, milestone_ids = _accept_milestone_campaign(client, db, brand_headers, rep_headers_factory, onboarded_brand)
-    client.post(f"/campaigns/{created['id']}/milestones/{milestone_ids[1]}/submit", json={"submission_text": "x"}, headers=rep_headers)
-    client.post(f"/brands/campaigns/{created['id']}/reps/{rep_id}/milestones/{milestone_ids[1]}/confirm", headers=brand_headers)
-    client.post(f"/campaigns/{created['id']}/milestones/{milestone_ids[2]}/submit", json={"submission_text": "story"}, headers=rep_headers)
+def test_admin_declines_dispute_resets_to_submitted(client, db, brand_headers, talent_headers_factory, onboarded_brand, fake_stripe, auth_headers_factory):
+    created, talent_id, talent_headers, milestone_ids = _accept_milestone_campaign(client, db, brand_headers, talent_headers_factory, onboarded_brand)
+    client.post(f"/campaigns/{created['id']}/milestones/{milestone_ids[1]}/submit", json={"submission_text": "x"}, headers=talent_headers)
+    client.post(f"/brands/campaigns/{created['id']}/talents/{talent_id}/milestones/{milestone_ids[1]}/confirm", headers=brand_headers)
+    client.post(f"/campaigns/{created['id']}/milestones/{milestone_ids[2]}/submit", json={"submission_text": "story"}, headers=talent_headers)
     client.post(
-        f"/brands/campaigns/{created['id']}/reps/{rep_id}/milestones/{milestone_ids[2]}/dispute",
+        f"/brands/campaigns/{created['id']}/talents/{talent_id}/milestones/{milestone_ids[2]}/dispute",
         json={"reason": "review"},
         headers=brand_headers,
     )
 
     admin_headers = auth_headers_factory("admin")
     dispute_id = db.fetchval("SELECT id FROM public.milestone_disputes WHERE status = 'open'")
-    response = client.post(
+    response  = client.post(
         f"/admin/milestone-disputes/{dispute_id}/resolve",
         json={"resolution": "decline"},
         headers=admin_headers,
     )
-    assert response.status_code == 200
-    assert response.json()["status"] == "resolved_declined"
+    assert response .status_code == 200
+    assert response .json()["status"] == "resolved_declined"
 
-    row = db.fetch("SELECT status, dispute_flag FROM public.campaign_rep_milestones WHERE campaign_milestone_id = $1", milestone_ids[2])[0]
+    row = db.fetch("SELECT status, dispute_flag FROM public.campaign_talent_milestones WHERE campaign_milestone_id = $1", milestone_ids[2])[0]
     assert row["status"] == "submitted"
     assert row["dispute_flag"] is False
 
@@ -679,18 +679,18 @@ _THRESHOLD_MILESTONES = [
 
 
 def test_submit_below_threshold_stays_pending_and_increments_count(
-    client, db, brand_headers, rep_headers_factory, onboarded_brand, fake_resend_client
+    client, db, brand_headers, talent_headers_factory, onboarded_brand, fake_resend_client
 ):
-    created, rep_id, rep_headers, milestone_ids = _accept_milestone_campaign(
-        client, db, brand_headers, rep_headers_factory, onboarded_brand, milestones=_THRESHOLD_MILESTONES
+    created, talent_id, talent_headers, milestone_ids = _accept_milestone_campaign(
+        client, db, brand_headers, talent_headers_factory, onboarded_brand, milestones=_THRESHOLD_MILESTONES
     )
-    response = client.post(
+    response  = client.post(
         f"/campaigns/{created['id']}/milestones/{milestone_ids[1]}/submit",
         json={"submission_text": "post 1", "submission_file_urls": []},
-        headers=rep_headers,
+        headers=talent_headers,
     )
-    assert response.status_code == 200
-    body = response.json()
+    assert response .status_code == 200
+    body = response .json()
     assert body["status"] == "pending"
     assert body["current_count"] == 1
     assert body["threshold_count"] == 3
@@ -700,19 +700,19 @@ def test_submit_below_threshold_stays_pending_and_increments_count(
 
 
 def test_submit_exactly_at_threshold_transitions_to_submitted(
-    client, db, brand_headers, rep_headers_factory, onboarded_brand, fake_resend_client
+    client, db, brand_headers, talent_headers_factory, onboarded_brand, fake_resend_client
 ):
-    created, rep_id, rep_headers, milestone_ids = _accept_milestone_campaign(
-        client, db, brand_headers, rep_headers_factory, onboarded_brand, milestones=_THRESHOLD_MILESTONES
+    created, talent_id, talent_headers, milestone_ids = _accept_milestone_campaign(
+        client, db, brand_headers, talent_headers_factory, onboarded_brand, milestones=_THRESHOLD_MILESTONES
     )
     for i in range(1, 4):
-        response = client.post(
+        response  = client.post(
             f"/campaigns/{created['id']}/milestones/{milestone_ids[1]}/submit",
             json={"submission_text": f"post {i}", "submission_file_urls": []},
-            headers=rep_headers,
+            headers=talent_headers,
         )
-        assert response.status_code == 200
-        body = response.json()
+        assert response .status_code == 200
+        body = response .json()
         assert body["current_count"] == i
         if i < 3:
             assert body["status"] == "pending"
@@ -724,48 +724,48 @@ def test_submit_exactly_at_threshold_transitions_to_submitted(
     assert len(fake_resend_client.sent) == 1
 
     row = db.fetch(
-        "SELECT status, current_count, rep_submission_text FROM public.campaign_rep_milestones WHERE campaign_milestone_id = $1",
+        "SELECT status, current_count, talent_submission_text FROM public.campaign_talent_milestones WHERE campaign_milestone_id = $1",
         milestone_ids[1],
     )[0]
     assert row["status"] == "submitted"
     assert row["current_count"] == 3
     # Evidence accumulates across all three calls rather than being
     # overwritten by the last one.
-    assert "post 1" in row["rep_submission_text"]
-    assert "post 2" in row["rep_submission_text"]
-    assert "post 3" in row["rep_submission_text"]
+    assert "post 1" in row["talent_submission_text"]
+    assert "post 2" in row["talent_submission_text"]
+    assert "post 3" in row["talent_submission_text"]
 
 
 def test_submit_once_already_at_threshold_is_rejected(
-    client, db, brand_headers, rep_headers_factory, onboarded_brand
+    client, db, brand_headers, talent_headers_factory, onboarded_brand
 ):
-    created, rep_id, rep_headers, milestone_ids = _accept_milestone_campaign(
-        client, db, brand_headers, rep_headers_factory, onboarded_brand, milestones=_THRESHOLD_MILESTONES
+    created, talent_id, talent_headers, milestone_ids = _accept_milestone_campaign(
+        client, db, brand_headers, talent_headers_factory, onboarded_brand, milestones=_THRESHOLD_MILESTONES
     )
     for i in range(1, 4):
         client.post(
             f"/campaigns/{created['id']}/milestones/{milestone_ids[1]}/submit",
             json={"submission_text": f"post {i}", "submission_file_urls": []},
-            headers=rep_headers,
+            headers=talent_headers,
         )
-    response = client.post(
+    response  = client.post(
         f"/campaigns/{created['id']}/milestones/{milestone_ids[1]}/submit",
         json={"submission_text": "post 4", "submission_file_urls": []},
-        headers=rep_headers,
+        headers=talent_headers,
     )
-    assert response.status_code == 409
-    assert response.json()["error"]["code"] == "milestone_not_actionable"
+    assert response .status_code == 409
+    assert response .json()["error"]["code"] == "milestone_not_actionable"
 
 
 def test_milestone_without_threshold_count_is_unaffected(
-    client, db, brand_headers, rep_headers_factory, onboarded_brand, fake_resend_client, fake_stripe
+    client, db, brand_headers, talent_headers_factory, onboarded_brand, fake_resend_client, fake_stripe
 ):
     """Milestones with threshold_count left unset must behave exactly
     as they did before this feature -- a single submit call transitions
     straight to 'submitted', current_count stays 0, threshold_count is
-    null in the response."""
-    created, rep_id, rep_headers, milestone_ids = _accept_milestone_campaign(
-        client, db, brand_headers, rep_headers_factory, onboarded_brand, milestones=_THRESHOLD_MILESTONES
+    null in the response ."""
+    created, talent_id, talent_headers, milestone_ids = _accept_milestone_campaign(
+        client, db, brand_headers, talent_headers_factory, onboarded_brand, milestones=_THRESHOLD_MILESTONES
     )
     # milestone 1 has threshold_count=3; drive it to 'submitted' first
     # so milestone 2 (no threshold_count) becomes actionable.
@@ -773,20 +773,20 @@ def test_milestone_without_threshold_count_is_unaffected(
         client.post(
             f"/campaigns/{created['id']}/milestones/{milestone_ids[1]}/submit",
             json={"submission_text": f"post {i}", "submission_file_urls": []},
-            headers=rep_headers,
+            headers=talent_headers,
         )
     client.post(
-        f"/brands/campaigns/{created['id']}/reps/{rep_id}/milestones/{milestone_ids[1]}/confirm",
+        f"/brands/campaigns/{created['id']}/talents/{talent_id}/milestones/{milestone_ids[1]}/confirm",
         headers=brand_headers,
     )
 
-    response = client.post(
+    response  = client.post(
         f"/campaigns/{created['id']}/milestones/{milestone_ids[2]}/submit",
         json={"submission_text": "story link", "submission_file_urls": []},
-        headers=rep_headers,
+        headers=talent_headers,
     )
-    assert response.status_code == 200
-    body = response.json()
+    assert response .status_code == 200
+    body = response .json()
     assert body["status"] == "submitted"
     assert body["current_count"] == 0
     assert body["threshold_count"] is None

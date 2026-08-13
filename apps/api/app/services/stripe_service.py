@@ -1,5 +1,5 @@
 """Stripe integration: Connect onboarding and platform billing customer
-creation (Build Prompt 7). Campaign checkout/charges and rep payouts
+creation (Build Prompt 7). Campaign checkout/charges and talent payouts
 wire up in Prompt 10 (Campaign Lifecycle & Payout Engine); subscription
 billing in Prompt 11. All amounts are server-computed cents -- never
 accept a client-submitted amount (Section 9).
@@ -9,7 +9,7 @@ import-time Stripe API key configuration) and goes through the `stripe`
 module reference below rather than importing `stripe.Account` etc.
 directly at call sites, so tests can swap in a fake via
 `monkeypatch.setattr(stripe_service, "stripe", fake)` -- same seam
-style as the rest of this codebase's monkeypatch-based test doubles
+style as the talents of this codebase's monkeypatch-based test doubles
 (see tests/test_security.py, tests/test_parent_portal.py), rather than
 inventing a Protocol/Fake-client abstraction not used anywhere else in
 this file's original stub shape.
@@ -27,7 +27,7 @@ adult "Representative" (parent/guardian) added to the account -- Stripe's
 own hosted onboarding (the Account Link this module generates) surfaces
 that requirement dynamically based on the individual's date of birth, so
 this module does not need special-case minor-vs-adult branching. It
-creates a standard Express account and hands the rep a standard
+creates a standard Express account and hands the talent a standard
 onboarding link either way.
 """
 from __future__ import annotations
@@ -59,13 +59,13 @@ async def create_customer(settings: Settings, *, email: str, metadata: dict) -> 
 
 
 async def create_connect_account(settings: Settings, *, email: str, metadata: dict) -> str:
-    """Creates a Stripe Connect Express account for a rep and returns its
-    account id. `metadata` should include {"user_id": ..., "rep_profile_id": ...}
-    so the account is traceable back to a rep from the Stripe dashboard.
+    """Creates a Stripe Connect Express account for a talent and returns its
+    account id. `metadata` should include {"user_id": ..., "talent_profile_id": ...}
+    so the account is traceable back to a talent from the Stripe dashboard.
     Does not collect date of birth or identity details itself -- that
     happens in Stripe's hosted onboarding (create_connect_onboarding_link),
     which is also where Stripe surfaces the Representative/guardian
-    requirement for a rep under 18. See docs/stripe-minors-policy.md."""
+    requirement for a talent under 18. See docs/stripe-minors-policy.md."""
     _configure(settings)
     account = await asyncio.to_thread(
         stripe.Account.create,
@@ -80,12 +80,12 @@ async def create_connect_account(settings: Settings, *, email: str, metadata: di
 
 async def create_connect_onboarding_link(settings: Settings, *, account_id: str, refresh_url: str, return_url: str) -> str:
     """Returns a hosted onboarding link URL for the given Connect
-    account. `refresh_url` is where Stripe sends the rep back if the
+    account. `refresh_url` is where Stripe sends the talent back if the
     link expires mid-flow (must be capable of generating a fresh link,
     i.e. the same endpoint that issued this one); `return_url` is where
     they land after completing (or exiting) onboarding -- onboarding
     completion itself is confirmed asynchronously via the
-    account.updated webhook, never assumed just because the rep reached
+    account.updated webhook, never assumed just because the talent reached
     return_url."""
     _configure(settings)
     link = await asyncio.to_thread(
@@ -140,38 +140,38 @@ async def create_campaign_checkout_session(campaign_id: str, amount_cents: int) 
 
 
 async def create_payout_transfer(
-    settings: Settings, *, stripe_account_id: str, amount_cents: int, campaign_rep_id: str
+    settings: Settings, *, stripe_account_id: str, amount_cents: int, campaign_talent_id: str
 ) -> str:
-    """Transfer a rep's earned share (campaign_reps.payout_cents,
+    """Transfer a talent's earned share (campaign_talents.payout_cents,
     already fixed at campaign-creation time -- see
     app/services/payout_service.py's module docstring) to their Connect
     account. Called only after app/services/payout_service.release_payout
     has confirmed the row is 'confirmed', payout_cents is set, and the
-    rep's Connect onboarding is complete. `campaign_rep_id` is recorded
+    talent's Connect onboarding is complete. `campaign_talent_id` is recorded
     in metadata so a Transfer is traceable back to the row from the
     Stripe dashboard, mirroring create_connect_account's metadata
     convention. Returns the Transfer id, stored on
-    campaign_reps.stripe_transfer_id."""
+    campaign_talents.stripe_transfer_id."""
     _configure(settings)
     transfer = await asyncio.to_thread(
         stripe.Transfer.create,
         amount=amount_cents,
         currency="usd",
         destination=stripe_account_id,
-        metadata={"campaign_rep_id": campaign_rep_id},
+        metadata={"campaign_talent_id": campaign_talent_id},
     )
     return transfer.id
 
 
 async def create_milestone_payout_transfer(
-    settings: Settings, *, stripe_account_id: str, amount_cents: int, campaign_rep_id: str, milestone_id: str
+    settings: Settings, *, stripe_account_id: str, amount_cents: int, campaign_talent_id: str, milestone_id: str
 ) -> str:
     """Per-milestone equivalent of create_payout_transfer above (Build
     Prompt 8B deliverable 8). Metadata carries payment_type='milestone'
     plus milestone_id -- app/routers/webhooks.py's transfer.paid/
     transfer.failed handlers key off metadata.payment_type to route a
     Transfer to the milestone-aware update path instead of the flat
-    campaign_reps path, and metadata.payment_type being entirely absent
+    campaign_talents path, and metadata.payment_type being entirely absent
     on a flat Transfer (create_payout_transfer above never sets it) is
     what keeps that dispatch backward compatible with every Transfer
     created before this prompt."""
@@ -181,13 +181,13 @@ async def create_milestone_payout_transfer(
         amount=amount_cents,
         currency="usd",
         destination=stripe_account_id,
-        metadata={"payment_type": "milestone", "milestone_id": milestone_id, "campaign_rep_id": campaign_rep_id},
+        metadata={"payment_type": "milestone", "milestone_id": milestone_id, "campaign_talent_id": campaign_talent_id},
     )
     return transfer.id
 
 
 async def create_challenge_conversion_bonus_transfer(
-    settings: Settings, *, stripe_account_id: str, amount_cents: int, challenge_submission_id: str, rep_id: str
+    settings: Settings, *, stripe_account_id: str, amount_cents: int, challenge_submission_id: str, talent_id: str
 ) -> str:
     """Build Prompt 8G deliverable 5: platform-funded bonus paid when a
     challenge submission converts to a campaign invitation -- routed
@@ -207,7 +207,7 @@ async def create_challenge_conversion_bonus_transfer(
         metadata={
             "payment_type": "challenge_conversion_bonus",
             "challenge_submission_id": challenge_submission_id,
-            "rep_id": rep_id,
+            "talent_id": talent_id,
         },
     )
     return transfer.id

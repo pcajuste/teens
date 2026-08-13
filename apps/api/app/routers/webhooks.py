@@ -39,7 +39,7 @@ from app.repositories import (
     campaigns_repository,
     exclusivity_repository,
     recruiter_profiles_repository,
-    rep_profiles_repository,
+    talent_profiles_repository,
     stripe_events_repository,
     users_repository,
 )
@@ -66,9 +66,9 @@ Handler = Callable[[asyncpg.Connection, "stripe.Event", Settings, ResendClient],
 
 async def _handle_account_updated(conn: asyncpg.Connection, event: "stripe.Event", settings: Settings, resend_client: ResendClient) -> None:
     account = event["data"]["object"]
-    profile = await rep_profiles_repository.get_by_stripe_account_id(conn, account["id"])
+    profile = await talent_profiles_repository.get_by_stripe_account_id(conn, account["id"])
     if profile is None:
-        # Not one of our rep Connect accounts (or the account row hasn't
+        # Not one of our talent Connect accounts (or the account row hasn't
         # been written yet in a race with the onboarding request) --
         # nothing to update, and not an error worth rejecting the
         # webhook over.
@@ -81,7 +81,7 @@ async def _handle_account_updated(conn: asyncpg.Connection, event: "stripe.Event
         account["payouts_enabled"] if "payouts_enabled" in account else False
     )
     if onboarding_complete != profile.stripe_onboarding_complete:
-        await rep_profiles_repository.set_stripe_onboarding_complete(conn, profile.id, onboarding_complete)
+        await talent_profiles_repository.set_stripe_onboarding_complete(conn, profile.id, onboarding_complete)
 
 
 async def _handle_payment_intent_succeeded(conn: asyncpg.Connection, event: "stripe.Event", settings: Settings, resend_client: ResendClient) -> None:
@@ -237,7 +237,7 @@ async def _handle_transfer_paid(conn: asyncpg.Connection, event: "stripe.Event",
         return
     if payment_type == "challenge_conversion_bonus":
         # Build Prompt 8G deliverable 6: touches ONLY challenge_submissions
-        # and rep_profiles.total_earnings_cents -- never campaign_reps or
+        # and talent_profiles.total_earnings_cents -- never campaign_talents or
         # any campaign payout row (never let a challenge bonus webhook
         # handler touch campaign payout rows or vice versa).
         await payout_service.handle_transfer_paid_challenge(conn, transfer["id"], at=datetime.now(timezone.utc))
@@ -249,8 +249,8 @@ async def _handle_transfer_failed(conn: asyncpg.Connection, event: "stripe.Event
     """No admin queue table exists yet (Prompt 13) -- see
     payout_service.handle_transfer_failed's docstring for the interim
     'payout_status = failed' queue. Build Prompt 8B: the milestone
-    branch below flags the campaign_rep_milestones row the same way,
-    via campaign_rep_milestones.payout_status = 'failed'. Build Prompt
+    branch below flags the campaign_talent_milestones row the same way,
+    via campaign_talent_milestones.payout_status = 'failed'. Build Prompt
     8G: the challenge-bonus branch flags challenge_submissions the same
     way, isolated from both other branches."""
     transfer = event["data"]["object"]
@@ -313,7 +313,7 @@ async def _handle_subscription_updated(conn: asyncpg.Connection, event: "stripe.
     the plan's full allotment, unused credits lost (explicit MVP
     decision). Idempotent: a duplicated delivery of the same event id
     never reaches here twice (stripe_events_repository.record_if_new
-    short-circuits it before dispatch), so this always resets exactly
+    short-circuits it before dispatch), so this always rest exactly
     once per real renewal."""
     subscription = event["data"]["object"]
     customer_id = subscription["customer"] if "customer" in subscription else None

@@ -1,7 +1,7 @@
 """Data access for the Admin Portal (Build Prompt 13).
 
 Deliberately its own module rather than spread across
-users_repository/campaigns_repository/campaign_reps_repository: every
+users_repository/campaigns_repository/campaign_talents_repository: every
 query here is admin-scoped (cross-account, cross-role), unlike the
 single-caller-scoped queries those modules expose to their own portals.
 """
@@ -30,20 +30,20 @@ class QueueEntry:
 
 
 async def queue_reps(conn: asyncpg.Connection) -> list[QueueEntry]:
-    """Reps never require admin approval at MVP (Section 5 Phase 1 /
+    """Talents never require admin approval at MVP (Section 5 Phase 1 /
     Section 8: "If date_of_birth indicates age 16+: set account_status
-    = 'active' immediately" and under-16 reps go 'active' the moment a
+    = 'active' immediately" and under-16 talents go 'active' the moment a
     parent completes double opt-in, also without admin involvement).
-    A rep only ever sits in 'pending' while awaiting parent consent, so
+    A talent only ever sits in 'pending' while awaiting parent consent, so
     every row here is tagged that way -- there is no
-    'awaiting_admin_approval' rep state, and POST /admin/approve|reject
-    /rep is intentionally unsupported (see admin.py)."""
+    'awaiting_admin_approval' talent state, and POST /admin/approve|reject
+    /talent is intentionally unsupported (see admin.py)."""
     rows = await conn.fetch(
         """
         SELECT u.id, u.email, u.role, u.account_status, u.created_at, rp.display_name
         FROM public.users u
-        JOIN public.rep_profiles rp ON rp.user_id = u.id
-        WHERE u.role = 'rep' AND u.account_status = 'pending'
+        JOIN public.talent_profiles rp ON rp.user_id = u.id
+        WHERE u.role = 'talent' AND u.account_status = 'pending'
         ORDER BY u.created_at ASC
         """
     )
@@ -259,9 +259,9 @@ async def mark_campaign_resolved(
 
 @dataclass(frozen=True, slots=True)
 class StuckPayout:
-    campaign_rep_id: str
+    campaign_talent_id: str
     campaign_id: str
-    rep_id: str
+    talent_id: str
     payout_cents: int | None
     payout_status: str
     stripe_transfer_id: str | None
@@ -281,10 +281,10 @@ async def list_stuck_payments(conn: asyncpg.Connection) -> list[StuckPayout]:
     old row excluded."""
     rows = await conn.fetch(
         """
-        SELECT id AS campaign_rep_id, campaign_id, rep_id, payout_cents, payout_status,
+        SELECT id AS campaign_talent_id, campaign_id, talent_id, payout_cents, payout_status,
                stripe_transfer_id, payout_processing_started_at,
                EXTRACT(EPOCH FROM (now() - payout_processing_started_at)) / 3600.0 AS hours_stuck
-        FROM public.campaign_reps
+        FROM public.campaign_talents
         WHERE payout_status = 'processing'
           AND payout_processing_started_at IS NOT NULL
           AND payout_processing_started_at < now() - make_interval(hours => $1)
@@ -294,9 +294,9 @@ async def list_stuck_payments(conn: asyncpg.Connection) -> list[StuckPayout]:
     )
     return [
         StuckPayout(
-            campaign_rep_id=str(r["campaign_rep_id"]),
+            campaign_talent_id=str(r["campaign_talent_id"]),
             campaign_id=str(r["campaign_id"]),
-            rep_id=str(r["rep_id"]),
+            talent_id=str(r["talent_id"]),
             payout_cents=r["payout_cents"],
             payout_status=r["payout_status"],
             stripe_transfer_id=r["stripe_transfer_id"],
@@ -309,29 +309,29 @@ async def list_stuck_payments(conn: asyncpg.Connection) -> list[StuckPayout]:
 
 async def get_by_stripe_transfer_id(conn: asyncpg.Connection, stripe_transfer_id: str) -> asyncpg.Record | None:
     return await conn.fetchrow(
-        "SELECT id, campaign_id, rep_id, payout_status, payout_cents FROM public.campaign_reps WHERE stripe_transfer_id = $1",
+        "SELECT id, campaign_id, talent_id, payout_status, payout_cents FROM public.campaign_talents WHERE stripe_transfer_id = $1",
         stripe_transfer_id,
     )
 
 
 async def mark_admin_released(
-    conn: asyncpg.Connection, campaign_rep_id: str, *, admin_id: str, stripe_transfer_id: str
+    conn: asyncpg.Connection, campaign_talent_id: str, *, admin_id: str, stripe_transfer_id: str
 ) -> None:
     """Admin-initiated manual release audit flag (deliverable 3). Called
     by app/services/payout_service.admin_release_payout right after it
     creates the new Stripe Transfer -- this stamps who/when for the
-    audit trail, records the new transfer id, and resets
+    audit trail, records the new transfer id, and rest
     payout_processing_started_at so the row drops out of the
     stuck-payments query with a fresh clock on the new transfer."""
     await conn.execute(
         """
-        UPDATE public.campaign_reps
+        UPDATE public.campaign_talents
         SET admin_released = TRUE, admin_released_by = $2, admin_released_at = now(),
             payout_processing_started_at = now(), payout_status = 'processing',
             stripe_transfer_id = $3
         WHERE id = $1
         """,
-        campaign_rep_id,
+        campaign_talent_id,
         admin_id,
         stripe_transfer_id,
     )
@@ -379,12 +379,12 @@ async def revenue_by_stream_and_period(conn: asyncpg.Connection) -> list[dict]:
     ]
 
 
-async def reps_by_city_and_category(conn: asyncpg.Connection) -> dict:
+async def talents_by_city_and_category(conn: asyncpg.Connection) -> dict:
     by_city = await conn.fetch(
-        "SELECT city, state, COUNT(*) AS n FROM public.rep_profiles GROUP BY city, state ORDER BY n DESC"
+        "SELECT city, state, COUNT(*) AS n FROM public.talent_profiles GROUP BY city, state ORDER BY n DESC"
     )
     by_category = await conn.fetch(
-        "SELECT category, COUNT(*) AS n FROM public.rep_profiles, unnest(categories) AS category GROUP BY category ORDER BY n DESC"
+        "SELECT category, COUNT(*) AS n FROM public.talent_profiles, unnest(categories) AS category GROUP BY category ORDER BY n DESC"
     )
     return {
         "by_city": [{"city": r["city"], "state": r["state"], "count": r["n"]} for r in by_city],
@@ -418,7 +418,7 @@ async def consent_status_breakdown(conn: asyncpg.Connection) -> list[dict]:
           END AS consent_state,
           COUNT(*) AS n
         FROM public.users
-        WHERE role = 'rep'
+        WHERE role = 'talent'
         GROUP BY 1
         """
     )
@@ -451,11 +451,11 @@ async def flagged_outlier_brands(conn: asyncpg.Connection) -> list[OutlierBrand]
           rating patterns in admin panel"), or
       (b) its average rating differs from the platform-wide mean by
           more than OUTLIER_STDDEV_THRESHOLD standard deviations.
-    Computed directly in SQL against campaign_reps.brand_rating so the
+    Computed directly in SQL against campaign_talents.brand_rating so the
     threshold always reflects live data, not a cached snapshot."""
     platform_row = await conn.fetchrow(
         "SELECT AVG(brand_rating) AS mean, STDDEV_POP(brand_rating) AS stddev "
-        "FROM public.campaign_reps WHERE brand_rating IS NOT NULL"
+        "FROM public.campaign_talents WHERE brand_rating IS NOT NULL"
     )
     if platform_row is None or platform_row["mean"] is None:
         return []
@@ -468,7 +468,7 @@ async def flagged_outlier_brands(conn: asyncpg.Connection) -> list[OutlierBrand]
                COUNT(cr.brand_rating) AS rating_count,
                AVG(cr.brand_rating) AS average_rating,
                COUNT(*) FILTER (WHERE cr.brand_rating = 5) AS five_star_count
-        FROM public.campaign_reps cr
+        FROM public.campaign_talents cr
         JOIN public.campaigns c ON c.id = cr.campaign_id
         JOIN public.brand_profiles bp ON bp.id = c.brand_id
         WHERE cr.brand_rating IS NOT NULL
@@ -512,8 +512,8 @@ async def flagged_outlier_brands(conn: asyncpg.Connection) -> list[OutlierBrand]
 
 @dataclass(frozen=True, slots=True)
 class ParentSuspendedRep:
-    rep_id: str
-    rep_user_id: str
+    talent_id: str
+    talent_user_id: str
     display_name: str
     parent_id: str
     suspended_by_parent_at: datetime
@@ -525,9 +525,9 @@ async def list_parent_suspended_reps(conn: asyncpg.Connection) -> list[ParentSus
     suspended_by_parent_at IS NOT NULL are reversible by admin here."""
     rows = await conn.fetch(
         """
-        SELECT rp.id AS rep_id, u.id AS rep_user_id, rp.display_name, pr.parent_id, pr.suspended_by_parent_at
+        SELECT rp.id AS talent_id, u.id AS talent_user_id, rp.display_name, pr.parent_id, pr.suspended_by_parent_at
         FROM public.parent_records pr
-        JOIN public.rep_profiles rp ON rp.id = pr.rep_id
+        JOIN public.talent_profiles rp ON rp.id = pr.talent_id
         JOIN public.users u ON u.id = rp.user_id
         WHERE pr.suspended_by_parent_at IS NOT NULL AND u.account_status = 'suspended'
         ORDER BY pr.suspended_by_parent_at ASC
@@ -535,8 +535,8 @@ async def list_parent_suspended_reps(conn: asyncpg.Connection) -> list[ParentSus
     )
     return [
         ParentSuspendedRep(
-            rep_id=str(r["rep_id"]),
-            rep_user_id=str(r["rep_user_id"]),
+            talent_id=str(r["talent_id"]),
+            talent_user_id=str(r["talent_user_id"]),
             display_name=r["display_name"],
             parent_id=str(r["parent_id"]),
             suspended_by_parent_at=r["suspended_by_parent_at"],
@@ -545,15 +545,15 @@ async def list_parent_suspended_reps(conn: asyncpg.Connection) -> list[ParentSus
     ]
 
 
-async def reverse_parent_suspension(conn: asyncpg.Connection, rep_id: str, *, admin_id: str) -> asyncpg.Record | None:
+async def reverse_parent_suspension(conn: asyncpg.Connection, talent_id: str, *, admin_id: str) -> asyncpg.Record | None:
     row = await conn.fetchrow(
         """
         UPDATE public.parent_records
         SET suspended_by_parent_at = NULL, suspension_reversed_by = $2, suspension_reversed_at = now()
-        WHERE rep_id = $1 AND suspended_by_parent_at IS NOT NULL
-        RETURNING parent_id, rep_id
+        WHERE talent_id = $1 AND suspended_by_parent_at IS NOT NULL
+        RETURNING parent_id, talent_id
         """,
-        rep_id,
+        talent_id,
         admin_id,
     )
     return row
@@ -567,7 +567,7 @@ async def reverse_parent_suspension(conn: asyncpg.Connection, rep_id: str, *, ad
 @dataclass(frozen=True, slots=True)
 class SafetyReport:
     id: str
-    reporter_rep_id: str
+    reporter_talent_id: str
     reporter_display_name: str
     campaign_id: str | None
     reason: str
@@ -579,7 +579,7 @@ class SafetyReport:
 
 
 _SAFETY_REPORT_COLUMNS = """
-    sr.id, sr.reporter_rep_id, rp.display_name AS reporter_display_name, sr.campaign_id,
+    sr.id, sr.reporter_talent_id, rp.display_name AS reporter_display_name, sr.campaign_id,
     sr.reason, sr.description, sr.status, sr.created_at, sr.resolved_at, sr.resolution_note
 """
 
@@ -587,7 +587,7 @@ _SAFETY_REPORT_COLUMNS = """
 def _safety_report_from_row(row: asyncpg.Record) -> SafetyReport:
     return SafetyReport(
         id=str(row["id"]),
-        reporter_rep_id=str(row["reporter_rep_id"]),
+        reporter_talent_id=str(row["reporter_talent_id"]),
         reporter_display_name=row["reporter_display_name"],
         campaign_id=str(row["campaign_id"]) if row["campaign_id"] else None,
         reason=row["reason"],
@@ -600,15 +600,15 @@ def _safety_report_from_row(row: asyncpg.Record) -> SafetyReport:
 
 
 async def create_safety_report(
-    conn: asyncpg.Connection, *, reporter_rep_id: str, campaign_id: str | None, reason: str, description: str | None
+    conn: asyncpg.Connection, *, reporter_talent_id: str, campaign_id: str | None, reason: str, description: str | None
 ) -> SafetyReport:
     row = await conn.fetchrow(
         """
-        INSERT INTO public.safety_reports (reporter_rep_id, campaign_id, reason, description)
+        INSERT INTO public.safety_reports (reporter_talent_id, campaign_id, reason, description)
         VALUES ($1, $2, $3, $4)
         RETURNING id
         """,
-        reporter_rep_id,
+        reporter_talent_id,
         campaign_id,
         reason,
         description,
@@ -621,7 +621,7 @@ async def get_safety_report(conn: asyncpg.Connection, report_id: str) -> SafetyR
         f"""
         SELECT {_SAFETY_REPORT_COLUMNS}
         FROM public.safety_reports sr
-        JOIN public.rep_profiles rp ON rp.id = sr.reporter_rep_id
+        JOIN public.talent_profiles rp ON rp.id = sr.reporter_talent_id
         WHERE sr.id = $1
         """,
         report_id,
@@ -635,7 +635,7 @@ async def list_safety_reports(conn: asyncpg.Connection, *, open_only: bool = Tru
         f"""
         SELECT {_SAFETY_REPORT_COLUMNS}
         FROM public.safety_reports sr
-        JOIN public.rep_profiles rp ON rp.id = sr.reporter_rep_id
+        JOIN public.talent_profiles rp ON rp.id = sr.reporter_talent_id
         {where}
         ORDER BY sr.created_at ASC
         """
@@ -643,7 +643,7 @@ async def list_safety_reports(conn: asyncpg.Connection, *, open_only: bool = Tru
     return [_safety_report_from_row(r) for r in rows]
 
 
-async def resolve_safety_report(
+async def tresolve_safety_report(
     conn: asyncpg.Connection, report_id: str, *, admin_id: str, status: str, resolution_note: str | None
 ) -> SafetyReport | None:
     row = await conn.fetchrow(
@@ -678,12 +678,12 @@ async def resolve_safety_report(
 @dataclass(frozen=True, slots=True)
 class MilestoneDispute:
     id: str
-    campaign_rep_milestone_id: str
+    campaign_talent_milestone_id: str
     campaign_id: str
     campaign_title: str
     milestone_title: str
-    rep_id: str
-    rep_display_name: str
+    talent_id: str
+    talent_display_name: str
     raised_by: str
     reason: str | None
     status: str
@@ -694,30 +694,30 @@ class MilestoneDispute:
 
 
 _MILESTONE_DISPUTE_COLUMNS = """
-    md.id, md.campaign_rep_milestone_id, c.id AS campaign_id, c.title AS campaign_title,
-    cm.title AS milestone_title, cr.rep_id, rp.display_name AS rep_display_name,
+    md.id, md.campaign_talent_milestone_id, c.id AS campaign_id, c.title AS campaign_title,
+    cm.title AS milestone_title, cr.talent_id, rp.display_name AS talent_display_name,
     md.raised_by, md.reason, md.status, md.created_at, md.resolved_at, md.resolved_by, md.resolution_note
 """
 
 _MILESTONE_DISPUTE_JOIN = """
     FROM public.milestone_disputes md
-    JOIN public.campaign_rep_milestones crm ON crm.id = md.campaign_rep_milestone_id
+    JOIN public.campaign_talent_milestones crm ON crm.id = md.campaign_talent_milestone_id
     JOIN public.campaign_milestones cm ON cm.id = crm.campaign_milestone_id
-    JOIN public.campaign_reps cr ON cr.id = crm.campaign_rep_id
+    JOIN public.campaign_talents cr ON cr.id = crm.campaign_talent_id
     JOIN public.campaigns c ON c.id = cr.campaign_id
-    JOIN public.rep_profiles rp ON rp.id = cr.rep_id
+    JOIN public.talent_profiles rp ON rp.id = cr.talent_id
 """
 
 
 def _milestone_dispute_from_row(row: asyncpg.Record) -> MilestoneDispute:
     return MilestoneDispute(
         id=str(row["id"]),
-        campaign_rep_milestone_id=str(row["campaign_rep_milestone_id"]),
+        campaign_talent_milestone_id=str(row["campaign_talent_milestone_id"]),
         campaign_id=str(row["campaign_id"]),
         campaign_title=row["campaign_title"],
         milestone_title=row["milestone_title"],
-        rep_id=str(row["rep_id"]),
-        rep_display_name=row["rep_display_name"],
+        talent_id=str(row["talent_id"]),
+        talent_display_name=row["talent_display_name"],
         raised_by=str(row["raised_by"]),
         reason=row["reason"],
         status=row["status"],
@@ -729,15 +729,15 @@ def _milestone_dispute_from_row(row: asyncpg.Record) -> MilestoneDispute:
 
 
 async def create_milestone_dispute(
-    conn: asyncpg.Connection, *, campaign_rep_milestone_id: str, raised_by: str, reason: str | None
+    conn: asyncpg.Connection, *, campaign_talent_milestone_id: str, raised_by: str, reason: str | None
 ) -> MilestoneDispute:
     row = await conn.fetchrow(
         """
-        INSERT INTO public.milestone_disputes (campaign_rep_milestone_id, raised_by, reason)
+        INSERT INTO public.milestone_disputes (campaign_talent_milestone_id, raised_by, reason)
         VALUES ($1, $2, $3)
         RETURNING id
         """,
-        campaign_rep_milestone_id,
+        campaign_talent_milestone_id,
         raised_by,
         reason,
     )

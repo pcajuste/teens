@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, EmailStr, Field, model_validator
 
-SignupRole = Literal["rep", "brand", "recruiter"]
+SignupRole = Literal["talent", "brand", "recruiter"]
 
 
 class SignupRequest(BaseModel):
@@ -49,7 +49,7 @@ class MeResponse(BaseModel):
     account_status: str
     # Enough detail for the frontend to pick the right waiting screen
     # without exposing anything beyond account state. One of:
-    # "awaiting_parental_consent" (under-16 rep, consent not yet given),
+    # "awaiting_parental_consent" (under-16 talent, consent not yet given),
     # "pending_admin_approval" (brand/recruiter awaiting review), or
     # None (active, or rejected/suspended -- account_status alone covers those).
     pending_reason: Literal["awaiting_parental_consent", "pending_admin_approval"] | None = None

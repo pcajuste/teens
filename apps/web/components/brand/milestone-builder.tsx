@@ -20,7 +20,9 @@ export function emptyMilestone(number: number): MilestoneRequest {
   };
 }
 
-export function milestonesPercentageTotal(milestones: MilestoneRequest[]): number {
+export function milestonesPercentageTotal(
+  milestones: MilestoneRequest[],
+): number {
   return milestones.reduce((sum, m) => sum + (m.payout_percentage || 0), 0);
 }
 
@@ -55,7 +57,9 @@ export function MilestoneBuilder({
   function removeMilestone(index: number) {
     if (milestones.length <= MIN_MILESTONES) return;
     onChange(
-      milestones.filter((_, i) => i !== index).map((m, i) => ({ ...m, milestone_number: i + 1 }))
+      milestones
+        .filter((_, i) => i !== index)
+        .map((m, i) => ({ ...m, milestone_number: i + 1 })),
     );
   }
 
@@ -63,15 +67,24 @@ export function MilestoneBuilder({
     <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4">
       <div className="flex items-center justify-between">
         <p className="text-sm font-semibold">Milestones</p>
-        <p className={`text-sm font-medium ${remaining === 0 ? "text-success" : "text-destructive"}`}>
-          {remaining === 0 ? "100% allocated" : `${remaining}% remaining to allocate`}
+        <p
+          className={`text-sm font-medium ${remaining === 0 ? "text-success" : "text-destructive"}`}
+        >
+          {remaining === 0
+            ? "100% allocated"
+            : `${remaining}% remaining to allocate`}
         </p>
       </div>
 
       {milestones.map((m, i) => (
-        <div key={i} className="flex flex-col gap-2 rounded-lg border border-border p-3">
+        <div
+          key={i}
+          className="flex flex-col gap-2 rounded-lg border border-border p-3"
+        >
           <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold text-muted-foreground">Milestone {m.milestone_number}</p>
+            <p className="text-xs font-semibold text-muted-foreground">
+              Milestone {m.milestone_number}
+            </p>
             {milestones.length > MIN_MILESTONES ? (
               <button
                 type="button"
@@ -99,21 +112,33 @@ export function MilestoneBuilder({
               id={`milestone-description-${i}`}
               rows={2}
               value={m.description ?? ""}
-              onChange={(e) => update(i, { description: e.target.value || null })}
+              onChange={(e) =>
+                update(i, { description: e.target.value || null })
+              }
             />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor={`milestone-verification-${i}`}>Verification method</Label>
+              <Label htmlFor={`milestone-verification-${i}`}>
+                Verification method
+              </Label>
               <select
                 id={`milestone-verification-${i}`}
                 className="min-h-11 rounded-md border border-input bg-background px-3 text-sm"
                 value={m.verification_method}
-                onChange={(e) => update(i, { verification_method: e.target.value as VerificationMethod })}
+                onChange={(e) =>
+                  update(i, {
+                    verification_method: e.target.value as VerificationMethod,
+                  })
+                }
               >
-                <option value="brand_confirmation">Brand confirms manually</option>
-                <option value="rep_submission">Rep submission (24h auto-release)</option>
+                <option value="brand_confirmation">
+                  Brand confirms manually
+                </option>
+                <option value="talent_submission">
+                 talent submission (24h auto-release)
+                </option>
               </select>
             </div>
             <div className="flex flex-col gap-1.5">
@@ -125,7 +150,9 @@ export function MilestoneBuilder({
                 max={100}
                 required
                 value={m.payout_percentage || ""}
-                onChange={(e) => update(i, { payout_percentage: Number(e.target.value) })}
+                onChange={(e) =>
+                  update(i, { payout_percentage: Number(e.target.value) })
+                }
               />
             </div>
           </div>
@@ -135,7 +162,9 @@ export function MilestoneBuilder({
               id={`milestone-sequence-${i}`}
               type="checkbox"
               checked={m.sequence_required}
-              onChange={(e) => update(i, { sequence_required: e.target.checked })}
+              onChange={(e) =>
+                update(i, { sequence_required: e.target.checked })
+              }
             />
             <Label htmlFor={`milestone-sequence-${i}`} className="font-normal">
               Must be completed in order (sequence required)
@@ -143,7 +172,9 @@ export function MilestoneBuilder({
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor={`milestone-threshold-${i}`}>Count/threshold (optional)</Label>
+            <Label htmlFor={`milestone-threshold-${i}`}>
+              Count/threshold (optional)
+            </Label>
             <Input
               id={`milestone-threshold-${i}`}
               type="number"
@@ -151,23 +182,32 @@ export function MilestoneBuilder({
               placeholder="Leave blank for a single-submission milestone"
               value={m.threshold_count ?? ""}
               onChange={(e) =>
-                update(i, { threshold_count: e.target.value === "" ? null : Number(e.target.value) })
+                update(i, {
+                  threshold_count:
+                    e.target.value === "" ? null : Number(e.target.value),
+                })
               }
             />
             <p className="text-xs text-muted-foreground">
-              Only set this for a milestone the rep completes by repeated submission (e.g. "publish 3 pieces
-              of content"). The rep will see live "X of Y" progress instead of a flat pending/done state.
+              Only set this for a milestone the Talent completes by repeated
+              submission (e.g. &quot;publish 3 pieces of content&quot;). The Talent will
+              see live &quot;X of Y&quot; progress instead of a flat pending/done state.
             </p>
           </div>
         </div>
       ))}
 
-      <Button type="button" variant="outline" onClick={addMilestone} disabled={milestones.length >= MAX_MILESTONES}>
+      <Button
+        type="button"
+        variant="outline"
+        onClick={addMilestone}
+        disabled={milestones.length >= MAX_MILESTONES}
+      >
         Add milestone
       </Button>
       <p className="text-xs text-muted-foreground">
-        2–5 milestones per campaign. Payout percentages must sum to exactly 100% before you can create
-        this campaign.
+        2–5 milestones per campaign. Payout percentages must sum to exactly 100%
+        before you can create this campaign.
       </p>
     </div>
   );

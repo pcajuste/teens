@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
-import { MarketingHero, Section, SectionHeading } from "@/components/marketing/page-shell";
+import {
+  MarketingHero,
+  Section,
+  SectionHeading,
+} from "@/components/marketing/page-shell";
 
 const REQUIREMENTS = [
   {
@@ -13,7 +17,7 @@ const REQUIREMENTS = [
   },
   {
     title: "FTC sponsorship disclosure",
-    body: "Before accepting any paid campaign, a rep must accept a required disclosure acknowledgment, timestamped and stored, so sponsored work is always labeled sponsored.",
+    body: "Before accepting any paid campaign, a talent must accept a required disclosure acknowledgment, timestamped and stored, so sponsored work is always labeled sponsored.",
   },
   {
     title: "Data minimization",
@@ -51,25 +55,35 @@ export default function TrustPage() {
       </Section>
 
       <Section className="max-w-3xl">
-        <SectionHeading>How the intelligence layer stays anonymous</SectionHeading>
+        <SectionHeading>
+          How the intelligence layer stays anonymous
+        </SectionHeading>
         <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-          Brands can subscribe to trend reports built from campaign performance data. That data is never used at
-          the individual level. Before any report is generated, personally identifying information (rep ID, name,
-          school name) is stripped, and results are aggregated to a category, city, and time-period level. A trend
-          is never reported for a group smaller than 10 reps — this floor exists specifically so a brand can never
-          reverse-engineer an individual teen&apos;s behavior from a report.
+          Brands can subscribe to trend reports built from campaign performance
+          data. That data is never used at the individual level. Before any
+          report is generated, personally identifying information (talent ID, name,
+          school name) is stripped, and results are aggregated to a category,
+          city, and time-period level. A trend is never reported for a group
+          smaller than 10 talents — this floor exists specifically so a brand
+          can never reverse-engineer an individual teen&apos;s behavior from a
+          report.
         </p>
       </Section>
 
       <Section className="max-w-3xl">
-        <SectionHeading>Content boundaries, technically enforced</SectionHeading>
+        <SectionHeading>
+          Content boundaries, technically enforced
+        </SectionHeading>
         <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-          These aren&apos;t policy promises we ask people to follow — they&apos;re structural. There is no
-          messaging interface or endpoint between reps, so rep-to-rep contact isn&apos;t hidden, it&apos;s
-          nonexistent. Reps cannot search or browse other rep profiles; that search interface only exists for
-          authenticated brand and recruiter accounts. Reps can only reply to a recruiter who messaged them first —
-          there is no field or endpoint for a rep to initiate contact. No public feed exists anywhere on the
-          platform, and no profile photos are collected or displayed.
+          These aren&apos;t policy promises we ask people to follow —
+          they&apos;re structural. There is no messaging interface or endpoint
+          between talents, so talent-to-talent contact isn&apos;t hidden, it&apos;s
+          nonexistent. Talents cannot search or browse other Talent profiles; that
+          search interface only exists for authenticated brand and recruiter
+          accounts. Talents can only reply to a recruiter who messaged them first —
+          there is no field or endpoint for a Talent to initiate contact. No
+          public feed exists anywhere on the platform, and no profile photos are
+          collected or displayed.
         </p>
       </Section>
 
@@ -77,15 +91,24 @@ export default function TrustPage() {
         <Card className="p-5">
           <p className="text-sm font-semibold">Read more</p>
           <p className="mt-2 text-sm text-muted-foreground">
-            <Link href="/parents" className="font-medium text-primary hover:underline">
+            <Link
+              href="/parents"
+              className="font-medium text-primary hover:underline"
+            >
               How the parent portal works
             </Link>{" "}
             &middot;{" "}
-            <Link href="/privacy" className="font-medium text-primary hover:underline">
+            <Link
+              href="/privacy"
+              className="font-medium text-primary hover:underline"
+            >
               Privacy policy
             </Link>{" "}
             &middot;{" "}
-            <Link href="/terms" className="font-medium text-primary hover:underline">
+            <Link
+              href="/terms"
+              className="font-medium text-primary hover:underline"
+            >
               Terms of service
             </Link>
           </p>

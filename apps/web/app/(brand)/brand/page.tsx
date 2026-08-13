@@ -11,7 +11,10 @@ import { BrandShell } from "@/components/brand/brand-shell";
 import { api, ApiError } from "@/lib/api";
 import type { Campaign, CampaignStatus } from "@/lib/types";
 
-const STATUS_VARIANT: Record<CampaignStatus, "default" | "secondary" | "warning" | "success" | "destructive" | "outline"> = {
+const STATUS_VARIANT: Record<
+  CampaignStatus,
+  "default" | "secondary" | "warning" | "success" | "destructive" | "outline"
+> = {
   draft: "outline",
   pending_payment: "secondary",
   payment_failed: "destructive",
@@ -49,7 +52,11 @@ export default function BrandDashboardPage() {
           setNeedsOnboarding(true);
           return;
         }
-        setError(err instanceof ApiError ? err.message : "Could not load your campaigns.");
+        setError(
+          err instanceof ApiError
+            ? err.message
+            : "Could not load your campaigns.",
+        );
       });
   }, []);
 
@@ -57,9 +64,12 @@ export default function BrandDashboardPage() {
     return (
       <BrandShell>
         <div className="flex flex-col items-center gap-4 py-16 text-center">
-          <h1 className="text-xl font-semibold tracking-tight">Finish setting up your company profile</h1>
+          <h1 className="text-xl font-semibold tracking-tight">
+            Finish setting up your company profile
+          </h1>
           <p className="max-w-sm text-sm text-muted-foreground">
-            A few details about your company, then you&apos;re ready to create your first campaign.
+            A few details about your company, then you&apos;re ready to create
+            your first campaign.
           </p>
           <Link href="/brand/onboarding">
             <Button size="lg">Complete company profile</Button>
@@ -78,7 +88,11 @@ export default function BrandDashboardPage() {
         </Link>
       }
     >
-      {error ? <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p> : null}
+      {error ? (
+        <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {error}
+        </p>
+      ) : null}
 
       {campaigns === null ? (
         <div className="flex flex-col gap-3">
@@ -88,7 +102,7 @@ export default function BrandDashboardPage() {
       ) : campaigns.length === 0 ? (
         <EmptyState
           title="No campaigns yet"
-          description="Create your first campaign brief to start matching with reps."
+          description="Create your first campaign brief to start matching with talents."
           action={
             <Link href="/brand/campaigns/new">
               <Button>Create a campaign</Button>
@@ -103,16 +117,22 @@ export default function BrandDashboardPage() {
                 <CardHeader>
                   <div className="flex items-center justify-between gap-2">
                     <CardTitle>{c.title}</CardTitle>
-                    <Badge variant={STATUS_VARIANT[c.status]}>{STATUS_LABEL[c.status]}</Badge>
+                    <Badge variant={STATUS_VARIANT[c.status]}>
+                      {STATUS_LABEL[c.status]}
+                    </Badge>
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-sm text-muted-foreground">{c.product_name}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {c.product_name}
+                  </p>
                   <div className="flex items-center justify-between pt-2 text-sm">
                     <span className="text-muted-foreground">
-                      {c.reps_accepted_count}/{c.max_reps} reps
+                      {c.talents_accepted_count}/{c.max_talents} talents
                     </span>
-                    <span className="font-semibold text-foreground">{money(c.budget_cents)}</span>
+                    <span className="font-semibold text-foreground">
+                      {money(c.budget_cents)}
+                    </span>
                   </div>
                 </CardContent>
               </Card>

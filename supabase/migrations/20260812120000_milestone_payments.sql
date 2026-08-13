@@ -12,8 +12,8 @@
 -- ──────────────────────────────────────────────────────────────────
 
 CREATE TYPE campaign_payment_type AS ENUM ('flat', 'milestone');
-CREATE TYPE milestone_verification_method AS ENUM ('brand_confirmation', 'rep_submission');
-CREATE TYPE campaign_rep_milestone_status AS ENUM ('pending', 'submitted', 'confirmed', 'paid');
+CREATE TYPE milestone_verification_method AS ENUM ('brand_confirmation', 'talent_submission');
+CREATE TYPE campaign_talent_milestone_status AS ENUM ('pending', 'submitted', 'confirmed', 'paid');
 
 ALTER TABLE public.campaigns
   ADD COLUMN payment_type campaign_payment_type NOT NULL DEFAULT 'flat';
@@ -37,17 +37,17 @@ CREATE TABLE public.campaign_milestones (
   UNIQUE (campaign_id, milestone_number)
 );
 
-ALTER TABLE public.campaign_reps
+ALTER TABLE public.campaign_talents
   ADD COLUMN milestones_completed_count     INTEGER NOT NULL DEFAULT 0,
   ADD COLUMN total_milestone_payout_cents   INTEGER NOT NULL DEFAULT 0;
 
-CREATE TABLE public.campaign_rep_milestones (
+CREATE TABLE public.campaign_talent_milestones (
   id                          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  campaign_rep_id             UUID NOT NULL REFERENCES public.campaign_reps(id) ON DELETE RESTRICT,
+  campaign_talent_id             UUID NOT NULL REFERENCES public.campaign_talents(id) ON DELETE RESTRICT,
   campaign_milestone_id       UUID NOT NULL REFERENCES public.campaign_milestones(id) ON DELETE RESTRICT,
-  status                      campaign_rep_milestone_status NOT NULL DEFAULT 'pending',
-  rep_submission_text         TEXT,
-  rep_submission_file_urls    TEXT[] NOT NULL DEFAULT '{}',
+  status                      campaign_talent_milestone_status NOT NULL DEFAULT 'pending',
+  talent_submission_text         TEXT,
+  talent_submission_file_urls    TEXT[] NOT NULL DEFAULT '{}',
   brand_confirmation_note     TEXT,
   payout_cents                INTEGER,
   stripe_transfer_id          TEXT UNIQUE,
@@ -56,10 +56,10 @@ CREATE TABLE public.campaign_rep_milestones (
   submitted_at                TIMESTAMPTZ,
   confirmed_at                TIMESTAMPTZ,
   paid_at                     TIMESTAMPTZ,
-  UNIQUE (campaign_rep_id, campaign_milestone_id)
+  UNIQUE (campaign_talent_id, campaign_milestone_id)
 );
 
-CREATE INDEX idx_campaign_rep_milestones_status ON public.campaign_rep_milestones (campaign_rep_id, status);
+CREATE INDEX idx_campaign_talent_milestones_status ON public.campaign_talent_milestones (campaign_talent_id, status);
 CREATE INDEX idx_campaign_milestones_campaign ON public.campaign_milestones (campaign_id, milestone_number);
 
 -- ──────────────────────────────────────────────────────────────────
@@ -81,7 +81,7 @@ CREATE TYPE milestone_dispute_status AS ENUM ('open', 'resolved_confirmed', 'res
 
 CREATE TABLE public.milestone_disputes (
   id                        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  campaign_rep_milestone_id UUID NOT NULL REFERENCES public.campaign_rep_milestones(id) ON DELETE RESTRICT,
+  campaign_talent_milestone_id UUID NOT NULL REFERENCES public.campaign_talent_milestones(id) ON DELETE RESTRICT,
   raised_by                 UUID NOT NULL REFERENCES public.users(id),
   reason                    TEXT,
   status                    milestone_dispute_status NOT NULL DEFAULT 'open',
@@ -98,54 +98,54 @@ CREATE INDEX idx_milestone_disputes_status ON public.milestone_disputes (status,
 -- ──────────────────────────────────────────────────────────────────
 
 ALTER TABLE public.campaign_milestones ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.campaign_rep_milestones ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.campaign_talent_milestones ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.milestone_disputes ENABLE ROW LEVEL SECURITY;
 
 -- campaign_milestones: brands read/write only their own campaigns'
 -- milestones (reuses rls.brand_owns_campaign from 20260811210400_rls.sql
--- rather than inventing an equivalent). Reps can read milestones only
--- for campaigns they have a campaign_reps row for (any status -- a rep
+-- rather than inventing an equivalent). Talents can read milestones only
+-- for campaigns they have a campaign_talents row for (any status -- a talent
 -- invited to a milestone campaign needs to see the milestone list
 -- before accepting, same as they can already read the campaign brief
--- itself). No direct rep write access at all -- reps only ever write
--- through campaign_rep_milestones (their own submission), never the
+-- itself). No direct talent write access at all -- talents only ever write
+-- through campaign_talent_milestones (their own submission), never the
 -- campaign-level milestone definitions.
 CREATE POLICY "Brand manages own campaign milestones"
   ON public.campaign_milestones FOR ALL
   USING (rls.brand_owns_campaign(campaign_milestones.campaign_id, auth.uid()));
 
-CREATE POLICY "Rep reads milestones for campaigns they're invited to"
+CREATE POLICY   "Talent reads milestones for campaigns they're invited to"
   ON public.campaign_milestones FOR SELECT
   USING (
     EXISTS (
-      SELECT 1 FROM public.campaign_reps cr
+      SELECT 1 FROM public.campaign_talents cr
       WHERE cr.campaign_id = campaign_milestones.campaign_id
-        AND cr.rep_id = rls.rep_id_for_user(auth.uid())
+        AND cr.talent_id = rls.talent_id_for_user(auth.uid())
     )
   );
 
--- campaign_rep_milestones: a rep reads/writes only their own rows
--- (via the parent campaign_reps.rep_id); a brand reads/writes only
--- rows for campaign_reps belonging to their own campaigns (reuses
--- rls.brand_owns_campaign through the campaign_reps -> campaigns join,
--- same pattern as the existing "Brand reads/updates campaign_reps on
+-- campaign_talent_milestones: a talent reads/writes only their own rows
+-- (via the parent campaign_talents.talent_id); a brand reads/writes only
+-- rows for campaign_talents belonging to their own campaigns (reuses
+-- rls.brand_owns_campaign through the campaign_talents -> campaigns join,
+-- same pattern as the existing "Brand reads/updates campaign_talents on
 -- own campaigns" policy).
-CREATE POLICY "Rep reads/writes own campaign_rep_milestones rows"
-  ON public.campaign_rep_milestones FOR ALL
+CREATE POLICY   "Talent reads/writes own campaign_talent_milestones rows"
+  ON public.campaign_talent_milestones FOR ALL
   USING (
     EXISTS (
-      SELECT 1 FROM public.campaign_reps cr
-      WHERE cr.id = campaign_rep_milestones.campaign_rep_id
-        AND cr.rep_id = rls.rep_id_for_user(auth.uid())
+      SELECT 1 FROM public.campaign_talents cr
+      WHERE cr.id = campaign_talent_milestones.campaign_talent_id
+        AND cr.talent_id = rls.talent_id_for_user(auth.uid())
     )
   );
 
-CREATE POLICY "Brand reads/writes campaign_rep_milestones on own campaigns"
-  ON public.campaign_rep_milestones FOR ALL
+CREATE POLICY "Brand reads/writes campaign_talent_milestones on own campaigns"
+  ON public.campaign_talent_milestones FOR ALL
   USING (
     EXISTS (
-      SELECT 1 FROM public.campaign_reps cr
-      WHERE cr.id = campaign_rep_milestones.campaign_rep_id
+      SELECT 1 FROM public.campaign_talents cr
+      WHERE cr.id = campaign_talent_milestones.campaign_talent_id
         AND rls.brand_owns_campaign(cr.campaign_id, auth.uid())
     )
   );
@@ -155,7 +155,7 @@ CREATE POLICY "Brand reads/writes campaign_rep_milestones on own campaigns"
 -- on the service-role connection (brand raises via POST .../dispute,
 -- admin resolves via POST /admin/milestone-disputes/:id/resolve; the
 -- spec is explicit that "all disputes go through admin at MVP", i.e.
--- no self-serve brand/rep resolution UI reads this table directly).
+-- no self-serve brand/talent resolution UI reads this table directly).
 -- RLS is enabled with no policies, so default-deny applies to any
 -- non-service-role connection, matching this codebase's
 -- parent_auth_tokens convention (20260811210400_rls.sql's final note).

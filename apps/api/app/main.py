@@ -27,7 +27,7 @@ from app.routers import (
     parent,
     parent_auth,
     recruiters,
-    reps,
+    talents,
     webhooks,
 )
 
@@ -60,17 +60,17 @@ def create_app() -> FastAPI:
     app.include_router(auth.router)
     app.include_router(parent_auth.router)
     app.include_router(parent.router)
-    app.include_router(reps.reps_router)
-    app.include_router(reps.campaigns_router)
+    app.include_router(talents.talents_router)
+    app.include_router(talents.campaigns_router)
     app.include_router(brands.brands_router)
     app.include_router(challenges.brands_challenges_router)
-    app.include_router(challenges.reps_challenges_router)
+    app.include_router(challenges.talents_challenges_router)
     app.include_router(exclusivity.router)
     app.include_router(recruiters.recruiters_router)
     app.include_router(admin.admin_router)
     app.include_router(learning_modules.admin_modules_router)
     app.include_router(learning_modules.admin_module_analytics_router)
-    app.include_router(learning_modules.reps_modules_router)
+    app.include_router(learning_modules.talents_modules_router)
     app.include_router(webhooks.router)
 
     return app

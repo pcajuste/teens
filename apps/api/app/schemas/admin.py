@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-AccountType = Literal["rep", "brand", "recruiter"]
+AccountType = Literal["talent", "brand", "recruiter"]
 ResolutionAction = Literal["force_confirm", "force_cancel_refund"]
 SafetyReportResolution = Literal["resolved", "dismissed"]
 
@@ -52,9 +52,9 @@ class ResolveCampaignRequest(BaseModel):
 
 
 class StuckPaymentResponse(BaseModel):
-    campaign_rep_id: str
+    campaign_talent_id: str
     campaign_id: str
-    rep_id: str
+    talent_id: str
     payout_cents: int | None
     payout_status: str
     stripe_transfer_id: str | None
@@ -63,7 +63,7 @@ class StuckPaymentResponse(BaseModel):
 
 
 class ReleasePayoutResponse(BaseModel):
-    campaign_rep_id: str
+    campaign_talent_id: str
     payout_status: str
     admin_released: bool
 
@@ -75,7 +75,7 @@ class RevenuePeriodResponse(BaseModel):
     recruiter_active_subscriptions: int
 
 
-class RepsByCityCategoryResponse(BaseModel):
+class TalentsByCityCategoryResponse(BaseModel):
     by_city: list[dict]
     by_category: list[dict]
 
@@ -99,21 +99,21 @@ class OutlierBrandResponse(BaseModel):
 
 
 class ParentSuspendedRepResponse(BaseModel):
-    rep_id: str
-    rep_user_id: str
+    talent_id: str
+    talent_user_id: str
     display_name: str
     parent_id: str
     suspended_by_parent_at: datetime
 
 
 class ReverseSuspensionResponse(BaseModel):
-    rep_id: str
+    talent_id: str
     account_status: str
 
 
 class SafetyReportResponse(BaseModel):
     id: str
-    reporter_rep_id: str
+    reporter_talent_id: str
     reporter_display_name: str
     campaign_id: str | None
     reason: str
@@ -148,12 +148,12 @@ MilestoneDisputeResolution = Literal["confirm", "decline"]
 
 class MilestoneDisputeResponse(BaseModel):
     id: str
-    campaign_rep_milestone_id: str
+    campaign_talent_milestone_id: str
     campaign_id: str
     campaign_title: str
     milestone_title: str
-    rep_id: str
-    rep_display_name: str
+    talent_id: str
+    talent_display_name: str
     raised_by: str
     reason: str | None
     status: MilestoneDisputeStatus

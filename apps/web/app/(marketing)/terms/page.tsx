@@ -10,7 +10,7 @@ export default function TermsOfServicePage() {
         <Card className="p-6">
           <p className="text-sm font-semibold text-warning-foreground">Pending legal review</p>
           <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-            This page is a placeholder. Teenure&apos;s terms of service — separate terms for each user type (rep,
+            This page is a placeholder. Teenure&apos;s terms of service — separate terms for each user type (talent,
             brand, recruiter, and the parent oversight role), reviewed by a lawyer — have not been published here
             yet. No legal text on this page should be relied on as Teenure&apos;s terms of service.
           </p>

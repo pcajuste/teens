@@ -2,7 +2,7 @@
 // DEMO / FICTIONAL DATA ONLY.
 //
 // Everything exported from this module is hand-authored sample content for
-// the logged-out marketing demo at /demo/rep. None of it is real: the rep,
+// the logged-out marketing demo at /demo/talent. None of it is real: the talent,
 // her school, the brands, the campaigns, and every dollar figure below are
 // invented for illustration. Nothing here is fetched from Supabase or the
 // FastAPI backend, and nothing in the demo route group ever calls
@@ -21,19 +21,18 @@ import type {
   CampaignParticipation,
   CampaignSummary,
   Earnings,
-  RepProfile,
+  TalentProfile,
 } from "@/lib/types";
 
-export const DEMO_REP_PROFILE: RepProfile = {
-  id: "demo-rep-maya-chen",
+export const DEMO_talent_PROFILE: TalentProfile = {
+  id: "demo-talent-maya-chen",
   display_name: "Maya Chen",
   school_name: "Crestwood High School",
   school_type: "public",
   city: "Ashwood",
   state: "OR",
   graduation_year: 2026,
-  bio:
-    "Senior at Crestwood High, captain of the varsity track team, and I make gear reviews and training-day clips for my events. I like working with brands that actually get sent to student athletes, not just influencers.",
+  bio: "Senior at Crestwood High, captain of the varsity track team, and I make gear reviews and training-day clips for my events. I like working with brands that actually get sent to student athletes, not just influencers.",
   categories: ["athletics", "fashion", "food"],
   instagram_handle: "maya.runs.crestwood",
   tiktok_handle: "mayarunscw",
@@ -46,7 +45,8 @@ export const DEMO_REP_PROFILE: RepProfile = {
     {
       module_id: "demo-module-ftc",
       badge_title: "FTC Verified",
-      badge_description: "Demonstrated understanding of sponsored content disclosure rules.",
+      badge_description:
+        "Demonstrated understanding of sponsored content disclosure rules.",
       badge_color: "#6C3FC5",
       badge_icon: null,
       earned_at: "2026-07-02T00:00:00Z",
@@ -67,7 +67,7 @@ export const DEMO_AVAILABLE_CAMPAIGN: CampaignSummary = {
     "One Instagram Reel or TikTok (30-60s) featuring the shoe during a run or practice, plus one static Instagram post with a caption mentioning the shoe by name.",
   target_categories: ["athletics", "fashion"],
   target_cities: ["Ashwood", "Portland"],
-  payout_per_rep_cents: 15000,
+  payout_per_talent_cents: 15000,
   start_date: "2026-08-18",
   end_date: "2026-09-15",
 };
@@ -84,7 +84,7 @@ export const DEMO_CONFIRMED_CAMPAIGN: CampaignSummary = {
     "One TikTok (15-45s) showing the bar as part of a pre-practice routine, tagging @brightleaffoods and disclosing the partnership.",
   target_categories: ["athletics", "food"],
   target_cities: ["Ashwood"],
-  payout_per_rep_cents: 12500,
+  payout_per_talent_cents: 12500,
   start_date: "2026-06-01",
   end_date: "2026-06-20",
 };

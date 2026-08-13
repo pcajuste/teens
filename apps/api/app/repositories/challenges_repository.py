@@ -3,10 +3,10 @@
 
 Two distinct dataclasses represent a submission row, on purpose:
 `ChallengeSubmission` (brand/admin-facing, includes brand_note) and
-`RepChallengeSubmission` (rep/parent-facing, has no field for
+`RepChallengeSubmission` (talent/parent-facing, has no field for
 brand_note at all). This is the "explicit serializer exclusion, not
 just RLS trust" the spec calls for -- brand_note simply cannot leak
-through a rep-facing code path since there is no attribute to read it
+through a talent-facing code path since there is no attribute to read it
 from, independent of whatever RLS policy is (or isn't) in force for a
 given connection.
 """
@@ -216,9 +216,9 @@ async def increment_conversion_count(conn: asyncpg.Connection, challenge_id: str
 
 
 async def list_available_for_rep(
-    conn: asyncpg.Connection, *, rep_id: str, categories: list[str], city: str
+    conn: asyncpg.Connection, *, talent_id: str, categories: list[str], city: str
 ) -> list[Challenge]:
-    """GET /reps/challenges/available matching (spec deliverable 4):
+    """GET /talents/challenges/available matching (spec deliverable 4):
     active, category overlap, city match-or-global, not already
     submitted, not full. Mirrors campaigns_repository.list_available_for_rep's
     shape exactly (same matching semantics, different table) -- no
@@ -237,11 +237,11 @@ async def list_available_for_rep(
           AND (c.max_submissions IS NULL OR c.submissions_count < c.max_submissions)
           AND NOT EXISTS (
                 SELECT 1 FROM public.challenge_submissions cs
-                WHERE cs.challenge_id = c.id AND cs.rep_id = $1
+                WHERE cs.challenge_id = c.id AND cs.talent_id = $1
               )
         ORDER BY c.created_at DESC
         """,
-        rep_id,
+        talent_id,
         categories,
         city,
     )
@@ -270,7 +270,7 @@ async def auto_close_due(conn: asyncpg.Connection, *, now: datetime) -> list[Cha
 # ══════════════════════════════════════════════════════════════════
 
 _SUBMISSION_COLUMNS = """
-    id, challenge_id, rep_id, submission_text, submission_file_urls, status, brand_note,
+    id, challenge_id, talent_id, submission_text, submission_file_urls, status, brand_note,
     converted_to_campaign_id, payout_cents, payout_status, stripe_transfer_id,
     submitted_at, reviewed_at, converted_at, paid_at
 """
@@ -280,7 +280,7 @@ _SUBMISSION_COLUMNS = """
 class ChallengeSubmission:
     id: str
     challenge_id: str
-    rep_id: str
+    talent_id: str
     submission_text: str | None
     submission_file_urls: list[str]
     status: str
@@ -299,7 +299,7 @@ class ChallengeSubmission:
         return cls(
             id=str(row["id"]),
             challenge_id=str(row["challenge_id"]),
-            rep_id=str(row["rep_id"]),
+            talent_id=str(row["talent_id"]),
             submission_text=row["submission_text"],
             submission_file_urls=list(row["submission_file_urls"] or []),
             status=row["status"],
@@ -319,18 +319,18 @@ async def create_submission(
     conn: asyncpg.Connection,
     *,
     challenge_id: str,
-    rep_id: str,
+    talent_id: str,
     submission_text: str | None,
     submission_file_urls: list[str],
 ) -> ChallengeSubmission:
     row = await conn.fetchrow(
         f"""
-        INSERT INTO public.challenge_submissions (challenge_id, rep_id, submission_text, submission_file_urls)
+        INSERT INTO public.challenge_submissions (challenge_id, talent_id, submission_text, submission_file_urls)
         VALUES ($1, $2, $3, $4)
         RETURNING {_SUBMISSION_COLUMNS}
         """,
         challenge_id,
-        rep_id,
+        talent_id,
         submission_text,
         submission_file_urls,
     )
@@ -355,10 +355,10 @@ async def get_by_id_and_challenge(conn: asyncpg.Connection, submission_id: str, 
     return ChallengeSubmission.from_row(row) if row else None
 
 
-async def get_for_rep_and_challenge(conn: asyncpg.Connection, rep_id: str, challenge_id: str) -> ChallengeSubmission | None:
+async def get_for_talent_and_challenge(conn: asyncpg.Connection, talent_id: str, challenge_id: str) -> ChallengeSubmission | None:
     row = await conn.fetchrow(
-        f"SELECT {_SUBMISSION_COLUMNS} FROM public.challenge_submissions WHERE rep_id = $1 AND challenge_id = $2",
-        rep_id,
+        f"SELECT {_SUBMISSION_COLUMNS} FROM public.challenge_submissions WHERE talent_id = $1 AND challenge_id = $2",
+        talent_id,
         challenge_id,
     )
     return ChallengeSubmission.from_row(row) if row else None
@@ -379,13 +379,13 @@ async def list_for_challenge(conn: asyncpg.Connection, challenge_id: str) -> lis
     return [ChallengeSubmission.from_row(r) for r in rows]
 
 
-async def list_for_rep(conn: asyncpg.Connection, rep_id: str) -> list[ChallengeSubmission]:
-    """Rep's own submission history -- router filters/remaps status for
-    the rep-facing response (declined excluded, reviewed shown as
+async def list_for_rep(conn: asyncpg.Connection, talent_id: str) -> list[ChallengeSubmission]:
+    """Talent's own submission history -- router filters/remaps status for
+    the talent-facing response  (declined excluded, reviewed shown as
     submitted -- spec deliverable 4)."""
     rows = await conn.fetch(
-        f"SELECT {_SUBMISSION_COLUMNS} FROM public.challenge_submissions WHERE rep_id = $1 ORDER BY submitted_at DESC",
-        rep_id,
+        f"SELECT {_SUBMISSION_COLUMNS} FROM public.challenge_submissions WHERE talent_id = $1 ORDER BY submitted_at DESC",
+        talent_id,
     )
     return [ChallengeSubmission.from_row(r) for r in rows]
 
@@ -419,7 +419,7 @@ async def mark_converted(
     at: datetime,
 ) -> ChallengeSubmission | None:
     """Legal only from 'submitted' or 'reviewed' (spec 3b). Called
-    inside the caller's transaction alongside the campaign_reps invite
+    inside the caller's transaction alongside the campaign_talents invite
     creation -- see app/routers/challenges.py's convert_submission for
     the full atomic sequence."""
     row = await conn.fetchrow(
@@ -454,7 +454,7 @@ async def mark_declined(conn: asyncpg.Connection, submission_id: str) -> Challen
 
 async def set_payout_processing(conn: asyncpg.Connection, submission_id: str, *, stripe_transfer_id: str) -> ChallengeSubmission | None:
     """Legal only from payout_status='pending' -- same idempotency
-    shape as campaign_reps_repository.set_payout_processing: a retried
+    shape as campaign_talents_repository.set_payout_processing: a retried
     release_challenge_conversion_bonus call observes no matching row
     the second time and the caller treats that as 'already_processed'
     rather than a second Stripe Transfer."""
@@ -497,15 +497,15 @@ async def set_payout_failed(conn: asyncpg.Connection, submission_id: str) -> Cha
 
 
 # ══════════════════════════════════════════════════════════════════
-# No-PII rep card for a brand's challenge submissions inbox (spec
+# No-PII talent card for a brand's challenge submissions inbox (spec
 # deliverable 2's GET /brands/challenges/:id/submissions field list --
 # "this is the no-PII card for challenge context").
 # ══════════════════════════════════════════════════════════════════
 
 
 @dataclass(frozen=True, slots=True)
-class ChallengeSubmissionRepCard:
-    rep_id: str
+class ChallengeSubmissionTalentCard:
+    talent_id: str
     display_name: str
     city: str
     categories: list[str]
@@ -603,13 +603,13 @@ async def admin_analytics(conn: asyncpg.Connection) -> dict:
 # ══════════════════════════════════════════════════════════════════
 
 
-async def parent_dashboard_activity(conn: asyncpg.Connection, rep_id: str) -> dict:
+async def parent_dashboard_activity(conn: asyncpg.Connection, talent_id: str) -> dict:
     """GET /parent/dashboard's challenge_activity block. Declined
     submissions are excluded from both the totals and recent_submissions
-    -- same protection extended to parents as to reps (spec deliverable
+    -- same protection extended to parents as to talents (spec deliverable
     10: "no reason to expose rejection to a parent who may pressure
     their child about it"). Converted submissions include the campaign
-    the rep was invited to, since that's a financial event with a
+    the talent was invited to, since that's a financial event with a
     legitimate parental interest."""
     totals = await conn.fetchrow(
         """
@@ -618,20 +618,20 @@ async def parent_dashboard_activity(conn: asyncpg.Connection, rep_id: str) -> di
             COUNT(*) FILTER (WHERE status = 'converted') AS total_converted,
             COALESCE(SUM(payout_cents) FILTER (WHERE status = 'converted'), 0) AS total_bonus_earned_cents
         FROM public.challenge_submissions
-        WHERE rep_id = $1
+        WHERE talent_id = $1
         """,
-        rep_id,
+        talent_id,
     )
     recent = await conn.fetch(
         """
         SELECT cs.status, cs.submitted_at, cs.payout_cents, c.title AS challenge_title
         FROM public.challenge_submissions cs
         JOIN public.challenges c ON c.id = cs.challenge_id
-        WHERE cs.rep_id = $1 AND cs.status != 'declined'
+        WHERE cs.talent_id = $1 AND cs.status != 'declined'
         ORDER BY cs.submitted_at DESC
         LIMIT 5
         """,
-        rep_id,
+        talent_id,
     )
     return {
         "total_submitted": totals["total_submitted"],
@@ -649,23 +649,23 @@ async def parent_dashboard_activity(conn: asyncpg.Connection, rep_id: str) -> di
     }
 
 
-async def get_submission_rep_card(conn: asyncpg.Connection, rep_id: str) -> ChallengeSubmissionRepCard | None:
+async def get_submission_talent_card(conn: asyncpg.Connection, talent_id: str) -> ChallengeSubmissionTalentCard | None:
     row = await conn.fetchrow(
         """
         SELECT id, display_name, city, categories, profile_completeness_score,
                total_campaigns_completed, average_rating,
                challenges_submitted_count, challenges_converted_count
-        FROM public.rep_profiles WHERE id = $1
+        FROM public.talent_profiles WHERE id = $1
         """,
-        rep_id,
+        talent_id,
     )
     if row is None:
         return None
     submitted = row["challenges_submitted_count"]
     converted = row["challenges_converted_count"]
     rate = round(converted / submitted, 2) if submitted else None
-    return ChallengeSubmissionRepCard(
-        rep_id=str(row["id"]),
+    return ChallengeSubmissionTalentCard(
+        talent_id=str(row["id"]),
         display_name=row["display_name"],
         city=row["city"],
         categories=list(row["categories"] or []),

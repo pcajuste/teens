@@ -55,7 +55,7 @@ async def request_link(
     conn: asyncpg.Connection = Depends(get_connection),
     resend_client: ResendClient = Depends(_resend_client_dependency),
 ) -> RequestLinkResponse:
-    # Same-response-regardless-of-existence: never confirm whether this
+    # Same-response -regardless-of-existence: never confirm whether this
     # email is linked to a parent_record (Section 9A: "no enumeration
     # via parent login").
     parent = await parent_records_repository.get_most_recent_parent_by_email(conn, body.parent_email)
@@ -121,7 +121,7 @@ async def verify(
 
     # Portal expiry, enforced here too (not only on subsequent
     # requests) -- a parent shouldn't even get a session once the
-    # rep has turned 18.
+    # talent has turned 18.
     if now >= parent.portal_expires_at:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -135,7 +135,7 @@ async def verify(
 
     session_payload = {
         "parent_id": parent.parent_id,
-        "rep_id": parent.rep_id,
+        "talent_id": parent.talent_id,
         "iss": PARENT_SESSION_ISSUER,
         "iat": int(now.timestamp()),
         "exp": int((now + SESSION_TTL).timestamp()),

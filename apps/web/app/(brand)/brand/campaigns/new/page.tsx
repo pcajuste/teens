@@ -18,7 +18,11 @@ import {
 } from "@/components/brand/milestone-builder";
 import { api, ApiError } from "@/lib/api";
 import { trackEvent } from "@/lib/analytics";
-import { BASE_CATEGORIES, CATEGORY_LABELS, type Category } from "@/lib/categories";
+import {
+  BASE_CATEGORIES,
+  CATEGORY_LABELS,
+  type Category,
+} from "@/lib/categories";
 import type {
   Campaign,
   CampaignBriefRequest,
@@ -60,8 +64,12 @@ export default function NewCampaignPage() {
   // brand's own held-exclusivity agreements, used to show a "you hold
   // exclusivity" badge, plus a live conflict check against competitors'
   // agreements so a 409 surfaces before submission, not after.
-  const [ownAgreements, setOwnAgreements] = useState<ExclusivityAgreement[]>([]);
-  const [exclusivityConflicts, setExclusivityConflicts] = useState<Category[]>([]);
+  const [ownAgreements, setOwnAgreements] = useState<ExclusivityAgreement[]>(
+    [],
+  );
+  const [exclusivityConflicts, setExclusivityConflicts] = useState<Category[]>(
+    [],
+  );
   const [checkingExclusivity, setCheckingExclusivity] = useState(false);
 
   useEffect(() => {
@@ -88,23 +96,32 @@ export default function NewCampaignPage() {
     setCheckingExclusivity(true);
     const startsAt = new Date(`${startDate}T00:00:00Z`).toISOString();
     const endsAt = new Date(`${endDate}T00:00:00Z`).toISOString();
-    const cities = targetCitiesForCheck.length > 0 ? targetCitiesForCheck : [null];
+    const cities =
+      targetCitiesForCheck.length > 0 ? targetCitiesForCheck : [null];
 
     Promise.all(
       categories.flatMap((cat) =>
         cities.map((city) => {
-          const params = new URLSearchParams({ category: cat, starts_at: startsAt, ends_at: endsAt });
+          const params = new URLSearchParams({
+            category: cat,
+            starts_at: startsAt,
+            ends_at: endsAt,
+          });
           if (city) params.set("city", city);
           return api
-            .get<ExclusivityCheckResponse>(`/brands/exclusivity/check?${params.toString()}`)
+            .get<ExclusivityCheckResponse>(
+              `/brands/exclusivity/check?${params.toString()}`,
+            )
             .then((res) => (res.available ? null : cat))
             .catch(() => null);
-        })
-      )
+        }),
+      ),
     )
       .then((results) => {
         if (cancelled) return;
-        const conflicted = Array.from(new Set(results.filter((c): c is Category => c !== null)));
+        const conflicted = Array.from(
+          new Set(results.filter((c): c is Category => c !== null)),
+        );
         setExclusivityConflicts(conflicted);
       })
       .finally(() => {
@@ -118,14 +135,15 @@ export default function NewCampaignPage() {
   }, [categories, targetCitiesRaw, startDate, endDate]);
 
   function heldExclusivityFor(cat: Category): ExclusivityAgreement | null {
-    const cities: (string | null)[] = targetCitiesForCheck.length > 0 ? targetCitiesForCheck : [null];
+    const cities: (string | null)[] =
+      targetCitiesForCheck.length > 0 ? targetCitiesForCheck : [null];
     return (
       ownAgreements.find(
         (a) =>
           a.category === cat &&
           a.status === "active" &&
           a.payment_status === "paid" &&
-          (a.city === null || cities.includes(a.city))
+          (a.city === null || cities.includes(a.city)),
       ) ?? null
     );
   }
@@ -146,7 +164,9 @@ export default function NewCampaignPage() {
       milestones.every((m) => m.title.trim().length > 0));
 
   function toggleCategory(c: Category) {
-    setCategories((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]));
+    setCategories((prev) =>
+      prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c],
+    );
   }
 
   const budgetCents = Math.round(budgetDollars * 100);
@@ -162,11 +182,12 @@ export default function NewCampaignPage() {
     deliverables_description: deliverablesDescription || "—",
     prohibited_content: prohibitedContent || null,
     target_categories: categories,
-    // A budget split evenly across max_reps is the best local estimate
+    // A budget split evenly across max_talents is the best local estimate
     // available before the server computes the real, authoritative
     // fee-split -- this preview number is never sent anywhere, purely
     // illustrative so a brand isn't guessing blind while filling the form.
-    payout_per_rep_cents: maxReps > 0 ? Math.floor((budgetCents * 0.65) / maxReps) : null,
+    payout_per_talent_cents:
+      maxReps > 0 ? Math.floor((budgetCents * 0.65) / maxReps) : null,
   };
 
   async function handleSubmit(e: React.FormEvent) {
@@ -183,7 +204,7 @@ export default function NewCampaignPage() {
         deliverables_description: deliverablesDescription,
         target_categories: categories,
         target_cities: targetCities,
-        max_reps: maxReps,
+        max_talents: maxReps,
         budget_cents: budgetCents,
         start_date: startDate,
         end_date: endDate,
@@ -197,10 +218,14 @@ export default function NewCampaignPage() {
       if (err instanceof ApiError && err.code === "exclusivity_conflict") {
         setError(
           "Another brand holds exclusivity in this category and market during your requested campaign " +
-            "period. Consider a different category, city, or time window."
+            "period. Consider a different category, city, or time window.",
         );
       } else {
-        setError(err instanceof ApiError ? err.message : "Could not create this campaign.");
+        setError(
+          err instanceof ApiError
+            ? err.message
+            : "Could not create this campaign.",
+        );
       }
     } finally {
       setPending(false);
@@ -208,7 +233,7 @@ export default function NewCampaignPage() {
   }
 
   const unresolvedExclusivityConflict = categories.some(
-    (c) => exclusivityConflicts.includes(c) && !heldExclusivityFor(c)
+    (c) => exclusivityConflicts.includes(c) && !heldExclusivityFor(c),
   );
 
   return (
@@ -217,22 +242,43 @@ export default function NewCampaignPage() {
         <form onSubmit={handleSubmit} className="flex flex-col gap-5">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="title">Campaign title</Label>
-            <Input id="title" required value={title} onChange={(e) => setTitle(e.target.value)} />
+            <Input
+              id="title"
+              required
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+            />
           </div>
 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="productName">Product name</Label>
-            <Input id="productName" required value={productName} onChange={(e) => setProductName(e.target.value)} />
+            <Input
+              id="productName"
+              required
+              value={productName}
+              onChange={(e) => setProductName(e.target.value)}
+            />
           </div>
 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="campaignGoal">Campaign goal</Label>
-            <Input id="campaignGoal" required value={campaignGoal} onChange={(e) => setCampaignGoal(e.target.value)} />
+            <Input
+              id="campaignGoal"
+              required
+              value={campaignGoal}
+              onChange={(e) => setCampaignGoal(e.target.value)}
+            />
           </div>
 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="keyMessaging">Key messaging</Label>
-            <Textarea id="keyMessaging" required rows={3} value={keyMessaging} onChange={(e) => setKeyMessaging(e.target.value)} />
+            <Textarea
+              id="keyMessaging"
+              required
+              rows={3}
+              value={keyMessaging}
+              onChange={(e) => setKeyMessaging(e.target.value)}
+            />
           </div>
 
           <div className="flex flex-col gap-1.5">
@@ -247,7 +293,9 @@ export default function NewCampaignPage() {
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="prohibitedContent">Prohibited content (optional)</Label>
+            <Label htmlFor="prohibitedContent">
+              Prohibited content (optional)
+            </Label>
             <Textarea
               id="prohibitedContent"
               rows={2}
@@ -261,20 +309,28 @@ export default function NewCampaignPage() {
             <div className="flex flex-wrap gap-2">
               {BASE_CATEGORIES.map((c) => (
                 <button key={c} type="button" onClick={() => toggleCategory(c)}>
-                  <Badge variant={categories.includes(c) ? "default" : "outline"} className="px-3 py-1.5">
+                  <Badge
+                    variant={categories.includes(c) ? "default" : "outline"}
+                    className="px-3 py-1.5"
+                  >
                     {CATEGORY_LABELS[c]}
                   </Badge>
                 </button>
               ))}
             </div>
             {checkingExclusivity ? (
-              <p className="text-xs text-muted-foreground">Checking category exclusivity...</p>
+              <p className="text-xs text-muted-foreground">
+                Checking category exclusivity...
+              </p>
             ) : null}
             {categories.map((c) => {
               const held = heldExclusivityFor(c);
               if (held) {
                 return (
-                  <p key={c} className="rounded-lg bg-success/10 px-3 py-2 text-xs font-medium text-success">
+                  <p
+                    key={c}
+                    className="rounded-lg bg-success/10 px-3 py-2 text-xs font-medium text-success"
+                  >
                     You hold exclusivity in {CATEGORY_LABELS[c]} through{" "}
                     {new Date(held.ends_at).toLocaleDateString()}.
                   </p>
@@ -282,9 +338,13 @@ export default function NewCampaignPage() {
               }
               if (exclusivityConflicts.includes(c)) {
                 return (
-                  <p key={c} className="rounded-lg bg-destructive/10 px-3 py-2 text-xs font-medium text-destructive">
-                    Another brand holds exclusivity in {CATEGORY_LABELS[c]} for part or all of this window and
-                    city selection. Creating a campaign in this category will be rejected — try a different
+                  <p
+                    key={c}
+                    className="rounded-lg bg-destructive/10 px-3 py-2 text-xs font-medium text-destructive"
+                  >
+                    Another brand holds exclusivity in {CATEGORY_LABELS[c]} for
+                    part or all of this window and city selection. Creating a
+                    campaign in this category will be rejected — try a different
                     category, city, or date range.
                   </p>
                 );
@@ -294,19 +354,23 @@ export default function NewCampaignPage() {
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="targetCities">Target cities (comma-separated, optional)</Label>
+            <Label htmlFor="targetCities">
+              Target cities (comma-separated, optional)
+            </Label>
             <Input
               id="targetCities"
               placeholder="Austin, Dallas"
               value={targetCitiesRaw}
               onChange={(e) => setTargetCitiesRaw(e.target.value)}
             />
-            <p className="text-xs text-muted-foreground">Leave blank to match reps in any city.</p>
+            <p className="text-xs text-muted-foreground">
+              Leave blank to match talents in any city.
+            </p>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="maxReps">Max reps</Label>
+              <Label htmlFor="maxReps">Max talents</Label>
               <Input
                 id="maxReps"
                 type="number"
@@ -333,53 +397,84 @@ export default function NewCampaignPage() {
           <div className="grid grid-cols-2 gap-4">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="startDate">Start date</Label>
-              <Input id="startDate" type="date" required value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+              <Input
+                id="startDate"
+                type="date"
+                required
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+              />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="endDate">End date</Label>
-              <Input id="endDate" type="date" required value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+              <Input
+                id="endDate"
+                type="date"
+                required
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+              />
             </div>
           </div>
 
           <div className="flex flex-col gap-2">
             <Label>Payment type</Label>
             <div className="flex gap-2">
-              <button type="button" onClick={() => handlePaymentTypeChange("flat")}>
-                <Badge variant={paymentType === "flat" ? "default" : "outline"} className="px-3 py-1.5">
+              <button
+                type="button"
+                onClick={() => handlePaymentTypeChange("flat")}
+              >
+                <Badge
+                  variant={paymentType === "flat" ? "default" : "outline"}
+                  className="px-3 py-1.5"
+                >
                   Flat payout
                 </Badge>
               </button>
-              <button type="button" onClick={() => handlePaymentTypeChange("milestone")}>
-                <Badge variant={paymentType === "milestone" ? "default" : "outline"} className="px-3 py-1.5">
+              <button
+                type="button"
+                onClick={() => handlePaymentTypeChange("milestone")}
+              >
+                <Badge
+                  variant={paymentType === "milestone" ? "default" : "outline"}
+                  className="px-3 py-1.5"
+                >
                   Performance milestones
                 </Badge>
               </button>
             </div>
             <p className="text-xs text-muted-foreground">
               {paymentType === "flat"
-                ? "Reps are paid in full when their submission is confirmed."
-                : "Reps are paid in staged releases as each milestone is completed and confirmed."}
+                ? "Talents are paid in full when their submission is confirmed."
+                : "Talents are paid in staged releases as each milestone is completed and confirmed."}
             </p>
           </div>
 
           {paymentType === "milestone" ? (
-            <MilestoneBuilder milestones={milestones} onChange={setMilestones} />
+            <MilestoneBuilder
+              milestones={milestones}
+              onChange={setMilestones}
+            />
           ) : null}
 
           {error ? (
-            <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>
+            <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {error}
+            </p>
           ) : null}
 
           {paymentType === "milestone" && !milestonesValid ? (
             <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              Add 2-5 milestones with titles, and make sure payout percentages sum to exactly 100%
-              before creating this campaign.
+              Add 2-5 milestones with titles, and make sure payout percentages
+              sum to exactly 100% before creating this campaign.
             </p>
           ) : null}
 
           <Button
             type="submit"
-            disabled={pending || !milestonesValid || unresolvedExclusivityConflict}
+            disabled={
+              pending || !milestonesValid || unresolvedExclusivityConflict
+            }
             size="lg"
             className="w-full"
           >
@@ -389,12 +484,13 @@ export default function NewCampaignPage() {
 
         <div className="flex flex-col gap-3">
           <p className="text-sm font-semibold text-muted-foreground">
-            Preview — exactly what a rep sees
+            Preview — exactly what a talent sees
           </p>
           <CampaignBrief campaign={previewCampaign} />
           <p className="text-xs text-muted-foreground">
-            The payout shown here is an estimate. The platform fee and final per-rep payout are
-            computed server-side when you create the campaign.
+            The payout shown here is an estimate. The platform fee and final
+            per-talent payout are computed server-side when you create the
+            campaign.
           </p>
         </div>
       </div>

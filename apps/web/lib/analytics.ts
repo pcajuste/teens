@@ -11,7 +11,8 @@ import posthog from "posthog-js";
 // conservative given the teen user base and CLAUDE.md's "no passive
 // behavioral tracking" constraint.
 const POSTHOG_KEY = process.env.NEXT_PUBLIC_POSTHOG_KEY;
-const POSTHOG_HOST = process.env.NEXT_PUBLIC_POSTHOG_HOST ?? "https://eu.i.posthog.com";
+const POSTHOG_HOST =
+  process.env.NEXT_PUBLIC_POSTHOG_HOST ?? "https://eu.i.posthog.com";
 
 let initialized = false;
 

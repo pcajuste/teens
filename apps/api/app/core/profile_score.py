@@ -1,5 +1,5 @@
 """Server-side profile-completeness scoring (Build Prompt 5 deliverable
-10). Recomputed on every PUT /reps/me -- never trusted from the client,
+10). Recomputed on every PUT /talents/me -- never trusted from the client,
 never partially updated by any other write path.
 
 Scoring rule (0-100, weights sum to 100 -- picked here since neither
@@ -17,7 +17,7 @@ weights, only "define the scoring rule explicitly in code comments"):
 
 Rationale for the weighting: display_name/school_name/city/state/
 graduation_year are all NOT NULL at the DB layer (Section 7), so every
-rep profile that exists at all already has them -- scoring them would
+talent profile that exists at all already has them -- scoring them would
 make the floor 100 minus a fixed constant rather than a meaningful
 completeness signal. The score instead rewards the genuinely optional
 fields plus the strongest completeness signal available at Phase 1: a
@@ -39,7 +39,7 @@ _COMPLETED_CAMPAIGN_WEIGHT = 25
 _BADGE_WEIGHT = 5
 _MAX_BADGES_COUNTED = 3
 
-# The pre-8H fields already summed to 100 on their own (a rep with zero
+# The pre-8H fields already summed to 100 on their own (a talent with zero
 # badges can still reach a full score) -- badges are capped headroom on
 # top, not a renormalized share of the 100. The final score is clamped
 # to 100 below since bio/category/school/handles/campaign completion

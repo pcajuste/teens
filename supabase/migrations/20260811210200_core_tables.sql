@@ -16,11 +16,11 @@ CREATE TABLE public.users (
 );
 
 -- ──────────────────────────────────────────────────────────────────
--- REP PROFILES — verbatim, Section 7 (see enums.sql for the
+-- talent PROFILES — verbatim, Section 7 (see enums.sql for the
 -- school_type CHECK-vs-enum reconciliation note)
 -- ──────────────────────────────────────────────────────────────────
 
-CREATE TABLE public.rep_profiles (
+CREATE TABLE public.talent_profiles (
   id                          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id                     UUID NOT NULL UNIQUE REFERENCES public.users(id) ON DELETE CASCADE,
   display_name                TEXT NOT NULL,
@@ -29,7 +29,7 @@ CREATE TABLE public.rep_profiles (
                                  CHECK (school_type IS NULL OR school_type IN ('public','private','charter','homeschool')),
                                -- self-reported, optional at onboarding; used only in
                                -- aggregate by the intelligence layer — never joined
-                               -- back to an individual rep in any report
+                               -- back to an individual talent in any report
   city                        TEXT NOT NULL,
   state                       TEXT NOT NULL,
   graduation_year             INTEGER NOT NULL CHECK (graduation_year BETWEEN 2024 AND 2035),
@@ -40,7 +40,7 @@ CREATE TABLE public.rep_profiles (
   recruiter_visible           BOOLEAN NOT NULL DEFAULT FALSE,
 
   -- computed/cached fields (updated via trigger or background job —
-  -- see docs/rep_profiles_cache_recompute.md for the design note)
+  -- see docs/talent_profiles_cache_recompute.md for the design note)
   total_campaigns_completed   INTEGER NOT NULL DEFAULT 0,
   total_earnings_cents        INTEGER NOT NULL DEFAULT 0,
   average_rating              NUMERIC(3,2),                   -- e.g. 4.75
@@ -90,14 +90,14 @@ CREATE TABLE public.campaigns (
   -- Targeting
   target_categories         TEXT[] NOT NULL DEFAULT '{}',
   target_cities              TEXT[] NOT NULL DEFAULT '{}',
-  max_reps                  INTEGER NOT NULL DEFAULT 10,
-  reps_accepted_count       INTEGER NOT NULL DEFAULT 0,
+  max_talents                  INTEGER NOT NULL DEFAULT 10,
+  talents_accepted_count       INTEGER NOT NULL DEFAULT 0,
 
   -- Financials (all in cents)
   budget_cents              INTEGER NOT NULL,
   platform_fee_cents        INTEGER NOT NULL,         -- calculated at brief creation
-  rep_pool_cents            INTEGER NOT NULL,         -- budget_cents - platform_fee_cents
-  payout_per_rep_cents      INTEGER,                  -- rep_pool_cents / max_reps
+  talent_pool_cents            INTEGER NOT NULL,         -- budget_cents - platform_fee_cents
+  payout_per_talent_cents      INTEGER,                  -- talent_pool_cents / max_talents
 
   -- Dates
   start_date                DATE NOT NULL,
@@ -111,20 +111,20 @@ CREATE TABLE public.campaigns (
 );
 
 -- ──────────────────────────────────────────────────────────────────
--- CAMPAIGN REPS (join table — one row per rep per campaign) — verbatim
+-- CAMPAIGN REPS (join table — one row per talent per campaign) — verbatim
 -- ──────────────────────────────────────────────────────────────────
 
-CREATE TABLE public.campaign_reps (
+CREATE TABLE public.campaign_talents (
   id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   campaign_id             UUID NOT NULL REFERENCES public.campaigns(id) ON DELETE RESTRICT,
-  rep_id                  UUID NOT NULL REFERENCES public.rep_profiles(id) ON DELETE RESTRICT,
-  status                  rep_campaign_status NOT NULL DEFAULT 'invited',
+  talent_id                  UUID NOT NULL REFERENCES public.talent_profiles(id) ON DELETE RESTRICT,
+  status                  talent_campaign_status NOT NULL DEFAULT 'invited',
 
   -- FTC compliance
   ftc_disclosure_accepted BOOLEAN NOT NULL DEFAULT FALSE,
   ftc_accepted_at         TIMESTAMPTZ,
 
-  -- Parent approval gate (Section 9A) -- only meaningful when the rep has
+  -- Parent approval gate (Section 9A) -- only meaningful when the talent has
   -- a parent_records row with campaign_approval_required = TRUE
   parent_approval_status   parent_approval_status NOT NULL DEFAULT 'not_required',
   parent_approval_deadline TIMESTAMPTZ,           -- 48h from invite, mirrors invite_expires_at
@@ -151,7 +151,7 @@ CREATE TABLE public.campaign_reps (
   confirmed_at            TIMESTAMPTZ,
   paid_at                 TIMESTAMPTZ,
 
-  UNIQUE (campaign_id, rep_id)
+  UNIQUE (campaign_id, talent_id)
 );
 
 -- ──────────────────────────────────────────────────────────────────
@@ -185,12 +185,12 @@ CREATE TABLE public.recruiter_profiles (
 CREATE TABLE public.recruiter_contacts (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   recruiter_id    UUID NOT NULL REFERENCES public.recruiter_profiles(id) ON DELETE RESTRICT,
-  rep_id          UUID NOT NULL REFERENCES public.rep_profiles(id) ON DELETE RESTRICT,
+  talent_id          UUID NOT NULL REFERENCES public.talent_profiles(id) ON DELETE RESTRICT,
   message_text    TEXT NOT NULL,
   read_at         TIMESTAMPTZ,
   messaged_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
 
-  UNIQUE (recruiter_id, rep_id)       -- one contact per rep per recruiter
+  UNIQUE (recruiter_id, talent_id)       -- one contact per talent per recruiter
 );
 
 -- ──────────────────────────────────────────────────────────────────
@@ -199,14 +199,14 @@ CREATE TABLE public.recruiter_contacts (
 
 CREATE TABLE public.recruiter_saved_profiles (
   recruiter_id    UUID NOT NULL REFERENCES public.recruiter_profiles(id) ON DELETE CASCADE,
-  rep_id          UUID NOT NULL REFERENCES public.rep_profiles(id) ON DELETE CASCADE,
+  talent_id          UUID NOT NULL REFERENCES public.talent_profiles(id) ON DELETE CASCADE,
   saved_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
   list_name       TEXT DEFAULT 'Default',
-  PRIMARY KEY (recruiter_id, rep_id)
+  PRIMARY KEY (recruiter_id, talent_id)
 );
 
 -- ──────────────────────────────────────────────────────────────────
--- PARENT RECORDS (Section 9A) -- one row per parent-of-a-minor-rep
+-- PARENT RECORDS (Section 9A) -- one row per parent-of-a-minor-talent
 -- link. Parents are NOT public.users -- they authenticate via a
 -- separate magic-link flow (parent_auth_tokens below), not Supabase
 -- Auth, since they have no auth.users identity of their own.
@@ -223,26 +223,26 @@ CREATE TABLE public.recruiter_saved_profiles (
 
 CREATE TABLE public.parent_records (
   parent_id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  rep_id                        UUID NOT NULL UNIQUE REFERENCES public.rep_profiles(id) ON DELETE CASCADE,
+  talent_id                        UUID NOT NULL UNIQUE REFERENCES public.talent_profiles(id) ON DELETE CASCADE,
   parent_email                  TEXT NOT NULL,
   -- Seeded from users.parent_email at signup (Section 8's /auth/signup
-  -- behavior for under-16 reps); a row is only created for reps who
-  -- required parental consent at signup. A 16-17 rep has no
+  -- behavior for under-16 talents); a row is only created for talents who
+  -- required parental consent at signup. A 16-17 talent has no
   -- parent_records row unless a parent separately claims one -- out of
-  -- scope for MVP, so 16-17 reps without a consent-flow parent simply
+  -- scope for MVP, so 16-17 talents without a consent-flow parent simply
   -- have campaign_approval_required permanently FALSE with no row here.
   campaign_approval_required    BOOLEAN NOT NULL DEFAULT TRUE,
-  -- Always TRUE and not parent-editable while the rep is under 16
+  -- Always TRUE and not parent-editable while the talent is under 16
   -- (enforced in application code, not just a default -- see Section 9A).
   values_filters                 JSONB NOT NULL DEFAULT '[]'::jsonb,
   -- Blocked campaign categories, as a JSON array of strings. Valid
-  -- values: the same category enum used by rep_profiles.categories /
+  -- values: the same category enum used by talent_profiles.categories /
   -- campaigns.target_categories, plus the brand/product-content-only
   -- categories: alcohol_adjacent, political, dating_romantic, gambling,
   -- dietary_supplements, in_person_travel_required.
   digest_enabled                 BOOLEAN NOT NULL DEFAULT TRUE,
   portal_expires_at              TIMESTAMPTZ NOT NULL,
-  -- Set at row creation from the rep's date_of_birth (18th birthday).
+  -- Set at row creation from the talent's date_of_birth (18th birthday).
   -- Recomputed if date_of_birth is ever corrected.
   suspended_by_parent_at         TIMESTAMPTZ,
   created_at                     TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -268,7 +268,7 @@ CREATE TABLE public.parent_auth_tokens (
 -- The 24-hour parent *session* issued after a successful magic-link
 -- verification is a stateless signed token (HS256, PARENT_SESSION_SECRET
 -- -- a new env var, distinct from SUPABASE_JWT_SECRET, since parent
--- sessions are not Supabase-issued) carrying {parent_record_id, rep_id,
+-- sessions are not Supabase-issued) carrying {parent_record_id, talent_id,
 -- exp}. Nothing further is stored server-side for the session itself;
 -- only the one-time login link above needs a DB row (so it can be
 -- marked used / rate-limited).

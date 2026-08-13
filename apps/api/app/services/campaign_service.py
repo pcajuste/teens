@@ -1,9 +1,9 @@
 """Campaign-creation-time computations (Build Prompt 8 deliverable 3).
 
 Distinct from app/services/payout_service.py's calculate_platform_fee_split
-stub, which is Prompt 10's concern (the per-rep transfer amount at
+stub, which is Prompt 10's concern (the per-talent transfer amount at
 payout time) -- this module computes the one-time budget_cents split
-that happens when a brand creates a campaign, before any rep is even
+that happens when a brand creates a campaign, before any talent is even
 invited. Kept in its own module rather than un-stubbing payout_service.py
 so this prompt doesn't reach into a later prompt's file.
 
@@ -15,7 +15,7 @@ from __future__ import annotations
 async def get_or_create_stripe_customer_id(conn, settings, brand: "brand_profiles_repository.BrandProfile") -> str:
     """Lazy create-or-reuse, same shape as
     stripe_service.create_connect_account/create_connect_onboarding_link's
-    create-or-resume pattern for reps. Build Prompt 8's own build-log
+    create-or-resume pattern -- Build Prompt 8's own build-log
     note left this unwired ("service function ready for admin approval
     flow, Prompt 13") since nothing called stripe_service.create_customer
     yet; Prompt 10 deliverable 2 ("Wire /activate to create Stripe
@@ -38,34 +38,34 @@ async def get_or_create_stripe_customer_id(conn, settings, brand: "brand_profile
     return customer_id
 
 
-def compute_campaign_fee_split(*, budget_cents: int, max_reps: int, platform_fee_percent: int) -> tuple[int, int, int]:
-    """Returns (platform_fee_cents, rep_pool_cents, payout_per_rep_cents).
+def compute_campaign_fee_split(*, budget_cents: int, max_talents: int, platform_fee_percent: int) -> tuple[int, int, int]:
+    """Returns (platform_fee_cents, talent_pool_cents, payout_per_talent_cents).
 
     platform_fee_cents is round-half-up of budget_cents * platform_fee_percent / 100,
     computed entirely in integer arithmetic ((budget_cents * percent + 50) // 100)
-    to avoid float imprecision. rep_pool_cents is the exact remainder
+    to avoid float imprecision. talent_pool_cents is the exact remainder
     (budget_cents - platform_fee_cents), which guarantees
-    rep_pool_cents + platform_fee_cents == budget_cents always, by
+    talent_pool_cents + platform_fee_cents == budget_cents always, by
     construction rather than by rounding both independently and hoping
     they add up.
 
-    payout_per_rep_cents is rep_pool_cents // max_reps (integer floor
-    division) -- a flat per-rep rate, matching the single
-    payout_per_rep_cents column on campaigns (Section 7). Any remainder
-    from that division (rep_pool_cents % max_reps) is not distributed to
-    any rep; it's an intentional simplification, not a bug -- splitting
-    a few leftover cents across reps unevenly would need a `remainder
+    payout_per_talent_cents is talent_pool_cents // max_talents (integer floor
+    division) -- a flat per-talent rate, matching the single
+    payout_per_talent_cents column on campaigns (Section 7). Any remainder
+    from that division (talent_pool_cents % max_talents) is not distributed to
+    any talent; it's an intentional simplification, not a bug -- splitting
+    a few leftover cents across talents unevenly would need a `remainder
     goes to whom` rule nobody has specified.
     """
     if budget_cents < 0:
         raise ValueError("budget_cents must be >= 0")
-    if max_reps <= 0:
-        raise ValueError("max_reps must be > 0")
+    if max_talents <= 0:
+        raise ValueError("max_talents must be > 0")
 
     platform_fee_cents = (budget_cents * platform_fee_percent + 50) // 100
-    rep_pool_cents = budget_cents - platform_fee_cents
-    payout_per_rep_cents = rep_pool_cents // max_reps
-    return platform_fee_cents, rep_pool_cents, payout_per_rep_cents
+    talent_pool_cents = budget_cents - platform_fee_cents
+    payout_per_talent_cents = talent_pool_cents // max_talents
+    return platform_fee_cents, talent_pool_cents, payout_per_talent_cents
 
 
 class MilestoneValidationError(ValueError):

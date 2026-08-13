@@ -37,7 +37,7 @@ async function parseError(res: Response): Promise<never> {
       detail = body.error;
     }
   } catch {
-    // response body wasn't JSON -- fall back to the generic message above
+    // response  body wasn't JSON -- fall back to the generic message above
   }
   throw new ApiError(code, message, detail);
 }

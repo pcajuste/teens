@@ -11,7 +11,7 @@ interface ConfirmDialogProps {
   confirmVariant?: "default" | "destructive";
   onCancel: () => void;
   /** Fires the real request. The dialog never assumes success locally --
-   * the caller re-fetches/updates state from the response. */
+   * the caller re-fetches/updates state from the response . */
   onConfirm: () => Promise<void>;
   children?: React.ReactNode;
   confirmDisabled?: boolean;
@@ -50,17 +50,35 @@ export function ConfirmDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      role="dialog"
+      aria-modal="true"
+    >
       <div className="w-full max-w-sm rounded-xl border border-border bg-card p-6 shadow-md">
         <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
         <p className="mt-2 text-sm text-muted-foreground">{description}</p>
         {children ? <div className="mt-4">{children}</div> : null}
-        {error ? <p className="mt-3 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p> : null}
+        {error ? (
+          <p className="mt-3 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {error}
+          </p>
+        ) : null}
         <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <Button type="button" variant="outline" onClick={onCancel} disabled={pending}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onCancel}
+            disabled={pending}
+          >
             Cancel
           </Button>
-          <Button type="button" variant={confirmVariant} onClick={handleConfirm} disabled={pending || confirmDisabled}>
+          <Button
+            type="button"
+            variant={confirmVariant}
+            onClick={handleConfirm}
+            disabled={pending || confirmDisabled}
+          >
             {pending ? "Working..." : confirmLabel}
           </Button>
         </div>

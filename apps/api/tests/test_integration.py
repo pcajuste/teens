@@ -37,14 +37,14 @@ _CAMPAIGN_BODY = {
     "deliverables_description": "One TikTok post",
     "target_categories": ["gaming"],
     "target_cities": ["Austin"],
-    "max_reps": 5,
+    "max_talents": 5,
     "budget_cents": 100_000,
     "start_date": (date.today() + timedelta(days=10)).isoformat(),
     "end_date": (date.today() + timedelta(days=40)).isoformat(),
 }
 
-_REP_PROFILE_BODY = {
-    "display_name": "Test Rep",
+_talent_PROFILE_BODY = {
+    "display_name": "Test Talent",
     "school_name": "Test High",
     "school_type": "public",
     "city": "Austin",
@@ -57,12 +57,12 @@ _REP_PROFILE_BODY = {
 }
 
 
-def _rep_jwt(settings, *, sub: str, account_status: str = "active") -> dict[str, str]:
+def _talent_jwt(settings, *, sub: str, account_status: str = "active") -> dict[str, str]:
     payload = {
         "sub": sub,
         "email": f"{sub}@example.com",
         "aud": "authenticated",
-        "app_metadata": {"role": "rep", "account_status": account_status},
+        "app_metadata": {"role": "talent", "account_status": account_status},
         "exp": int(time.time()) + 3600,
     }
     token = jwt.encode(payload, settings.supabase_jwt_secret, algorithm="HS256")
@@ -80,22 +80,22 @@ def _dob_for_age(age: int) -> str:
     return date(today.year - age, today.month, 1).isoformat()
 
 
-def _seed_onboarded_rep_direct(db, *, age: int = 20) -> tuple[str, str]:
-    """Directly seed a rep with an active account (no parental consent
+def _seed_onboarded_talent_direct(db, *, age: int = 20) -> tuple[str, str]:
+    """Directly seed a talent with an active account (no parental consent
     needed) -- used as a participant in the campaign lifecycle test,
     where the thing under test is the campaign flow, not signup."""
-    rep_user_id = str(uuid.uuid4())
-    rep_email = f"rep-{rep_user_id}@example.com"
+    talent_user_id = str(uuid.uuid4())
+    talent_email = f"talent-{talent_user_id}@example.com"
     dob = date(date.today().year - age, 6, 1)
-    db.execute("INSERT INTO auth.users (id, email) VALUES ($1, $2)", rep_user_id, rep_email)
+    db.execute("INSERT INTO auth.users (id, email) VALUES ($1, $2)", talent_user_id, talent_email)
     db.execute(
         "INSERT INTO public.users (id, email, role, account_status, date_of_birth) "
-        "VALUES ($1, $2, 'rep', 'active', $3)",
-        rep_user_id,
-        rep_email,
+        "VALUES ($1, $2, 'talent', 'active', $3)",
+        talent_user_id,
+        talent_email,
         dob,
     )
-    return rep_user_id, rep_email
+    return talent_user_id, talent_email
 
 
 @pytest.fixture()
@@ -180,23 +180,23 @@ def test_full_campaign_lifecycle_creation_to_paid_out_rep(client, db, settings, 
     assert webhook_resp.status_code == 200
     assert db.fetchval("SELECT status FROM public.campaigns WHERE id = $1", created["id"]) == "active"
 
-    # Rep onboards, discovers the now-active campaign, applies, and is
+    # talent onboards, discovers the now-active campaign, applies, and is
     # accepted (FTC disclosure required to unlock submission).
-    rep_user_id, _ = _seed_onboarded_rep_direct(db)
-    rep_headers = _rep_jwt(settings, sub=rep_user_id)
+    talent_user_id, _ = _seed_onboarded_talent_direct(db)
+    talent_headers = _talent_jwt(settings, sub=talent_user_id)
 
-    profile = client.put("/reps/me", json=_REP_PROFILE_BODY, headers=rep_headers)
+    profile = client.put("/talents/me", json=_talent_PROFILE_BODY, headers=talent_headers)
     assert profile.status_code == 200
 
-    available = client.get("/reps/campaigns/available", headers=rep_headers)
+    available = client.get("/talents/campaigns/available", headers=talent_headers)
     assert created["id"] in [c["id"] for c in available.json()]
 
-    apply_resp = client.post(f"/campaigns/{created['id']}/apply", headers=rep_headers)
+    apply_resp = client.post(f"/campaigns/{created['id']}/apply", headers=talent_headers)
     assert apply_resp.status_code == 201
     assert apply_resp.json()["status"] == "invited"
 
     accept_resp = client.post(
-        f"/campaigns/{created['id']}/accept", json={"ftc_disclosure_accepted": True}, headers=rep_headers
+        f"/campaigns/{created['id']}/accept", json={"ftc_disclosure_accepted": True}, headers=talent_headers
     )
     assert accept_resp.status_code == 200
     assert accept_resp.json()["status"] == "accepted"
@@ -204,20 +204,20 @@ def test_full_campaign_lifecycle_creation_to_paid_out_rep(client, db, settings, 
     submit_resp = client.post(
         f"/campaigns/{created['id']}/submit",
         json={"submission_text": "Posted!", "submission_file_urls": []},
-        headers=rep_headers,
+        headers=talent_headers,
     )
     assert submit_resp.status_code == 200
     assert submit_resp.json()["status"] == "submitted"
 
-    # Rep completes Stripe Connect onboarding so confirm() can pay them out.
-    rep_id = db.fetchval("SELECT id FROM public.rep_profiles WHERE user_id = $1", rep_user_id)
+    # talent completes Stripe Connect onboarding so confirm() can pay them out.
+    talent_id = db.fetchval("SELECT id FROM public.talent_profiles WHERE user_id = $1", talent_user_id)
     db.execute(
-        "UPDATE public.rep_profiles SET stripe_account_id = 'acct_fake_lifecycle', stripe_onboarding_complete = TRUE WHERE id = $1",
-        rep_id,
+        "UPDATE public.talent_profiles SET stripe_account_id = 'acct_fake_lifecycle', stripe_onboarding_complete = TRUE WHERE id = $1",
+        talent_id,
     )
 
     fake_stripe.calls.clear()
-    confirm_resp = client.post(f"/brands/campaigns/{created['id']}/reps/{rep_id}/confirm", headers=brand_headers)
+    confirm_resp = client.post(f"/brands/campaigns/{created['id']}/talents/{talent_id}/confirm", headers=brand_headers)
     assert confirm_resp.status_code == 200
     confirm_body = confirm_resp.json()
     assert confirm_body["status"] == "confirmed"
@@ -225,11 +225,11 @@ def test_full_campaign_lifecycle_creation_to_paid_out_rep(client, db, settings, 
 
     call_names = [name for name, _ in fake_stripe.calls]
     assert call_names == ["Transfer.create"]
-    transfer_id = db.fetchval("SELECT stripe_transfer_id FROM public.campaign_reps WHERE rep_id = $1 AND campaign_id = $2", rep_id, created["id"])
+    transfer_id = db.fetchval("SELECT stripe_transfer_id FROM public.campaign_talents WHERE talent_id = $1 AND campaign_id = $2", talent_id, created["id"])
     assert transfer_id is not None
 
-    # Stripe reports the transfer paid -- rep's campaign_reps row and
-    # cached rep_profiles totals reflect a completed, paid-out engagement.
+    # Stripe reports the transfer paid -- talent's campaign_talents row and
+    # cached talent_profiles totals reflect a completed, paid-out engagement.
     payload2 = json.dumps(
         {"id": "evt_lifecycle_tr_paid", "object": "event", "type": "transfer.paid", "data": {"object": {"id": transfer_id}}}
     ).encode()
@@ -238,34 +238,34 @@ def test_full_campaign_lifecycle_creation_to_paid_out_rep(client, db, settings, 
     assert webhook_resp2.status_code == 200
 
     final = db.fetch(
-        "SELECT status, payout_status, paid_at FROM public.campaign_reps WHERE rep_id = $1 AND campaign_id = $2",
-        rep_id,
+        "SELECT status, payout_status, paid_at FROM public.campaign_talents WHERE talent_id = $1 AND campaign_id = $2",
+        talent_id,
         created["id"],
     )[0]
     assert final["status"] == "paid"
     assert final["payout_status"] == "paid"
     assert final["paid_at"] is not None
 
-    rep_totals = db.fetch(
-        "SELECT total_campaigns_completed, total_earnings_cents FROM public.rep_profiles WHERE id = $1", rep_id
+    talent_totals = db.fetch(
+        "SELECT total_campaigns_completed, total_earnings_cents FROM public.talent_profiles WHERE id = $1", talent_id
     )[0]
-    assert rep_totals["total_campaigns_completed"] == 1
-    assert rep_totals["total_earnings_cents"] == created["payout_per_rep_cents"]
+    assert talent_totals["total_campaigns_completed"] == 1
+    assert talent_totals["total_earnings_cents"] == created["payout_per_talent_cents"]
 
 
 # ---------------------------------------------------------------------
 # 2. Parental-consent signup-to-active flow, end to end through real
-#    endpoints, finishing with an authenticated rep-only call.
+#    endpoints, finishing with an authenticated talent-only call.
 # ---------------------------------------------------------------------
 
 
-def test_parental_consent_signup_to_active_rep_can_use_authenticated_endpoint(client, db, settings, fake_resend_client):
+def test_parental_consent_signup_to_active_talent_can_use_authenticated_endpoint(client, db, settings, fake_resend_client):
     signup_resp = client.post(
         "/auth/signup",
         json={
             "email": "under16@example.com",
             "password": "correct-horse-battery",
-            "role": "rep",
+            "role": "talent",
             "date_of_birth": _dob_for_age(15),
             "parent_email": "parent-of-under16@example.com",
         },
@@ -273,11 +273,11 @@ def test_parental_consent_signup_to_active_rep_can_use_authenticated_endpoint(cl
     assert signup_resp.status_code == 201
     signup_body = signup_resp.json()
     assert signup_body["account_status"] == "pending"
-    rep_user_id = signup_body["id"]
+    talent_user_id = signup_body["id"]
 
-    # Pending account cannot yet use a rep-only endpoint.
-    pending_headers = _rep_jwt(settings, sub=rep_user_id, account_status="pending")
-    blocked = client.put("/reps/me", json=_REP_PROFILE_BODY, headers=pending_headers)
+    # Pending account cannot yet use a talent-only endpoint.
+    pending_headers = _talent_jwt(settings, sub=talent_user_id, account_status="pending")
+    blocked = client.put("/talents/me", json=_talent_PROFILE_BODY, headers=pending_headers)
     assert blocked.status_code == 403
 
     # Parent receives the consent email and clicks the verify link.
@@ -289,47 +289,47 @@ def test_parental_consent_signup_to_active_rep_can_use_authenticated_endpoint(cl
     verify_resp = client.post(f"/auth/parent-verify/{token}")
     assert verify_resp.status_code == 200
     assert verify_resp.json()["account_status"] == "active"
-    assert db.fetchval("SELECT account_status FROM public.users WHERE id = $1", rep_user_id) == "active"
+    assert db.fetchval("SELECT account_status FROM public.users WHERE id = $1", talent_user_id) == "active"
 
-    # Account is now active -- the rep can hit an authenticated,
-    # rep-only endpoint successfully.
-    active_headers = _rep_jwt(settings, sub=rep_user_id, account_status="active")
-    profile_resp = client.put("/reps/me", json=_REP_PROFILE_BODY, headers=active_headers)
+    # Account is now active -- the talent can hit an authenticated,
+    # talent-only endpoint successfully.
+    active_headers = _talent_jwt(settings, sub=talent_user_id, account_status="active")
+    profile_resp = client.put("/talents/me", json=_talent_PROFILE_BODY, headers=active_headers)
     assert profile_resp.status_code == 200
-    assert profile_resp.json()["display_name"] == "Test Rep"
+    assert profile_resp.json()["display_name"] == "Test Talent"
 
 
 # ---------------------------------------------------------------------
 # 3. Parent portal campaign approval flow: approve unlocks accept,
-#    block keeps a campaign out of the rep's available list.
+#    block keeps a campaign out of the talent's available list.
 # ---------------------------------------------------------------------
 
 
 def test_parent_portal_approval_flow_approve_unlocks_accept_and_block_hides_campaign(
-    client, db, settings, fake_resend_client, seed_rep_with_parent, seed_pending_campaign, auth_headers_factory
+    client, db, settings, fake_resend_client, seed_talent_with_parent, seed_pending_campaign, auth_headers_factory
 ):
-    seeded = seed_rep_with_parent(age=15, campaign_approval_required=True)
-    rep_headers = _rep_jwt(settings, sub=seeded.rep_user_id)
+    seeded = seed_talent_with_parent(age=15, campaign_approval_required=True)
+    talent_headers = _talent_jwt(settings, sub=seeded.talent_user_id)
 
     parent_payload = {
         "parent_id": seeded.parent_id,
-        "rep_id": seeded.rep_id,
+        "talent_id": seeded.talent_id,
         "iss": PARENT_SESSION_ISSUER,
         "exp": int(time.time()) + 3600,
     }
     parent_token = jwt.encode(parent_payload, settings.parent_session_secret, algorithm="HS256")
     parent_headers = {"Authorization": f"Bearer {parent_token}"}
 
-    # Campaign 1: rep is invited to a campaign requiring parent approval.
-    campaign_id_1 = seed_pending_campaign(rep_id=seeded.rep_id, target_categories=["gaming"])
+    # Campaign 1: talent is invited to a campaign requiring parent approval.
+    campaign_id_1 = seed_pending_campaign(talent_id=seeded.talent_id, target_categories=["gaming"])
 
     pending = client.get("/parent/campaigns/pending", headers=parent_headers)
     assert pending.status_code == 200
     assert len(pending.json()) == 1
 
-    # Rep cannot accept while parent approval is still pending.
+    # talent cannot accept while parent approval is still pending.
     blocked_accept = client.post(
-        f"/campaigns/{campaign_id_1}/accept", json={"ftc_disclosure_accepted": True}, headers=rep_headers
+        f"/campaigns/{campaign_id_1}/accept", json={"ftc_disclosure_accepted": True}, headers=talent_headers
     )
     assert blocked_accept.status_code == 403
     assert blocked_accept.json()["error"]["code"] == "awaiting_parent_approval"
@@ -339,24 +339,24 @@ def test_parent_portal_approval_flow_approve_unlocks_accept_and_block_hides_camp
     assert approve_resp.json()["parent_approval_status"] == "approved"
 
     accept_resp = client.post(
-        f"/campaigns/{campaign_id_1}/accept", json={"ftc_disclosure_accepted": True}, headers=rep_headers
+        f"/campaigns/{campaign_id_1}/accept", json={"ftc_disclosure_accepted": True}, headers=talent_headers
     )
     assert accept_resp.status_code == 200
     assert accept_resp.json()["status"] == "accepted"
 
-    # Campaign 2: rep applies to a different campaign requiring approval,
+    # Campaign 2: talent applies to a different campaign requiring approval,
     # visible in "available" until applied, then parent blocks it.
-    campaign_id_2 = seed_pending_campaign(rep_id=seeded.rep_id, target_categories=["gaming"])
-    # seed_pending_campaign always creates its own campaign_reps invite
-    # row for `rep_id` -- delete it so we can drive the "apply" step
+    campaign_id_2 = seed_pending_campaign(talent_id=seeded.talent_id, target_categories=["gaming"])
+    # seed_pending_campaign always creates its own campaign_talents invite
+    # row for `talent_id` -- delete it so we can drive the "apply" step
     # through the real endpoint instead, matching the flow under test.
-    db.execute("DELETE FROM public.campaign_reps WHERE campaign_id = $1", campaign_id_2)
+    db.execute("DELETE FROM public.campaign_talents WHERE campaign_id = $1", campaign_id_2)
 
-    available_before = client.get("/reps/campaigns/available", headers=rep_headers)
+    available_before = client.get("/talents/campaigns/available", headers=talent_headers)
     assert available_before.status_code == 200
     assert campaign_id_2 in [c["id"] for c in available_before.json()]
 
-    apply_resp = client.post(f"/campaigns/{campaign_id_2}/apply", headers=rep_headers)
+    apply_resp = client.post(f"/campaigns/{campaign_id_2}/apply", headers=talent_headers)
     assert apply_resp.status_code == 201
     assert apply_resp.json()["parent_approval_status"] == "pending"
 
@@ -364,6 +364,6 @@ def test_parent_portal_approval_flow_approve_unlocks_accept_and_block_hides_camp
     assert block_resp.status_code == 200
     assert block_resp.json()["parent_approval_status"] == "blocked"
 
-    available_after = client.get("/reps/campaigns/available", headers=rep_headers)
+    available_after = client.get("/talents/campaigns/available", headers=talent_headers)
     assert available_after.status_code == 200
     assert campaign_id_2 not in [c["id"] for c in available_after.json()]

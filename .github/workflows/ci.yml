@@ -145,7 +145,7 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium
 
       # No live Supabase/FastAPI backend in this job -- only the
-      # unauthenticated /demo/rep portal and the two public /rep/* pages
+      # unauthenticated /demo/talent portal and the two public /talent/* pages
       # get exercised (see tests-e2e/*.spec.ts for scope notes).
       - name: Run Playwright suite
         working-directory: apps/web

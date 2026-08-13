@@ -11,7 +11,10 @@ import { BrandShell } from "@/components/brand/brand-shell";
 import { api, ApiError } from "@/lib/api";
 import type { Challenge, ChallengeStatus } from "@/lib/types";
 
-const STATUS_VARIANT: Record<ChallengeStatus, "outline" | "success" | "secondary"> = {
+const STATUS_VARIANT: Record<
+  ChallengeStatus,
+  "outline" | "success" | "secondary"
+> = {
   draft: "outline",
   active: "success",
   closed: "secondary",
@@ -33,11 +36,20 @@ export default function BrandChallengesPage() {
     api
       .get<Challenge[]>("/brands/challenges")
       .then(setChallenges)
-      .catch((err) => setError(err instanceof ApiError ? err.message : "Could not load your challenges."));
+      .catch((err) =>
+        setError(
+          err instanceof ApiError
+            ? err.message
+            : "Could not load your challenges.",
+        ),
+      );
   }, []);
 
   const zeroConversionWarning = (challenges ?? []).some(
-    (c) => c.status === "closed" && c.submissions_count >= ZERO_CONVERSION_SUBMISSIONS_THRESHOLD && c.conversion_count === 0
+    (c) =>
+      c.status === "closed" &&
+      c.submissions_count >= ZERO_CONVERSION_SUBMISSIONS_THRESHOLD &&
+      c.conversion_count === 0,
   );
 
   return (
@@ -49,12 +61,17 @@ export default function BrandChallengesPage() {
         </Link>
       }
     >
-      {error ? <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p> : null}
+      {error ? (
+        <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {error}
+        </p>
+      ) : null}
 
       {zeroConversionWarning ? (
         <Card className="border-warning/40 bg-warning/10 p-4 text-sm">
-          Consider using challenges to discover reps for active campaigns. Reps invest time in submissions --
-          converting the best ones builds your brand reputation on Teenure.
+          Consider using challenges to discover talents for active campaigns.
+          Talents invest time in submissions -- converting the best ones builds
+          your brand reputation on Teenure.
         </Card>
       ) : null}
 
@@ -66,7 +83,7 @@ export default function BrandChallengesPage() {
       ) : challenges.length === 0 ? (
         <EmptyState
           title="No challenges yet"
-          description="Post an open creative brief to discover reps before committing campaign budget."
+          description="Post an open creative brief to discover talents before committing campaign budget."
           action={
             <Link href="/brand/challenges/new">
               <Button>Create a challenge</Button>
@@ -81,15 +98,21 @@ export default function BrandChallengesPage() {
                 <CardHeader>
                   <div className="flex items-center justify-between gap-2">
                     <CardTitle>{c.title}</CardTitle>
-                    <Badge variant={STATUS_VARIANT[c.status]}>{STATUS_LABEL[c.status]}</Badge>
+                    <Badge variant={STATUS_VARIANT[c.status]}>
+                      {STATUS_LABEL[c.status]}
+                    </Badge>
                   </div>
                 </CardHeader>
                 <CardContent>
                   <p className="text-sm text-muted-foreground">{c.category}</p>
                   <div className="flex items-center justify-between pt-2 text-sm">
-                    <span className="text-muted-foreground">{c.submissions_count} submissions</span>
+                    <span className="text-muted-foreground">
+                      {c.submissions_count} submissions
+                    </span>
                     <span className="font-semibold text-foreground">
-                      {c.conversion_rate != null ? `${Math.round(c.conversion_rate * 100)}% converted` : "—"}
+                      {c.conversion_rate != null
+                        ? `${Math.round(c.conversion_rate * 100)}% converted`
+                        : "—"}
                     </span>
                   </div>
                 </CardContent>

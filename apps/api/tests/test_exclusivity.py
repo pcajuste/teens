@@ -50,7 +50,7 @@ def _campaign_body(*, category: str = "gaming", city: str = "Austin", start_offs
         "deliverables_description": "A series of posts",
         "target_categories": [category],
         "target_cities": [city],
-        "max_reps": 3,
+        "max_talents": 3,
         "budget_cents": 100_000,
         "start_date": (date.today() + timedelta(days=start_offset)).isoformat(),
         "end_date": (date.today() + timedelta(days=end_offset)).isoformat(),
@@ -90,9 +90,9 @@ def brand_headers(auth_headers_factory):
 @pytest.fixture()
 def onboarded_brand(client, db, brand_headers):
     _seed_brand_user(db, user_id=BRAND_USER_ID, email="brand@example.com")
-    response = client.put("/brands/me", json=_BRAND_PROFILE_BODY, headers=brand_headers)
-    assert response.status_code == 200
-    return response.json()
+    response  = client.put("/brands/me", json=_BRAND_PROFILE_BODY, headers=brand_headers)
+    assert response .status_code == 200
+    return response .json()
 
 
 @pytest.fixture()
@@ -103,13 +103,13 @@ def second_brand(client, db, settings):
     email = f"brand2-{user_id}@example.com"
     _seed_brand_user(db, user_id=user_id, email=email)
     headers = _brand_headers(settings, user_id=user_id, email=email)
-    response = client.put(
+    response  = client.put(
         "/brands/me",
         json={**_BRAND_PROFILE_BODY, "company_name": "Competitor Co"},
         headers=headers,
     )
-    assert response.status_code == 200
-    return {"headers": headers, "profile": response.json()}
+    assert response .status_code == 200
+    return {"headers": headers, "profile": response .json()}
 
 
 @pytest.fixture()
@@ -227,12 +227,12 @@ def _seed_paid_agreement(db, *, brand_id: str, category: str = "gaming", city: s
 def test_pricing_endpoint_uses_config_rate(client, monkeypatch, settings):
     starts_at = datetime.now(timezone.utc) + timedelta(days=1)
     ends_at = starts_at + timedelta(days=30)
-    response = client.get(
+    response  = client.get(
         "/brands/exclusivity/pricing",
         params={"category": "gaming", "city": "Austin", "starts_at": starts_at.isoformat(), "ends_at": ends_at.isoformat()},
     )
-    assert response.status_code == 200
-    body = response.json()
+    assert response .status_code == 200
+    body = response .json()
     assert body["days"] == 30
     assert body["rate_per_day_cents"] == settings.exclusivity_base_rate_cents_per_day
     assert body["total_cents"] == 30 * settings.exclusivity_base_rate_cents_per_day
@@ -253,12 +253,12 @@ def test_changing_base_rate_changes_pricing_response(client, settings):
     original = settings.exclusivity_base_rate_cents_per_day
     try:
         settings.exclusivity_base_rate_cents_per_day = 9000
-        response = client.get(
+        response  = client.get(
             "/brands/exclusivity/pricing",
             params={"category": "gaming", "starts_at": starts_at.isoformat(), "ends_at": ends_at.isoformat()},
         )
-        assert response.status_code == 200
-        body = response.json()
+        assert response .status_code == 200
+        body = response .json()
         assert body["rate_per_day_cents"] == 9000
         assert body["total_cents"] == 10 * 9000
     finally:
@@ -273,19 +273,19 @@ def test_changing_base_rate_changes_pricing_response(client, settings):
 def test_check_available_when_no_conflict(client):
     starts_at = datetime.now(timezone.utc) + timedelta(days=1)
     ends_at = starts_at + timedelta(days=30)
-    response = client.get(
+    response  = client.get(
         "/brands/exclusivity/check",
         params={"category": "gaming", "city": "Austin", "starts_at": starts_at.isoformat(), "ends_at": ends_at.isoformat()},
     )
-    assert response.status_code == 200
-    body = response.json()
+    assert response .status_code == 200
+    body = response .json()
     assert body["available"] is True
     assert body["conflict"]["exists"] is False
 
 
 def test_check_unavailable_never_leaks_conflicting_brand_id(client, db, onboarded_brand):
     agreement = _seed_paid_agreement(db, brand_id=onboarded_brand["id"])
-    response = client.get(
+    response  = client.get(
         "/brands/exclusivity/check",
         params={
             "category": agreement["category"],
@@ -294,8 +294,8 @@ def test_check_unavailable_never_leaks_conflicting_brand_id(client, db, onboarde
             "ends_at": agreement["ends_at"].isoformat(),
         },
     )
-    assert response.status_code == 200
-    body = response.json()
+    assert response .status_code == 200
+    body = response .json()
     assert body["available"] is False
     assert body["conflict"] == {"exists": True}
     assert "brand" not in json.dumps(body).lower().replace("gaming", "")  # only bool fields, no brand_id anywhere
@@ -307,9 +307,9 @@ def test_check_unavailable_never_leaks_conflicting_brand_id(client, db, onboarde
 
 
 def test_purchase_creates_pending_agreement_and_payment_intent(client, brand_headers, onboarded_brand, fake_stripe):
-    response = client.post("/brands/exclusivity/purchase", json=_purchase_body(), headers=brand_headers)
-    assert response.status_code == 201
-    body = response.json()
+    response  = client.post("/brands/exclusivity/purchase", json=_purchase_body(), headers=brand_headers)
+    assert response .status_code == 201
+    body = response .json()
     assert body["client_secret"].startswith("pi_fake")
     assert body["fee_cents"] == 30 * 5000
 
@@ -322,11 +322,11 @@ def test_purchase_creates_pending_agreement_and_payment_intent(client, brand_hea
 
 def test_purchase_conflict_returns_409_without_naming_brand(client, db, onboarded_brand, second_brand, fake_stripe):
     _seed_paid_agreement(db, brand_id=onboarded_brand["id"])
-    response = client.post(
+    response  = client.post(
         "/brands/exclusivity/purchase", json=_purchase_body(), headers=second_brand["headers"]
     )
-    assert response.status_code == 409
-    text = json.dumps(response.json())
+    assert response .status_code == 409
+    text = json.dumps(response .json())
     assert onboarded_brand["id"] not in text
     # No PaymentIntent should have been created for a rejected purchase.
     assert not any(name == "PaymentIntent.create" for name, _ in fake_stripe.calls)
@@ -338,12 +338,12 @@ def test_self_conflict_exemption_on_purchase(client, db, onboarded_brand, brand_
     the same window (exclude_brand_id self-exemption, Section 8C: 'the
     owning brand to create campaigns in their own exclusive window')."""
     _seed_paid_agreement(db, brand_id=onboarded_brand["id"], category="gaming", city="Austin")
-    response = client.post(
+    response  = client.post(
         "/brands/exclusivity/purchase",
         json=_purchase_body(category="gaming", city="Austin"),
         headers=brand_headers,
     )
-    assert response.status_code == 201
+    assert response .status_code == 201
 
 
 def test_purchase_rolls_back_payment_intent_on_row_creation_failure(client, brand_headers, onboarded_brand, fake_stripe, monkeypatch):
@@ -374,10 +374,10 @@ def test_purchase_rolls_back_payment_intent_on_row_creation_failure(client, bran
     original_flag = transport.raise_server_exceptions
     transport.raise_server_exceptions = False
     try:
-        response = client.post("/brands/exclusivity/purchase", json=_purchase_body(), headers=brand_headers)
+        response  = client.post("/brands/exclusivity/purchase", json=_purchase_body(), headers=brand_headers)
     finally:
         transport.raise_server_exceptions = original_flag
-    assert response.status_code == 500
+    assert response .status_code == 500
 
     call_names = [name for name, _ in fake_stripe.calls]
     assert "PaymentIntent.create" in call_names
@@ -436,8 +436,8 @@ def test_payment_intent_succeeded_marks_paid_and_emails_brand(client, db, settin
         },
     }
     payload, sig = _signed_webhook(settings, event)
-    response = client.post("/webhooks/stripe", data=payload, headers={"Stripe-Signature": sig})
-    assert response.status_code == 200
+    response  = client.post("/webhooks/stripe", data=payload, headers={"Stripe-Signature": sig})
+    assert response .status_code == 200
 
     row = db.fetch("SELECT payment_status FROM public.category_exclusivity_agreements WHERE id = $1", agreement["id"])[0]
     assert row["payment_status"] == "paid"
@@ -460,8 +460,8 @@ def test_payment_intent_failed_sets_cancelled(client, db, settings, onboarded_br
         },
     }
     payload, sig = _signed_webhook(settings, event)
-    response = client.post("/webhooks/stripe", data=payload, headers={"Stripe-Signature": sig})
-    assert response.status_code == 200
+    response  = client.post("/webhooks/stripe", data=payload, headers={"Stripe-Signature": sig})
+    assert response .status_code == 200
 
     row = db.fetch(
         "SELECT payment_status, status FROM public.category_exclusivity_agreements WHERE id = $1", agreement["id"]
@@ -478,15 +478,15 @@ def test_payment_intent_failed_sets_cancelled(client, db, settings, onboarded_br
 
 def test_campaign_creation_blocked_by_competitor_exclusivity(client, db, onboarded_brand, second_brand):
     _seed_paid_agreement(db, brand_id=onboarded_brand["id"], category="gaming", city="Austin")
-    response = client.post("/brands/campaigns", json=_campaign_body(), headers=second_brand["headers"])
-    assert response.status_code == 409
-    assert response.json()["error"]["code"] == "exclusivity_conflict"
+    response  = client.post("/brands/campaigns", json=_campaign_body(), headers=second_brand["headers"])
+    assert response .status_code == 409
+    assert response .json()["error"]["code"] == "exclusivity_conflict"
 
 
 def test_campaign_creation_self_conflict_exempt(client, db, brand_headers, onboarded_brand):
     _seed_paid_agreement(db, brand_id=onboarded_brand["id"], category="gaming", city="Austin")
-    response = client.post("/brands/campaigns", json=_campaign_body(), headers=brand_headers)
-    assert response.status_code == 201
+    response  = client.post("/brands/campaigns", json=_campaign_body(), headers=brand_headers)
+    assert response .status_code == 201
 
 
 def test_campaign_activation_rechecked_against_later_purchased_exclusivity(client, db, brand_headers, onboarded_brand, second_brand, settings, fake_stripe):
@@ -511,7 +511,7 @@ def test_concurrent_campaign_creation_owner_succeeds_competitor_blocked(client, 
     exclusivity (self-exempt, must succeed); Brand B does not (must be
     blocked). Run sequentially against the shared TestClient (driving
     both requests through real threads onto the same TestClient/global
-    asyncpg pool proved unreliable across the rest of this suite --
+    asyncpg pool proved unreliable across the talents of this suite --
     starlette's TestClient serializes each call onto one background
     anyio portal, so two genuinely parallel calls don't exercise
     anything the direct-connection test below doesn't already cover
@@ -615,8 +615,8 @@ def test_after_expiry_campaign_no_longer_blocked(client, db, onboarded_brand, se
     agreement = _seed_paid_agreement(db, brand_id=onboarded_brand["id"], category="gaming", city="Austin", start_offset=-10, days=5)
     db.execute("UPDATE public.category_exclusivity_agreements SET status = 'expired' WHERE id = $1", agreement["id"])
 
-    response = client.post("/brands/campaigns", json=_campaign_body(), headers=second_brand["headers"])
-    assert response.status_code == 201
+    response  = client.post("/brands/campaigns", json=_campaign_body(), headers=second_brand["headers"])
+    assert response .status_code == 201
 
 
 # ---------------------------------------------------------------------
@@ -628,13 +628,13 @@ def test_admin_cancel_before_start_full_refund(client, db, onboarded_brand, fake
     agreement = _seed_paid_agreement(db, brand_id=onboarded_brand["id"], start_offset=10, days=30)
     admin_headers = auth_headers_factory("admin")
 
-    response = client.post(
+    response  = client.post(
         f"/admin/exclusivity/{agreement['id']}/cancel",
         json={"cancellation_reason": "brand requested via support"},
         headers=admin_headers,
     )
-    assert response.status_code == 200
-    body = response.json()
+    assert response .status_code == 200
+    body = response .json()
     assert body["status"] == "cancelled"
     assert body["refund_cents"] == 30 * 5000
 
@@ -650,13 +650,13 @@ def test_admin_cancel_mid_window_prorated_refund_rounded_down(client, db, onboar
     agreement = _seed_paid_agreement(db, brand_id=onboarded_brand["id"], start_offset=-4, days=10)
     admin_headers = auth_headers_factory("admin")
 
-    response = client.post(
+    response  = client.post(
         f"/admin/exclusivity/{agreement['id']}/cancel",
         json={"cancellation_reason": "duplicate purchase"},
         headers=admin_headers,
     )
-    assert response.status_code == 200
-    body = response.json()
+    assert response .status_code == 200
+    body = response .json()
     fee_cents = 30 * 5000  # seeded fee_cents is always 30 days * base rate regardless of actual window
     # refund is proportional to remaining/total *days*, rounded down --
     # exact figure depends on admin.py's day-based proration; assert the
@@ -673,9 +673,9 @@ def test_admin_cancel_mid_window_prorated_refund_rounded_down(client, db, onboar
 def test_admin_analytics_exclusivity(client, db, onboarded_brand, auth_headers_factory):
     _seed_paid_agreement(db, brand_id=onboarded_brand["id"], category="gaming")
     admin_headers = auth_headers_factory("admin")
-    response = client.get("/admin/analytics/exclusivity", headers=admin_headers)
-    assert response.status_code == 200
-    body = response.json()
+    response  = client.get("/admin/analytics/exclusivity", headers=admin_headers)
+    assert response .status_code == 200
+    body = response .json()
     assert body["total_revenue_cents"] >= 30 * 5000
     assert body["active_count"] >= 1
     assert any(c["category"] == "gaming" for c in body["categories_by_purchase_frequency"])

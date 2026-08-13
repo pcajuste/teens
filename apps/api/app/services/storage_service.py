@@ -1,4 +1,4 @@
-"""Supabase Storage upload service for rep campaign-submission files
+"""Supabase Storage upload service for talent campaign-submission files
 (Build Prompt 5 deliverable 11).
 
 Same two-implementation pattern as app/services/supabase_auth_client.py:
@@ -9,8 +9,8 @@ by Settings.environment.
 
 Access scoping: files are uploaded to a private bucket
 (`campaign-submissions`) under a key namespaced by
-`{rep_id}/{campaign_id}/{filename}`. The bucket itself is never public;
-read access for the rep and the relevant brand is granted via signed
+`{talent_id}/{campaign_id}/{filename}`. The bucket itself is never public;
+read access for the talent and the relevant brand is granted via signed
 URLs issued elsewhere (Prompt 8/10 -- brand submission viewing), not by
 this service, which only ever produces the storage key. This module
 does not read files back, only validates and writes them.
@@ -82,7 +82,7 @@ def _safe_filename(filename: str) -> str:
 
 class SubmissionStorageClient(Protocol):
     async def upload(
-        self, *, rep_id: str, campaign_id: str, filename: str, content_type: str, data: bytes
+        self, *, talent_id: str, campaign_id: str, filename: str, content_type: str, data: bytes
     ) -> UploadedFile: ...
 
 
@@ -97,12 +97,12 @@ class HttpSupabaseStorageClient:
         self._service_role_key = settings.supabase_service_role_key
 
     async def upload(
-        self, *, rep_id: str, campaign_id: str, filename: str, content_type: str, data: bytes
+        self, *, talent_id: str, campaign_id: str, filename: str, content_type: str, data: bytes
     ) -> UploadedFile:
         _validate(content_type=content_type, size_bytes=len(data))
-        key = f"{rep_id}/{campaign_id}/{_safe_filename(filename)}"
+        key = f"{talent_id}/{campaign_id}/{_safe_filename(filename)}"
         async with httpx.AsyncClient() as client:
-            response = await client.post(
+            response  = await client.post(
                 f"{self._base_url}/storage/v1/object/{SUBMISSION_BUCKET}/{key}",
                 headers={
                     "apikey": self._service_role_key,
@@ -111,7 +111,7 @@ class HttpSupabaseStorageClient:
                 },
                 content=data,
             )
-        response.raise_for_status()
+        response .raise_for_status()
         url = f"{self._base_url}/storage/v1/object/{SUBMISSION_BUCKET}/{key}"
         return UploadedFile(storage_key=key, url=url)
 
@@ -123,10 +123,10 @@ class LocalDevSubmissionStorageClient:
     shape without a storage backend."""
 
     async def upload(
-        self, *, rep_id: str, campaign_id: str, filename: str, content_type: str, data: bytes
+        self, *, talent_id: str, campaign_id: str, filename: str, content_type: str, data: bytes
     ) -> UploadedFile:
         _validate(content_type=content_type, size_bytes=len(data))
-        key = f"{rep_id}/{campaign_id}/{_safe_filename(filename)}"
+        key = f"{talent_id}/{campaign_id}/{_safe_filename(filename)}"
         return UploadedFile(storage_key=key, url=f"local-dev-storage://{SUBMISSION_BUCKET}/{key}")
 
 
