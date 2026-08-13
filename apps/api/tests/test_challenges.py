@@ -90,7 +90,7 @@ def _seed_rep(db, *, onboarded: bool = True, city: str = "Austin", categories: l
         """,
         talent_id,
         talent_user_id,
-        "acct_fake_rep" if onboarded else None,
+        f"acct_fake_{talent_id}" if onboarded else None,
         categories or ["gaming"],
         city,
         onboarded,
@@ -228,18 +228,18 @@ def test_brand_note_never_appears_in_talent_facing_response(client, db, brand_he
     assert "brand_note" not in talents.text
 
 
-def test_talent_cannot_see_another_reps_submission_via_own_endpoint(client, db, brand_headers, talent_headers_factory, onboarded_brand):
+def test_talent_cannot_see_another_talents_submission_via_own_endpoint(client, db, brand_headers, talent_headers_factory, onboarded_brand):
     challenge = _create_and_activate_challenge(client, brand_headers)
     talent_a_id, talent_a_user = _seed_rep(db)
     talent_b_id, talent_b_user = _seed_rep(db)
     headers_a = talent_headers_factory(talent_a_user)
     headers_b = talent_headers_factory(talent_b_user)
-    _submit(client, headers_a, challenge["id"], text=  "Talent A's clip")
+    _submit(client, headers_a, challenge["id"], text="Talent A's clip")
 
-    talents._b = client.get("/talents/challenges/submitted", headers=headers_b)
-    assert talents._b.status_code == 200
-    assert talents._b.json() == []
-    assert   "Talent A's clip" not in talents._b.text
+    res_b = client.get("/talents/challenges/submitted", headers=headers_b)
+    assert res_b.status_code == 200
+    assert res_b.json() == []
+    assert "Talent A's clip" not in res_b.text
 
 
 def test_declined_submission_absent_from_talent_facing_endpoint(client, db, brand_headers, talent_headers_factory, onboarded_brand):

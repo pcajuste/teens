@@ -142,7 +142,7 @@ ON CONFLICT (talent_id) DO UPDATE SET
 
 INSERT INTO public.campaigns (
   id, brand_id, title, status, product_name, campaign_goal, key_messaging,
-  deliverables_description, target_categories, target_cities, max_reps,
+  deliverables_description, target_categories, target_cities, max_talents,
   budget_cents, platform_fee_cents, talent_pool_cents, payout_per_talent_cents,
   start_date, end_date
 ) VALUES (

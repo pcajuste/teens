@@ -327,8 +327,8 @@ async def analytics_revenue(conn: asyncpg.Connection = Depends(get_connection)) 
 
 
 @admin_router.get("/analytics/talents", response_model=TalentsByCityCategoryResponse)
-async def analytics_reps(conn: asyncpg.Connection = Depends(get_connection)) -> TalentsByCityCategoryResponse:
-    result = await admin_repository.reps_by_city_and_category(conn)
+async def analytics_talents(conn: asyncpg.Connection = Depends(get_connection)) -> TalentsByCityCategoryResponse:
+    result = await admin_repository.talents_by_city_and_category(conn)
     return TalentsByCityCategoryResponse(**result)
 
 

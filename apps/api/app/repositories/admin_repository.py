@@ -320,7 +320,7 @@ async def mark_admin_released(
     """Admin-initiated manual release audit flag (deliverable 3). Called
     by app/services/payout_service.admin_release_payout right after it
     creates the new Stripe Transfer -- this stamps who/when for the
-    audit trail, records the new transfer id, and rest
+    audit trail, records the new transfer id, and resets
     payout_processing_started_at so the row drops out of the
     stuck-payments query with a fresh clock on the new transfer."""
     await conn.execute(

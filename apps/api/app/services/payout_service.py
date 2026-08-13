@@ -24,7 +24,7 @@ from datetime import datetime
 import asyncpg
 
 from app.core.config import Settings
-from app.repositories import campaign_milestones_repository, campaign_talents_repository, challenges_repository, talent_profiles_repository
+from app.repositories import admin_repository, campaign_milestones_repository, campaign_talents_repository, challenges_repository, talent_profiles_repository
 from app.services import stripe_service
 
 

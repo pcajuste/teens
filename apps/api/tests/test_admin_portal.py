@@ -379,6 +379,53 @@ def test_release_unknown_transfer_404s(client, db, admin_headers):
     assert response .status_code == 404
 
 
+def test_release_stuck_payment_succeeds_when_onboarded(client, db, admin_headers, monkeypatch):
+    """Regression test: admin_release_payout previously referenced
+    admin_repository without importing it, so this success path raised
+    NameError at runtime. The only prior test of this endpoint exercised
+    the talent_not_onboarded branch, which returns before that line ever
+    executes -- so the bug shipped without failing CI."""
+    from app.services import stripe_service
+
+    _, brand_id = _seed_active_brand(db)
+    campaign_id = _seed_campaign(db, brand_id)
+    talent_user_id, talent_id = _seed_rep(db)
+    db.execute(
+        "UPDATE public.talent_profiles SET stripe_account_id = $2, stripe_onboarding_complete = TRUE WHERE id = $1",
+        talent_id,
+        "acct_fake_admin_release",
+    )
+    now = datetime.now(timezone.utc)
+    cr_id = _seed_campaign_rep(
+        db, campaign_id, talent_id, processing_started_at=now - timedelta(hours=49), stripe_transfer_id="tr_stuck3"
+    )
+
+    calls: list[dict] = []
+
+    def _fake_transfer_create(**kwargs):
+        calls.append(kwargs)
+        from types import SimpleNamespace
+
+        return SimpleNamespace(id="tr_admin_released_new")
+
+    fake_stripe = type("FakeStripe", (), {"Transfer": type("Transfer", (), {"create": staticmethod(_fake_transfer_create)})})
+    monkeypatch.setattr(stripe_service, "stripe", fake_stripe)
+
+    response = client.post("/admin/payments/tr_stuck3/release", headers=admin_headers)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["campaign_talent_id"] == cr_id
+    assert body["admin_released"] is True
+    assert body["payout_status"] == "processing"
+    assert len(calls) == 1
+
+    rows = db.fetch("SELECT admin_released, admin_released_by, stripe_transfer_id FROM public.campaign_talents WHERE id = $1", cr_id)
+    row = rows[0]
+    assert row["admin_released"] is True
+    assert str(row["admin_released_by"]) == ADMIN_USER_ID
+    assert row["stripe_transfer_id"] == "tr_admin_released_new"
+
+
 # ══════════════════════════════════════════════════════════════════
 # Deliverable 4: analytics
 # ══════════════════════════════════════════════════════════════════
