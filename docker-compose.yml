@@ -1,0 +1,34 @@
+services:
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile.dev
+    ports:
+      - "8300:8300"
+    volumes:
+      - ./apps/api:/app
+    env_file:
+      - ./apps/api/.env.local
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8300 --reload
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile.dev
+    ports:
+      - "3300:3300"
+    volumes:
+      - .:/workspace
+      - web_node_modules:/workspace/node_modules
+      - web_app_node_modules:/workspace/apps/web/node_modules
+      - shared_types_node_modules:/workspace/packages/shared-types/node_modules
+      - web_next_cache:/workspace/apps/web/.next
+    env_file:
+      - ./apps/web/.env.local
+    command: sh -c "pnpm install --frozen-lockfile && pnpm --filter web dev --port 3300"
+
+volumes:
+  web_node_modules:
+  web_app_node_modules:
+  shared_types_node_modules:
+  web_next_cache:

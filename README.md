@@ -23,7 +23,30 @@ demo/                  Seed data for public-facing demo experiences
 pnpm install
 ```
 
-## Run both apps at once
+## Run both apps at once (recommended)
+
+```bash
+docker compose up -d
+# apps/web  -> http://localhost:3300
+# apps/api  -> http://localhost:8300/health
+
+docker compose logs -f      # tail both apps' logs
+docker compose down         # stop both
+```
+
+Builds once, then bind-mounts your source into both containers with
+hot reload (`next dev` / `uvicorn --reload`) — edits on your machine take
+effect immediately, no rebuild needed. `node_modules` lives in a named
+Docker volume so `pnpm install` only reruns when `pnpm-lock.yaml` changes.
+Requires the local Supabase CLI stack for the database (see below) —
+`apps/api/.env.local` should point `DATABASE_URL`/`NEXT_PUBLIC_SUPABASE_URL`
+at `host.docker.internal`, not `localhost`/`127.0.0.1`, so the container
+can reach the host-run Supabase stack.
+
+This is separate from `scripts/local-dev/docker-compose.yml`, which only
+spins up a bare Postgres for `pytest` (see Tests below).
+
+### Alternative: run natively with pnpm/dev.sh
 
 ```bash
 ./dev.sh
@@ -32,7 +55,8 @@ pnpm install
 ```
 
 Creates the apps/api virtualenv and installs workspace deps on first run
-if missing. Ctrl-C stops both servers.
+if missing. Ctrl-C stops both servers. Use this if you'd rather not run
+Docker, or need to debug with tools that expect a native process.
 
 ## Run apps/web (Next.js)
 
