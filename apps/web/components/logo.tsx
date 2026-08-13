@@ -4,19 +4,17 @@
 // text or hex-coded hexagon paths outside this file is a violation.
 //
 // LOGO_SIZES is the one place every placement's size is decided --
-// components reference these constants (<LogoWordmark height={LOGO_SIZES.nav} />)
-// instead of picking a number locally, so "the logo is too small"
-// feedback gets fixed once, everywhere, instead of site by site.
-// Sized deliberately large: the brand mark should be unmistakable at a
-// glance, not a discreet detail a user has to look for.
+// components reference these constants instead of picking a number
+// locally, so "the logo is too small"/"keep it uniform" feedback gets
+// fixed once, everywhere, instead of site by site. Every LogoWordmark
+// placement (nav, portal sidebar, mobile header, auth page, footer)
+// uses the exact same height -- deliberately uniform, not "smaller in
+// the footer" or any other per-context judgment call. LogoStacked is a
+// structurally different lockup (mark-above-wordmark, used once, on
+// the /verified/:token credential document) so it keeps its own size.
 export const LOGO_SIZES = {
-  nav: 52, // marketing site top nav (LogoWordmark height)
-  portalSidebar: 48, // desktop portal sidebar (LogoWordmark height)
-  portalMobileHeader: 40, // mobile portal top bar (LogoWordmark height)
-  authPage: 48, // auth screens, centered above the form card (LogoWordmark height)
-  footer: 26, // site footer -- deliberately the one smaller placement (LogoWordmark height)
+  wordmark: 48, // every LogoWordmark placement, no exceptions
   verifiedProfile: 260, // /verified/:token credential page (LogoStacked width)
-  sidebarMarkOnly: 40, // anywhere only the hex mark fits (LogoMark size)
 } as const;
 
 const TEAL = "#0D9B7A";

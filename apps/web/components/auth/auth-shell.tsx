@@ -16,7 +16,7 @@ export function AuthShell({ title, subtitle, children, footer }: AuthShellProps)
       <div className="flex flex-1 flex-col items-center justify-center px-4 py-12">
         <div className="w-full max-w-sm">
           <Link href="/" className="mb-8 flex items-center justify-center">
-            <LogoWordmark darkMode height={LOGO_SIZES.authPage} />
+            <LogoWordmark darkMode height={LOGO_SIZES.wordmark} />
           </Link>
 
           <div className="rounded-[var(--r-xl)] border border-border-muted bg-surface-2 p-8 shadow-[var(--shadow-card)] sm:px-12 sm:py-10">
