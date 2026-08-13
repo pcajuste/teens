@@ -74,7 +74,7 @@ export function LogoWordmark({ darkMode = false, height = 30 }: { darkMode?: boo
         fontWeight="700"
         style={{ letterSpacing: "-0.5px" }}
       >
-        <tspan fill={ink}>teen</tspan>
+        <tspan fill={ink}>Teen</tspan>
         <tspan fill={TEAL}>ure</tspan>
       </text>
     </svg>
@@ -113,7 +113,7 @@ export function LogoStacked({ darkMode = false, width = 220 }: { darkMode?: bool
         fontWeight="700"
         style={{ letterSpacing: "-0.6px" }}
       >
-        <tspan fill={ink}>teen</tspan>
+        <tspan fill={ink}>Teen</tspan>
         <tspan fill={TEAL}>ure</tspan>
       </text>
       <text
