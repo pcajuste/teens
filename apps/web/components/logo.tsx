@@ -67,7 +67,7 @@ export function LogoWordmark({ darkMode = false, height = 30 }: { darkMode?: boo
       <circle cx="104" cy="31.5" r="2.5" fill={TEAL} />
       <text
         x="122"
-        y="45"
+        y="48"
         textAnchor="start"
         fontFamily="Inter, 'Helvetica Neue', Arial, sans-serif"
         fontSize="28"
