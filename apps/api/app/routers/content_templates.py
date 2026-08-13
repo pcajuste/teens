@@ -473,6 +473,16 @@ async def insight_campaign_results(
 # ══════════════════════════════════════════════════════════════════
 
 
+@talents_insight_router.get("/opt-in")
+async def get_insight_opt_in(
+    user: AuthenticatedUser = Depends(require_role("talent")),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> dict:
+    profile = await _get_own_talent_profile(conn, user)
+    opted_in = await talent_profiles_repository.get_insight_feedback_opt_in(conn, profile.id)
+    return {"opted_in": opted_in}
+
+
 @talents_insight_router.put("/opt-in")
 async def set_insight_opt_in(
     opted_in: bool,

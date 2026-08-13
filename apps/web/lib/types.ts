@@ -836,6 +836,14 @@ export interface Challenge {
   closes_at: string | null;
   created_at: string;
   updated_at: string;
+  // Build Prompt 8I content layer
+  goal_text: string | null;
+  rules_text: string | null;
+  judging_criteria: string | null;
+  prize_reward_text: string | null;
+  why_text: string | null;
+  moderation_status: ModerationStatus;
+  rejection_reason: string | null;
 }
 
 export interface ChallengeCreateRequest {
@@ -984,3 +992,146 @@ export const GOAL_TYPE_LABELS: Record<GoalType, string> = {
 };
 
 export const MAX_ACTIVE_GOALS = 3;
+
+// ─────────────────────────────────────────────────────────────────
+// Build Prompt 8I: Brand Content Templates & Delivery Framework
+// ─────────────────────────────────────────────────────────────────
+
+export interface CompanyProfile {
+  logo_url: string | null;
+  brand_color_primary: string | null;
+  about_text: string | null;
+  why_on_teenure_text: string | null;
+  complete: boolean;
+}
+
+export interface CompanyProfileUpdateRequest {
+  logo_url?: string | null;
+  brand_color_primary?: string | null;
+  about_text: string;
+  why_on_teenure_text: string;
+}
+
+export type ModerationStatus = "draft" | "pending_review" | "approved" | "rejected";
+
+export interface EligibilityCriterion {
+  label: string;
+  required: boolean;
+}
+
+export interface Scholarship {
+  id: string;
+  title: string;
+  award_amount_cents: number;
+  number_of_awards: number;
+  eligibility_criteria: EligibilityCriterion[];
+  application_requirements: string;
+  why_text: string;
+  image_url: string | null;
+  video_url: string | null;
+  deadline: string;
+  moderation_status: ModerationStatus;
+  rejection_reason: string | null;
+  status: "draft" | "active" | "closed";
+  created_at: string;
+}
+
+export interface ScholarshipCreateRequest {
+  title: string;
+  award_amount_cents: number;
+  number_of_awards: number;
+  eligibility_criteria: EligibilityCriterion[];
+  application_requirements: string;
+  why_text: string;
+  image_url?: string | null;
+  video_url?: string | null;
+  deadline: string;
+}
+
+export interface ScholarshipApplication {
+  id: string;
+  scholarship_id: string;
+  response_text: string;
+  status: "submitted" | "under_review" | "awarded" | "declined";
+  submitted_at: string;
+  reviewed_at: string | null;
+}
+
+export interface ScholarshipApplicationBrandView {
+  id: string;
+  talent_id: string;
+  response_text: string;
+  status: string;
+  submitted_at: string;
+}
+
+export interface ChallengeContentLayerUpdateRequest {
+  goal_text?: string | null;
+  rules_text?: string | null;
+  judging_criteria?: string | null;
+  prize_reward_text?: string | null;
+  why_text: string;
+}
+
+export interface InsightEligibility {
+  legal_entity_verified: boolean;
+  named_contact_verified: boolean;
+  business_presence_verified: boolean;
+  funding_confirmed: boolean;
+  content_agreement_signed: boolean;
+  is_early_stage_startup: boolean;
+  incorporated_3mo_or_backed: boolean;
+  has_real_product: boolean;
+  eligible: boolean;
+  manually_reviewed_at: string | null;
+}
+
+export interface InsightCampaign {
+  id: string;
+  title: string;
+  material_url: string;
+  business_question: string;
+  feedback_format: string;
+  panel_size: number;
+  panel_criteria: Record<string, unknown>;
+  compensation_cents: number;
+  confidentiality_terms: string;
+  is_startup_validation: boolean;
+  moderation_status: ModerationStatus;
+  rejection_reason: string | null;
+  status: "draft" | "active" | "closed";
+  created_at: string;
+}
+
+export interface InsightCampaignCreateRequest {
+  title: string;
+  material_url: string;
+  business_question: string;
+  panel_size: number;
+  panel_criteria?: Record<string, unknown>;
+  compensation_cents: number;
+  confidentiality_terms: string;
+  is_startup_validation?: boolean;
+}
+
+export interface InsightInvitation {
+  panel_member_id: string;
+  campaign_id: string;
+  campaign_title: string;
+  business_question: string;
+  confidentiality_terms: string;
+  compensation_cents: number;
+  invited_at: string;
+  responded_at: string | null;
+}
+
+export interface RatingAnswer {
+  question: string;
+  score: number;
+}
+
+export interface InsightBrandResult {
+  pseudonym_handle: string;
+  ratings: RatingAnswer[];
+  submitted_at: string;
+}

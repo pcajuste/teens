@@ -6,7 +6,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 import { BrandShell } from "@/components/brand/brand-shell";
 import { api, ApiError } from "@/lib/api";
 import type {
@@ -75,6 +78,52 @@ export default function BrandChallengeDetailPage() {
           ? err.message
           : "Could not activate this challenge.",
       );
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const [contentForm, setContentForm] = useState({
+    goal_text: "",
+    rules_text: "",
+    judging_criteria: "",
+    prize_reward_text: "",
+    why_text: "",
+  });
+  const [savingContent, setSavingContent] = useState(false);
+
+  useEffect(() => {
+    if (!challenge) return;
+    setContentForm({
+      goal_text: challenge.goal_text ?? "",
+      rules_text: challenge.rules_text ?? "",
+      judging_criteria: challenge.judging_criteria ?? "",
+      prize_reward_text: challenge.prize_reward_text ?? "",
+      why_text: challenge.why_text ?? "",
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [challenge?.id]);
+
+  async function handleSaveContent() {
+    setSavingContent(true);
+    setError(null);
+    try {
+      await api.put<Challenge>(`/brands/challenges/${challengeId}/content`, contentForm);
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not save these details.");
+    } finally {
+      setSavingContent(false);
+    }
+  }
+
+  async function handleSubmitForReview() {
+    setBusy("submit-for-review");
+    try {
+      await api.post<Challenge>(`/brands/challenges/${challengeId}/submit-for-review`);
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not submit this challenge for review.");
     } finally {
       setBusy(null);
     }
@@ -196,6 +245,9 @@ export default function BrandChallengeDetailPage() {
               <Badge variant={challenge.status === "active" ? "active" : "pending"}>
                 {challenge.status}
               </Badge>
+              <Badge variant={challenge.moderation_status === "approved" ? "done" : "pending"}>
+                {challenge.moderation_status === "pending_review" ? "In review" : challenge.moderation_status}
+              </Badge>
               <span className="text-sm text-text-2">
                 {challenge.submissions_count} submissions ·{" "}
                 {challenge.conversion_count} converted
@@ -205,7 +257,12 @@ export default function BrandChallengeDetailPage() {
               </span>
             </div>
             <div className="flex gap-2">
-              {challenge.status === "draft" ? (
+              {challenge.status === "draft" && challenge.moderation_status === "draft" ? (
+                <Button size="sm" variant="outline" disabled={busy === "submit-for-review"} onClick={handleSubmitForReview}>
+                  Submit for review
+                </Button>
+              ) : null}
+              {challenge.status === "draft" && challenge.moderation_status === "approved" ? (
                 <Button
                   size="sm"
                   disabled={busy === "activate"}
@@ -228,6 +285,61 @@ export default function BrandChallengeDetailPage() {
           </div>
           <p className="mt-3 text-sm">{challenge.brief}</p>
         </Card>
+
+        {challenge.status === "draft" ? (
+          <Card className="p-5">
+            <p className="mb-3 text-sm font-semibold">Skills Challenge details</p>
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="goalText">Goal</Label>
+                <Textarea
+                  id="goalText"
+                  rows={2}
+                  value={contentForm.goal_text}
+                  onChange={(e) => setContentForm({ ...contentForm, goal_text: e.target.value })}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="rulesText">Rules</Label>
+                <Textarea
+                  id="rulesText"
+                  rows={2}
+                  value={contentForm.rules_text}
+                  onChange={(e) => setContentForm({ ...contentForm, rules_text: e.target.value })}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="judgingCriteria">Judging criteria</Label>
+                <Textarea
+                  id="judgingCriteria"
+                  rows={2}
+                  value={contentForm.judging_criteria}
+                  onChange={(e) => setContentForm({ ...contentForm, judging_criteria: e.target.value })}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="prizeReward">Prize / reward</Label>
+                <Input
+                  id="prizeReward"
+                  value={contentForm.prize_reward_text}
+                  onChange={(e) => setContentForm({ ...contentForm, prize_reward_text: e.target.value })}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="whyText">Why we're offering this (required, max 150 words)</Label>
+                <Textarea
+                  id="whyText"
+                  rows={3}
+                  value={contentForm.why_text}
+                  onChange={(e) => setContentForm({ ...contentForm, why_text: e.target.value })}
+                />
+              </div>
+              <Button size="sm" className="w-fit" disabled={savingContent} onClick={handleSaveContent}>
+                {savingContent ? "Saving..." : "Save details"}
+              </Button>
+            </div>
+          </Card>
+        ) : null}
 
         {zeroConversionWarning ? (
           <Card className="border-teal-border bg-teal-dim p-4 text-sm text-foreground">

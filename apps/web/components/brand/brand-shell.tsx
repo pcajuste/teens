@@ -13,8 +13,11 @@ interface BrandShellProps {
 const NAV = [
   { href: "/brand", label: "Campaigns" },
   { href: "/brand/challenges", label: "Challenges" },
+  { href: "/brand/scholarships", label: "Scholarships" },
+  { href: "/brand/insight-feedback", label: "Insight & Feedback" },
   { href: "/brand/exclusivity", label: "Market tools" },
-  { href: "/brand/onboarding", label: "Company profile" },
+  { href: "/brand/company-profile", label: "Company profile" },
+  { href: "/brand/onboarding", label: "Business info" },
 ];
 
 /** Shared page shell for every authenticated /brand/* screen -- the DS

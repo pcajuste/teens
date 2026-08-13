@@ -15,6 +15,7 @@ const NAV = [
   { href: "/admin/payments", label: "Payments" },
   { href: "/admin/exclusivity", label: "Exclusivity" },
   { href: "/admin/modules", label: "Modules" },
+  { href: "/admin/content-templates", label: "Content review" },
   { href: "/admin/analytics", label: "Analytics" },
   { href: "/admin/safety", label: "Safety reports", dangerDot: true },
 ];

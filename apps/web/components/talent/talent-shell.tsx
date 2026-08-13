@@ -12,6 +12,8 @@ interface TalentShellProps {
 const NAV = [
   { href: "/talent", label: "Dashboard" },
   { href: "/talent/learning", label: "Learning Hub" },
+  { href: "/talent/scholarships", label: "Scholarships" },
+  { href: "/talent/insight-feedback", label: "Insight & Feedback" },
   { href: "/talent/profile-preview", label: "Preview profile" },
 ];
 

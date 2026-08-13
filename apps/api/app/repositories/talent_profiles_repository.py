@@ -319,6 +319,13 @@ async def get_by_stripe_account_id(conn: asyncpg.Connection, stripe_account_id: 
     return TalentProfile.from_row(row) if row else None
 
 
+async def get_insight_feedback_opt_in(conn: asyncpg.Connection, talent_id: str) -> bool:
+    value = await conn.fetchval(
+        "SELECT insight_feedback_opt_in FROM public.talent_profiles WHERE id = $1", talent_id
+    )
+    return bool(value)
+
+
 async def set_insight_feedback_opt_in(conn: asyncpg.Connection, talent_id: str, *, opted_in: bool) -> None:
     """Build Prompt 8I: Insight & Feedback panel eligibility is opt-in,
     not automatic -- see the migration's talent_profiles.insight_feedback_opt_in
