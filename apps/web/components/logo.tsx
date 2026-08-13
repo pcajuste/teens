@@ -2,6 +2,22 @@
 // Teenure mark and wordmark. No other file should construct or
 // approximate the logo from scratch -- grep for raw "teen"/"ure" SVG
 // text or hex-coded hexagon paths outside this file is a violation.
+//
+// LOGO_SIZES is the one place every placement's size is decided --
+// components reference these constants (<LogoWordmark height={LOGO_SIZES.nav} />)
+// instead of picking a number locally, so "the logo is too small"
+// feedback gets fixed once, everywhere, instead of site by site.
+// Sized deliberately large: the brand mark should be unmistakable at a
+// glance, not a discreet detail a user has to look for.
+export const LOGO_SIZES = {
+  nav: 52, // marketing site top nav (LogoWordmark height)
+  portalSidebar: 48, // desktop portal sidebar (LogoWordmark height)
+  portalMobileHeader: 40, // mobile portal top bar (LogoWordmark height)
+  authPage: 48, // auth screens, centered above the form card (LogoWordmark height)
+  footer: 26, // site footer -- deliberately the one smaller placement (LogoWordmark height)
+  verifiedProfile: 260, // /verified/:token credential page (LogoStacked width)
+  sidebarMarkOnly: 40, // anywhere only the hex mark fits (LogoMark size)
+} as const;
 
 const TEAL = "#0D9B7A";
 

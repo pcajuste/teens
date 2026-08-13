@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LogoWordmark } from "@/components/logo";
+import { LogoWordmark, LOGO_SIZES } from "@/components/logo";
 import { cn } from "@/lib/utils";
 
 // DS Section 3E: the sidebar nav pattern shared by every portal
@@ -78,8 +78,8 @@ export function PortalShell({
     <div className="min-h-screen bg-background md:flex">
       {/* Desktop sidebar */}
       <aside className="sticky top-0 hidden h-screen w-[240px] shrink-0 flex-col border-r border-border-muted bg-surface-1 px-3 py-6 md:flex">
-        <Link href={homeHref} className="flex flex-col gap-2.5 px-2 pb-8">
-          <LogoWordmark darkMode height={34} />
+        <Link href={homeHref} className="flex flex-col gap-3 px-2 pb-8">
+          <LogoWordmark darkMode height={LOGO_SIZES.portalSidebar} />
           <span className="text-xs font-semibold uppercase tracking-[0.1em] text-text-2">{portalLabel}</span>
         </Link>
         <nav className="flex flex-1 flex-col gap-1">{navItems.map((item) => navLink(item, false))}</nav>
@@ -96,7 +96,7 @@ export function PortalShell({
         <header className="border-b border-border-muted bg-card md:hidden">
           <div className="flex items-center justify-between px-4 py-3">
             <Link href={homeHref} className="flex items-center gap-2.5">
-              <LogoWordmark darkMode height={30} />
+              <LogoWordmark darkMode height={LOGO_SIZES.portalMobileHeader} />
               <span className="h-4 w-px bg-border-dim" aria-hidden="true" />
               <span className="text-xs font-semibold uppercase tracking-wide text-text-2">{portalLabel}</span>
             </Link>

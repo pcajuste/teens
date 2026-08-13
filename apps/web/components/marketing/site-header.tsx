@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LogoWordmark } from "@/components/logo";
+import { LogoWordmark, LOGO_SIZES } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -25,9 +25,9 @@ export function SiteHeader() {
       className="sticky top-0 z-40 border-b border-border-muted backdrop-blur-2xl"
       style={{ background: "rgba(10, 10, 18, 0.82)" }}
     >
-      <div className="mx-auto flex h-[58px] max-w-6xl items-center justify-between px-4 sm:px-10">
+      <div className="mx-auto flex h-20 max-w-6xl items-center justify-between px-4 sm:px-10">
         <Link href="/" className="flex items-center">
-          <LogoWordmark darkMode height={38} />
+          <LogoWordmark darkMode height={LOGO_SIZES.nav} />
         </Link>
         <nav className="hidden items-center gap-1 md:flex">
           {NAV_LINKS.map((link) => {

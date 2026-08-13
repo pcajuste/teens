@@ -14,7 +14,7 @@ import {
   DEMO_CONFIRMED_CAMPAIGN,
   DEMO_CONFIRMED_PARTICIPATION,
   DEMO_EARNINGS,
-  DEMO_talent_PROFILE,
+  DEMO_TALENT_PROFILE,
 } from "@/lib/demo-data";
 
 // Read-only demo dashboard. No auth, no session, no API calls -- every
@@ -41,43 +41,43 @@ export default function DemoTalentDashboardPage() {
 
       <header>
         <h1 className="text-xl font-semibold">Maya&apos;s dashboard</h1>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-sm text-text-2">
           A preview of what a Teenure Talent dashboard looks like once your
           profile is fully built out.
         </p>
       </header>
 
       <section>
-        <ProfileView profile={DEMO_talent_PROFILE} />
+        <ProfileView profile={DEMO_TALENT_PROFILE} />
       </section>
 
       <section>
-        <CompletenessPanel profile={DEMO_talent_PROFILE} />
+        <CompletenessPanel profile={DEMO_TALENT_PROFILE} />
       </section>
 
       <section className="flex flex-col gap-2">
-        <h2 className="text-sm font-semibold text-muted-foreground">
+        <h2 className="text-sm font-semibold text-text-3">
           Earnings
         </h2>
         <EarningsPanel earnings={DEMO_EARNINGS} />
       </section>
 
       <section className="flex flex-col gap-2">
-        <h2 className="text-sm font-semibold text-muted-foreground">
+        <h2 className="text-sm font-semibold text-text-3">
           Active campaign
         </h2>
-        <Card>
+        <Card variant="earned">
           <CardHeader>
             <div className="flex items-center justify-between gap-2">
               <CardTitle>{DEMO_CONFIRMED_CAMPAIGN.title}</CardTitle>
-              <Badge variant="secondary">
+              <Badge variant="earned">
                 {STATUS_LABEL[DEMO_CONFIRMED_PARTICIPATION.status] ??
                   DEMO_CONFIRMED_PARTICIPATION.status}
               </Badge>
             </div>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-text-2">
               {DEMO_CONFIRMED_CAMPAIGN.product_name}
             </p>
             <div className="flex items-center justify-between pt-2">
@@ -87,7 +87,7 @@ export default function DemoTalentDashboardPage() {
               >
                 View details
               </Link>
-              <span className="text-sm font-semibold">
+              <span className="text-sm font-semibold text-gold">
                 {money(DEMO_CONFIRMED_PARTICIPATION.payout_cents)}
               </span>
             </div>
@@ -96,7 +96,7 @@ export default function DemoTalentDashboardPage() {
       </section>
 
       <section className="flex flex-col gap-2">
-        <h2 className="text-sm font-semibold text-muted-foreground">
+        <h2 className="text-sm font-semibold text-text-3">
           Available campaign
         </h2>
         <Link
@@ -108,7 +108,7 @@ export default function DemoTalentDashboardPage() {
               <CardTitle>{DEMO_AVAILABLE_CAMPAIGN.title}</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-text-2">
                 {DEMO_AVAILABLE_CAMPAIGN.product_name}
               </p>
               <div className="flex items-center justify-between pt-1">

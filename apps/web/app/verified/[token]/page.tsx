@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { Badge as UiBadge } from "@/components/ui/badge";
-import { LogoStacked } from "@/components/logo";
+import { LogoStacked, LOGO_SIZES } from "@/components/logo";
 import { api, ApiError } from "@/lib/api";
 import type { PublicVerifiedProfile } from "@/lib/types";
 import { CATEGORY_LABELS } from "@/lib/categories";
@@ -31,7 +31,7 @@ export default function VerifiedProfilePage() {
     <main className="verified-light min-h-screen bg-[var(--vl-bg)] text-[var(--vl-ink)]">
       <div className="mx-auto flex max-w-md flex-col items-start gap-6 p-6">
         <div className="pt-4">
-          <LogoStacked darkMode={false} width={200} />
+          <LogoStacked darkMode={false} width={LOGO_SIZES.verifiedProfile} />
         </div>
 
         {error ? <p className="text-center text-sm text-[var(--vl-danger)]">{error}</p> : null}

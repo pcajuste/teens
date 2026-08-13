@@ -24,7 +24,7 @@ import type {
   TalentProfile,
 } from "@/lib/types";
 
-export const DEMO_talent_PROFILE: TalentProfile = {
+export const DEMO_TALENT_PROFILE: TalentProfile = {
   id: "demo-talent-maya-chen",
   display_name: "Maya Chen",
   school_name: "Crestwood High School",

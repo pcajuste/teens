@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { LogoWordmark } from "@/components/logo";
+import { LogoWordmark, LOGO_SIZES } from "@/components/logo";
 
 const COLUMNS: { title: string; links: { href: string; label: string }[] }[] = [
   {
@@ -34,7 +34,7 @@ export function SiteFooter() {
       <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
         <div className="grid grid-cols-2 gap-8 sm:grid-cols-4">
           <div className="col-span-2 sm:col-span-1">
-            <LogoWordmark darkMode height={22} />
+            <LogoWordmark darkMode height={LOGO_SIZES.footer} />
             <p className="mt-2 max-w-[22ch] text-sm text-text-3">
               A verified professional achievement record for teenagers.
             </p>
