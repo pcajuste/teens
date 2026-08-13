@@ -46,6 +46,8 @@ from app.schemas.brands import (
     CampaignRepResponse,
     CampaignResponse,
     CancelCampaignResponse,
+    CompanyProfileResponse,
+    CompanyProfileUpdateRequest,
     InviteResultResponse,
     InviteRepsRequest,
     MilestoneDisputeRequest,
@@ -264,6 +266,48 @@ async def put_me(
             target_categories=body.target_categories,
         )
     return _to_brand_response(profile)
+
+
+# ══════════════════════════════════════════════════════════════════
+# /brands/me/company-profile -- Build Prompt 8I template 1
+# ══════════════════════════════════════════════════════════════════
+
+
+def _to_company_profile_response(p: brand_profiles_repository.BrandProfile) -> CompanyProfileResponse:
+    return CompanyProfileResponse(
+        logo_url=p.logo_url,
+        brand_color_primary=p.brand_color_primary,
+        about_text=p.about_text,
+        why_on_teenure_text=p.why_on_teenure_text,
+        complete=p.company_profile_complete,
+    )
+
+
+@brands_router.get("/me/company-profile", response_model=CompanyProfileResponse)
+async def get_company_profile(
+    user: AuthenticatedUser = Depends(require_role_any_status("brand")),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> CompanyProfileResponse:
+    brand = await _get_own_brand_profile(conn, user)
+    return _to_company_profile_response(brand)
+
+
+@brands_router.put("/me/company-profile", response_model=CompanyProfileResponse)
+async def put_company_profile(
+    body: CompanyProfileUpdateRequest,
+    user: AuthenticatedUser = Depends(require_role_any_status("brand")),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> CompanyProfileResponse:
+    brand = await _get_own_brand_profile(conn, user)
+    updated = await brand_profiles_repository.update_company_profile(
+        conn,
+        brand.id,
+        logo_url=body.logo_url,
+        brand_color_primary=body.brand_color_primary,
+        about_text=body.about_text,
+        why_on_teenure_text=body.why_on_teenure_text,
+    )
+    return _to_company_profile_response(updated)
 
 
 # ══════════════════════════════════════════════════════════════════

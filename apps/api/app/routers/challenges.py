@@ -25,6 +25,7 @@ from app.repositories import (
     users_repository,
 )
 from app.schemas.challenges import (
+    ChallengeContentLayerUpdateRequest,
     ChallengeCreateRequest,
     ChallengeResponse,
     ChallengeSubmissionTalentCardResponse,
@@ -73,6 +74,13 @@ def _to_challenge_response(c: challenges_repository.Challenge) -> ChallengeRespo
         closes_at=c.closes_at,
         created_at=c.created_at,
         updated_at=c.updated_at,
+        goal_text=c.goal_text,
+        rules_text=c.rules_text,
+        judging_criteria=c.judging_criteria,
+        prize_reward_text=c.prize_reward_text,
+        why_text=c.why_text,
+        moderation_status=c.moderation_status,
+        rejection_reason=c.rejection_reason,
     )
 
 
@@ -168,6 +176,52 @@ async def update_challenge(
     return _to_challenge_response(updated)
 
 
+@brands_challenges_router.put("/{challenge_id}/content", response_model=ChallengeResponse)
+async def update_challenge_content_layer(
+    challenge_id: str,
+    body: ChallengeContentLayerUpdateRequest,
+    user: AuthenticatedUser = Depends(require_role("brand")),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> ChallengeResponse:
+    """Build Prompt 8I's Skills Challenge template fields -- separate
+    from PUT /brands/challenges/:id (Prompt 8G) since only why_text is
+    required here and the two prompts' edit windows don't need to be
+    coupled."""
+    brand = await _get_own_brand_profile(conn, user)
+    await _require_owned_challenge(conn, challenge_id, brand.id)
+    updated = await challenges_repository.update_content_layer(
+        conn,
+        challenge_id,
+        brand.id,
+        goal_text=body.goal_text,
+        rules_text=body.rules_text,
+        judging_criteria=body.judging_criteria,
+        prize_reward_text=body.prize_reward_text,
+        why_text=body.why_text,
+    )
+    if updated is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "challenge_not_editable",
+                "message": "Active challenges cannot be edited. Close this challenge and create a new one.",
+            },
+        )
+    return _to_challenge_response(updated)
+
+
+@brands_challenges_router.post("/{challenge_id}/submit-for-review", response_model=ChallengeResponse)
+async def submit_challenge_for_review(
+    challenge_id: str,
+    user: AuthenticatedUser = Depends(require_role("brand")),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> ChallengeResponse:
+    brand = await _get_own_brand_profile(conn, user)
+    await _require_owned_challenge(conn, challenge_id, brand.id)
+    updated = await challenges_repository.submit_for_review(conn, challenge_id, brand.id)
+    return _to_challenge_response(updated)
+
+
 @brands_challenges_router.post("/{challenge_id}/activate", response_model=ChallengeResponse)
 async def activate_challenge(
     challenge_id: str,
@@ -189,6 +243,15 @@ async def activate_challenge(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"code": "incomplete_challenge", "message": "title, brief, category, and submission_prompt are all required to activate."},
+        )
+    # Build Prompt 8I content rule: "all submissions route through an
+    # approval queue before going live." Pre-checked here for a clean
+    # 400 -- the DB CHECK constraint (challenges_active_requires_approval)
+    # is the actual backstop.
+    if challenge.moderation_status != "approved":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "not_approved", "message": "This challenge has not been approved by Teenure review yet."},
         )
     updated = await challenges_repository.activate(conn, challenge_id, brand.id, opens_at=datetime.now(timezone.utc))
     if updated is None:

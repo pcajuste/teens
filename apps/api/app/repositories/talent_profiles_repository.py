@@ -319,6 +319,17 @@ async def get_by_stripe_account_id(conn: asyncpg.Connection, stripe_account_id: 
     return TalentProfile.from_row(row) if row else None
 
 
+async def set_insight_feedback_opt_in(conn: asyncpg.Connection, talent_id: str, *, opted_in: bool) -> None:
+    """Build Prompt 8I: Insight & Feedback panel eligibility is opt-in,
+    not automatic -- see the migration's talent_profiles.insight_feedback_opt_in
+    column comment."""
+    await conn.execute(
+        "UPDATE public.talent_profiles SET insight_feedback_opt_in = $2, updated_at = now() WHERE id = $1",
+        talent_id,
+        opted_in,
+    )
+
+
 async def set_stripe_account_id(conn: asyncpg.Connection, talent_id: str, stripe_account_id: str) -> None:
     await conn.execute(
         "UPDATE public.talent_profiles SET stripe_account_id = $2, updated_at = now() WHERE id = $1",

@@ -102,6 +102,41 @@ class BrandProfileResponse(BaseModel):
     account_status_note: str | None = None
 
 
+def _word_count_at_most(value: str, max_words: int, field_name: str) -> str:
+    words = value.split()
+    if len(words) > max_words:
+        raise ValueError(f"{field_name} must be at most {max_words} words (got {len(words)})")
+    return value
+
+
+class CompanyProfileUpdateRequest(BaseModel):
+    """PUT /brands/me/company-profile -- Build Prompt 8I template 1,
+    required before any other template can go live."""
+
+    logo_url: str | None = None
+    brand_color_primary: str | None = None
+    about_text: str
+    why_on_teenure_text: str
+
+    @field_validator("about_text")
+    @classmethod
+    def _about_text_length(cls, value: str) -> str:
+        return _word_count_at_most(value, 150, "about_text")
+
+    @field_validator("why_on_teenure_text")
+    @classmethod
+    def _why_text_length(cls, value: str) -> str:
+        return _word_count_at_most(value, 100, "why_on_teenure_text")
+
+
+class CompanyProfileResponse(BaseModel):
+    logo_url: str | None
+    brand_color_primary: str | None
+    about_text: str | None
+    why_on_teenure_text: str | None
+    complete: bool
+
+
 class CampaignBriefRequest(BaseModel):
     """POST /brands/campaigns body -- exact field set from Section 8's
     documented request body, plus max_talents validated > 0 here (the

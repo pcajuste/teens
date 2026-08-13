@@ -30,7 +30,9 @@ from app.repositories import (
     campaigns_repository,
     challenges_repository,
     exclusivity_repository,
+    insight_feedback_repository,
     intelligence_repository,
+    scholarships_repository,
     talent_profiles_repository,
     users_repository,
 )
@@ -64,7 +66,10 @@ from app.schemas.exclusivity import (
     AdminExclusivityCancelResponse,
     AdminExclusivityListResponse,
 )
-from app.schemas.challenges import AdminChallengeAnalyticsResponse
+from app.routers.challenges import _to_challenge_response
+from app.routers.content_templates import _to_insight_campaign_response, _to_scholarship_response
+from app.schemas.challenges import AdminChallengeAnalyticsResponse, ChallengeResponse
+from app.schemas.content_templates import InsightCampaignResponse, ScholarshipResponse
 from app.schemas.intelligence import TrendBucketResponse
 from app.services import payout_service, stripe_service
 from app.services.email_service import (
@@ -674,3 +679,109 @@ async def cancel_exclusivity_agreement(
     return AdminExclusivityCancelResponse(
         id=updated.id, status=updated.status, cancelled_at=updated.cancelled_at, refund_cents=refund_cents
     )
+
+
+# ══════════════════════════════════════════════════════════════════
+# Build Prompt 8I -- content template approval queue. "Self-service to
+# build, human review to publish" across every template: scholarships,
+# the Skills Challenge content layer, and Insight & Feedback campaigns
+# each carry their own moderation_status, reviewed here rather than
+# through a single polymorphic queue table -- each type's list/approve/
+# reject already lives next to its own repository, so this just adds
+# the admin-facing read + write on top rather than introducing a new
+# generic abstraction only three call sites would ever use.
+# ══════════════════════════════════════════════════════════════════
+
+
+@admin_router.get("/content-templates/scholarships/queue", response_model=list[ScholarshipResponse])
+async def scholarships_review_queue(conn: asyncpg.Connection = Depends(get_connection)) -> list[ScholarshipResponse]:
+    rows = await scholarships_repository.list_pending_review(conn)
+    return [_to_scholarship_response(s) for s in rows]
+
+
+@admin_router.post("/content-templates/scholarships/{scholarship_id}/approve", response_model=ScholarshipResponse)
+async def approve_scholarship(
+    scholarship_id: str,
+    admin: AuthenticatedUser = Depends(require_role("admin")),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> ScholarshipResponse:
+    updated = await scholarships_repository.review(conn, scholarship_id, approved=True, reviewer_id=admin.id, rejection_reason=None)
+    return _to_scholarship_response(updated)
+
+
+@admin_router.post("/content-templates/scholarships/{scholarship_id}/reject", response_model=ScholarshipResponse)
+async def reject_scholarship(
+    scholarship_id: str,
+    body: RejectRequest,
+    admin: AuthenticatedUser = Depends(require_role("admin")),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> ScholarshipResponse:
+    updated = await scholarships_repository.review(conn, scholarship_id, approved=False, reviewer_id=admin.id, rejection_reason=body.reason)
+    return _to_scholarship_response(updated)
+
+
+@admin_router.get("/content-templates/challenges/queue", response_model=list[ChallengeResponse])
+async def challenges_review_queue(conn: asyncpg.Connection = Depends(get_connection)) -> list[ChallengeResponse]:
+    rows = await challenges_repository.list_pending_review(conn)
+    return [_to_challenge_response(c) for c in rows]
+
+
+@admin_router.post("/content-templates/challenges/{challenge_id}/approve", response_model=ChallengeResponse)
+async def approve_challenge(
+    challenge_id: str,
+    admin: AuthenticatedUser = Depends(require_role("admin")),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> ChallengeResponse:
+    updated = await challenges_repository.review(conn, challenge_id, approved=True, reviewer_id=admin.id, rejection_reason=None)
+    return _to_challenge_response(updated)
+
+
+@admin_router.post("/content-templates/challenges/{challenge_id}/reject", response_model=ChallengeResponse)
+async def reject_challenge(
+    challenge_id: str,
+    body: RejectRequest,
+    admin: AuthenticatedUser = Depends(require_role("admin")),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> ChallengeResponse:
+    updated = await challenges_repository.review(conn, challenge_id, approved=False, reviewer_id=admin.id, rejection_reason=body.reason)
+    return _to_challenge_response(updated)
+
+
+@admin_router.get("/content-templates/insight-campaigns/queue", response_model=list[InsightCampaignResponse])
+async def insight_campaigns_review_queue(conn: asyncpg.Connection = Depends(get_connection)) -> list[InsightCampaignResponse]:
+    rows = await insight_feedback_repository.list_pending_review(conn)
+    return [_to_insight_campaign_response(c) for c in rows]
+
+
+@admin_router.post("/content-templates/insight-campaigns/{campaign_id}/approve", response_model=InsightCampaignResponse)
+async def approve_insight_campaign(
+    campaign_id: str,
+    admin: AuthenticatedUser = Depends(require_role("admin")),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> InsightCampaignResponse:
+    updated = await insight_feedback_repository.review(conn, campaign_id, approved=True, reviewer_id=admin.id, rejection_reason=None)
+    return _to_insight_campaign_response(updated)
+
+
+@admin_router.post("/content-templates/insight-campaigns/{campaign_id}/reject", response_model=InsightCampaignResponse)
+async def reject_insight_campaign(
+    campaign_id: str,
+    body: RejectRequest,
+    admin: AuthenticatedUser = Depends(require_role("admin")),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> InsightCampaignResponse:
+    updated = await insight_feedback_repository.review(conn, campaign_id, approved=False, reviewer_id=admin.id, rejection_reason=body.reason)
+    return _to_insight_campaign_response(updated)
+
+
+@admin_router.post("/content-templates/insight-eligibility/{brand_id}/mark-reviewed")
+async def mark_insight_eligibility_reviewed(
+    brand_id: str,
+    admin: AuthenticatedUser = Depends(require_role("admin")),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> dict:
+    """The startup-validation variant's extra bar requires manual
+    review specifically (8I: "manual (not automated) review for this
+    category")."""
+    await insight_feedback_repository.mark_manually_reviewed(conn, brand_id, reviewer_id=admin.id)
+    return {"brand_id": brand_id, "manually_reviewed": True}

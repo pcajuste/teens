@@ -21,6 +21,7 @@ from app.routers import (
     auth,
     brands,
     challenges,
+    content_templates,
     exclusivity,
     health,
     learning_modules,
@@ -66,6 +67,10 @@ def create_app() -> FastAPI:
     app.include_router(brands.brands_router)
     app.include_router(challenges.brands_challenges_router)
     app.include_router(challenges.talents_challenges_router)
+    app.include_router(content_templates.brands_scholarships_router)
+    app.include_router(content_templates.talents_scholarships_router)
+    app.include_router(content_templates.brands_insight_router)
+    app.include_router(content_templates.talents_insight_router)
     app.include_router(exclusivity.router)
     app.include_router(recruiters.recruiters_router)
     app.include_router(admin.admin_router)

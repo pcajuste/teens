@@ -15,7 +15,8 @@ import asyncpg
 
 _COLUMNS = (
     "id, user_id, company_name, website, ein, industry, target_categories, "
-    "verified, verified_at, verified_by, stripe_customer_id, created_at, updated_at"
+    "verified, verified_at, verified_by, stripe_customer_id, "
+    "logo_url, brand_color_primary, about_text, why_on_teenure_text, created_at, updated_at"
 )
 
 
@@ -32,6 +33,10 @@ class BrandProfile:
     verified_at: datetime | None
     verified_by: str | None
     stripe_customer_id: str | None
+    logo_url: str | None
+    brand_color_primary: str | None
+    about_text: str | None
+    why_on_teenure_text: str | None
     created_at: datetime
     updated_at: datetime
 
@@ -49,9 +54,20 @@ class BrandProfile:
             verified_at=row["verified_at"],
             verified_by=str(row["verified_by"]) if row["verified_by"] else None,
             stripe_customer_id=row["stripe_customer_id"],
+            logo_url=row["logo_url"],
+            brand_color_primary=row["brand_color_primary"],
+            about_text=row["about_text"],
+            why_on_teenure_text=row["why_on_teenure_text"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )
+
+    @property
+    def company_profile_complete(self) -> bool:
+        """Build Prompt 8I: the Company Profile template is "required
+        before any campaign goes live" -- the gate other templates'
+        activation routes check (logo + both required text fields)."""
+        return bool(self.logo_url and self.about_text and self.why_on_teenure_text)
 
 
 async def get_by_id(conn: asyncpg.Connection, brand_id: str) -> BrandProfile | None:
@@ -118,6 +134,37 @@ async def update_brand_profile(
         ein_encrypted,
         industry,
         target_categories,
+    )
+    return BrandProfile.from_row(row)
+
+
+async def update_company_profile(
+    conn: asyncpg.Connection,
+    brand_id: str,
+    *,
+    logo_url: str | None,
+    brand_color_primary: str | None,
+    about_text: str | None,
+    why_on_teenure_text: str | None,
+) -> BrandProfile:
+    """PUT /brands/me/company-profile (Build Prompt 8I template 1) --
+    deliberately separate from update_brand_profile above, which owns
+    the Prompt 8 onboarding fields. Word-count validation on
+    about_text/why_on_teenure_text happens at the schema layer
+    (schemas/brands.py's CompanyProfileUpdateRequest validators)."""
+    row = await conn.fetchrow(
+        f"""
+        UPDATE public.brand_profiles
+        SET logo_url = $2, brand_color_primary = $3, about_text = $4,
+            why_on_teenure_text = $5, updated_at = now()
+        WHERE id = $1
+        RETURNING {_COLUMNS}
+        """,
+        brand_id,
+        logo_url,
+        brand_color_primary,
+        about_text,
+        why_on_teenure_text,
     )
     return BrandProfile.from_row(row)
 

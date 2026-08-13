@@ -172,10 +172,17 @@ def _signed_webhook(settings, event: dict) -> tuple[bytes, str]:
     return payload, header
 
 
-def _create_and_activate_challenge(client, brand_headers, **overrides) -> dict:
+def _create_and_activate_challenge(client, db, brand_headers, **overrides) -> dict:
     body = {**_CHALLENGE_BODY, **overrides}
     created = client.post("/brands/challenges", json=body, headers=brand_headers)
     assert created.status_code == 201, created.text
+    # Build Prompt 8I added a moderation gate in front of activation
+    # ("self-service to build, human review to publish") -- these 8G
+    # tests aren't testing that gate, so approve directly via the DB
+    # rather than routing every one of them through the review flow.
+    db.execute(
+        "UPDATE public.challenges SET moderation_status = 'approved' WHERE id = $1", created.json()["id"]
+    )
     activated = client.post(f"/brands/challenges/{created.json()['id']}/activate", headers=brand_headers)
     assert activated.status_code == 200, activated.text
     return activated.json()
@@ -210,7 +217,7 @@ def _create_active_campaign(client, brand_headers, settings, **overrides) -> dic
 
 
 def test_brand_note_never_appears_in_talent_facing_response(client, db, brand_headers, talent_headers_factory, onboarded_brand):
-    challenge = _create_and_activate_challenge(client, brand_headers)
+    challenge = _create_and_activate_challenge(client, db, brand_headers)
     talent_id, talent_user_id = _seed_rep(db)
     talent_headers = talent_headers_factory(talent_user_id)
     _submit(client, talent_headers, challenge["id"])
@@ -229,7 +236,7 @@ def test_brand_note_never_appears_in_talent_facing_response(client, db, brand_he
 
 
 def test_talent_cannot_see_another_talents_submission_via_own_endpoint(client, db, brand_headers, talent_headers_factory, onboarded_brand):
-    challenge = _create_and_activate_challenge(client, brand_headers)
+    challenge = _create_and_activate_challenge(client, db, brand_headers)
     talent_a_id, talent_a_user = _seed_rep(db)
     talent_b_id, talent_b_user = _seed_rep(db)
     headers_a = talent_headers_factory(talent_a_user)
@@ -243,7 +250,7 @@ def test_talent_cannot_see_another_talents_submission_via_own_endpoint(client, d
 
 
 def test_declined_submission_absent_from_talent_facing_endpoint(client, db, brand_headers, talent_headers_factory, onboarded_brand):
-    challenge = _create_and_activate_challenge(client, brand_headers)
+    challenge = _create_and_activate_challenge(client, db, brand_headers)
     talent_id, talent_user_id = _seed_rep(db)
     talent_headers = talent_headers_factory(talent_user_id)
     _submit(client, talent_headers, challenge["id"])
@@ -263,7 +270,7 @@ def test_declined_submission_absent_from_talent_facing_endpoint(client, db, bran
 
 
 def test_submit_without_disclosure_field_returns_400(client, db, brand_headers, talent_headers_factory, onboarded_brand):
-    challenge = _create_and_activate_challenge(client, brand_headers)
+    challenge = _create_and_activate_challenge(client, db, brand_headers)
     talent_id, talent_user_id = _seed_rep(db)
     talent_headers = talent_headers_factory(talent_user_id)
     talents = client.post(
@@ -276,7 +283,7 @@ def test_submit_without_disclosure_field_returns_400(client, db, brand_headers, 
 
 
 def test_submit_with_disclosure_false_returns_400(client, db, brand_headers, talent_headers_factory, onboarded_brand):
-    challenge = _create_and_activate_challenge(client, brand_headers)
+    challenge = _create_and_activate_challenge(client, db, brand_headers)
     talent_id, talent_user_id = _seed_rep(db)
     talent_headers = talent_headers_factory(talent_user_id)
     talents = _submit(client, talent_headers, challenge["id"], disclosure=False)
@@ -286,7 +293,7 @@ def test_submit_with_disclosure_false_returns_400(client, db, brand_headers, tal
 
 def test_submit_with_disclosure_true_succeeds_without_ui(client, db, brand_headers, talent_headers_factory, onboarded_brand):
     """Direct API call, no UI interaction -- server only checks the flag."""
-    challenge = _create_and_activate_challenge(client, brand_headers)
+    challenge = _create_and_activate_challenge(client, db, brand_headers)
     talent_id, talent_user_id = _seed_rep(db)
     talent_headers = talent_headers_factory(talent_user_id)
     talents = _submit(client, talent_headers, challenge["id"], disclosure=True)
@@ -300,7 +307,7 @@ def test_submit_with_disclosure_true_succeeds_without_ui(client, db, brand_heade
 
 
 def test_submit_to_closed_challenge_returns_clear_error(client, db, brand_headers, talent_headers_factory, onboarded_brand):
-    challenge = _create_and_activate_challenge(client, brand_headers)
+    challenge = _create_and_activate_challenge(client, db, brand_headers)
     client.post(f"/brands/challenges/{challenge['id']}/close", headers=brand_headers)
     talent_id, talent_user_id = _seed_rep(db)
     talent_headers = talent_headers_factory(talent_user_id)
@@ -310,7 +317,7 @@ def test_submit_to_closed_challenge_returns_clear_error(client, db, brand_header
 
 
 def test_submit_twice_returns_already_submitted_not_constraint_error(client, db, brand_headers, talent_headers_factory, onboarded_brand):
-    challenge = _create_and_activate_challenge(client, brand_headers)
+    challenge = _create_and_activate_challenge(client, db, brand_headers)
     talent_id, talent_user_id = _seed_rep(db)
     talent_headers = talent_headers_factory(talent_user_id)
     first = _submit(client, talent_headers, challenge["id"])
@@ -321,7 +328,7 @@ def test_submit_twice_returns_already_submitted_not_constraint_error(client, db,
 
 
 def test_submit_at_max_submissions_returns_challenge_full(client, db, brand_headers, talent_headers_factory, onboarded_brand):
-    challenge = _create_and_activate_challenge(client, brand_headers, max_submissions=1)
+    challenge = _create_and_activate_challenge(client, db, brand_headers, max_submissions=1)
     talent_a_id, talent_a_user = _seed_rep(db)
     talent_b_id, talent_b_user = _seed_rep(db)
     headers_a = talent_headers_factory(talent_a_user)
@@ -339,7 +346,7 @@ def test_submit_at_max_submissions_returns_challenge_full(client, db, brand_head
 
 
 def _submitted_challenge_and_campaign(client, db, brand_headers, talent_headers_factory, settings, onboarded_brand, *, max_talents=1):
-    challenge = _create_and_activate_challenge(client, brand_headers)
+    challenge = _create_and_activate_challenge(client, db, brand_headers)
     talent_id, talent_user_id = _seed_rep(db)
     talent_headers = talent_headers_factory(talent_user_id)
     _submit(client, talent_headers, challenge["id"])
@@ -554,7 +561,7 @@ def test_transfer_paid_flat_campaign_does_not_touch_challenge_submissions(
 
 
 def test_auto_close_job_closes_expired_challenge(client, db, settings, brand_headers, onboarded_brand):
-    challenge = _create_and_activate_challenge(client, brand_headers)
+    challenge = _create_and_activate_challenge(client, db, brand_headers)
     db.execute("UPDATE public.challenges SET closes_at = now() - interval '1 hour' WHERE id = $1", challenge["id"])
 
     talents = client.post("/internal/jobs/run/challenge_auto_close", headers={"X-Jobs-Runner-Secret": settings.jobs_runner_secret})
@@ -565,7 +572,7 @@ def test_auto_close_job_closes_expired_challenge(client, db, settings, brand_hea
 
 
 def test_auto_close_job_run_twice_is_idempotent(client, db, settings, brand_headers, onboarded_brand):
-    challenge = _create_and_activate_challenge(client, brand_headers)
+    challenge = _create_and_activate_challenge(client, db, brand_headers)
     db.execute("UPDATE public.challenges SET closes_at = now() - interval '1 hour' WHERE id = $1", challenge["id"])
 
     first = client.post("/internal/jobs/run/challenge_auto_close", headers={"X-Jobs-Runner-Secret": settings.jobs_runner_secret})
@@ -669,7 +676,7 @@ def test_parent_dashboard_shows_converted_with_campaign_and_bonus(
     client, db, settings, brand_headers, seed_talent_with_parent, talent_headers_factory, parent_headers_factory, onboarded_brand, fake_stripe
 ):
     seeded = seed_talent_with_parent(age=17, campaign_approval_required=False)
-    challenge = _create_and_activate_challenge(client, brand_headers)
+    challenge = _create_and_activate_challenge(client, db, brand_headers)
     talent_headers = talent_headers_factory(seeded.talent_user_id)
     _submit(client, talent_headers, challenge["id"])
     submission_id = db.fetchval("SELECT id FROM public.challenge_submissions WHERE talent_id = $1", seeded.talent_id)
@@ -697,7 +704,7 @@ def test_parent_dashboard_excludes_declined_submissions(
     client, db, brand_headers, seed_talent_with_parent, talent_headers_factory, parent_headers_factory, onboarded_brand
 ):
     seeded = seed_talent_with_parent(age=17)
-    challenge = _create_and_activate_challenge(client, brand_headers)
+    challenge = _create_and_activate_challenge(client, db, brand_headers)
     talent_headers = talent_headers_factory(seeded.talent_user_id)
     _submit(client, talent_headers, challenge["id"])
     submission_id = db.fetchval("SELECT id FROM public.challenge_submissions WHERE talent_id = $1", seeded.talent_id)

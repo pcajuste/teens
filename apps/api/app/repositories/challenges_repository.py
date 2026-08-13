@@ -24,7 +24,9 @@ import asyncpg
 _CHALLENGE_COLUMNS = """
     id, brand_id, title, brief, category, target_cities, submission_format,
     submission_prompt, status, max_submissions, submissions_count, opens_at,
-    closes_at, conversion_count, created_at, updated_at
+    closes_at, conversion_count, created_at, updated_at,
+    goal_text, rules_text, judging_criteria, prize_reward_text, why_text,
+    moderation_status, reviewed_by, reviewed_at, rejection_reason
 """
 
 
@@ -46,6 +48,17 @@ class Challenge:
     conversion_count: int
     created_at: datetime
     updated_at: datetime
+    # Build Prompt 8I content layer -- optional so pre-8I 8G callers
+    # (create_challenge's brief/prompt-only flow) keep working unchanged.
+    goal_text: str | None
+    rules_text: str | None
+    judging_criteria: str | None
+    prize_reward_text: str | None
+    why_text: str | None
+    moderation_status: str
+    reviewed_by: str | None
+    reviewed_at: datetime | None
+    rejection_reason: str | None
 
     @classmethod
     def from_row(cls, row: asyncpg.Record) -> "Challenge":
@@ -66,6 +79,15 @@ class Challenge:
             conversion_count=row["conversion_count"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
+            goal_text=row["goal_text"],
+            rules_text=row["rules_text"],
+            judging_criteria=row["judging_criteria"],
+            prize_reward_text=row["prize_reward_text"],
+            why_text=row["why_text"],
+            moderation_status=row["moderation_status"],
+            reviewed_by=str(row["reviewed_by"]) if row["reviewed_by"] else None,
+            reviewed_at=row["reviewed_at"],
+            rejection_reason=row["rejection_reason"],
         )
 
 
@@ -180,6 +202,78 @@ async def activate(conn: asyncpg.Connection, challenge_id: str, brand_id: str, *
         opens_at,
     )
     return Challenge.from_row(row) if row else None
+
+
+async def update_content_layer(
+    conn: asyncpg.Connection,
+    challenge_id: str,
+    brand_id: str,
+    *,
+    goal_text: str | None,
+    rules_text: str | None,
+    judging_criteria: str | None,
+    prize_reward_text: str | None,
+    why_text: str,
+) -> Challenge | None:
+    """Build Prompt 8I's Skills Challenge fields -- kept separate from
+    update_challenge (Prompt 8G's own draft-only edit) so it can be
+    called independently of the 8G edit flow. Legal only in 'draft',
+    same restriction as update_challenge."""
+    row = await conn.fetchrow(
+        f"""
+        UPDATE public.challenges
+        SET goal_text = $3, rules_text = $4, judging_criteria = $5,
+            prize_reward_text = $6, why_text = $7, updated_at = now()
+        WHERE id = $1 AND brand_id = $2 AND status = 'draft'
+        RETURNING {_CHALLENGE_COLUMNS}
+        """,
+        challenge_id,
+        brand_id,
+        goal_text,
+        rules_text,
+        judging_criteria,
+        prize_reward_text,
+        why_text,
+    )
+    return Challenge.from_row(row) if row else None
+
+
+async def submit_for_review(conn: asyncpg.Connection, challenge_id: str, brand_id: str) -> Challenge | None:
+    row = await conn.fetchrow(
+        f"""
+        UPDATE public.challenges SET moderation_status = 'pending_review', updated_at = now()
+        WHERE id = $1 AND brand_id = $2
+        RETURNING {_CHALLENGE_COLUMNS}
+        """,
+        challenge_id,
+        brand_id,
+    )
+    return Challenge.from_row(row) if row else None
+
+
+async def review(
+    conn: asyncpg.Connection, challenge_id: str, *, approved: bool, reviewer_id: str, rejection_reason: str | None
+) -> Challenge | None:
+    row = await conn.fetchrow(
+        f"""
+        UPDATE public.challenges
+        SET moderation_status = $2, reviewed_by = $3, reviewed_at = now(), rejection_reason = $4, updated_at = now()
+        WHERE id = $1
+        RETURNING {_CHALLENGE_COLUMNS}
+        """,
+        challenge_id,
+        "approved" if approved else "rejected",
+        reviewer_id,
+        rejection_reason,
+    )
+    return Challenge.from_row(row) if row else None
+
+
+async def list_pending_review(conn: asyncpg.Connection) -> list[Challenge]:
+    rows = await conn.fetch(
+        f"SELECT {_CHALLENGE_COLUMNS} FROM public.challenges WHERE moderation_status = 'pending_review' ORDER BY created_at ASC"
+    )
+    return [Challenge.from_row(r) for r in rows]
 
 
 async def close(conn: asyncpg.Connection, challenge_id: str, brand_id: str) -> Challenge | None:

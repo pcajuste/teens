@@ -55,6 +55,34 @@ class ChallengeResponse(BaseModel):
     closes_at: datetime | None
     created_at: datetime
     updated_at: datetime
+    # Build Prompt 8I content layer
+    goal_text: str | None = None
+    rules_text: str | None = None
+    judging_criteria: str | None = None
+    prize_reward_text: str | None = None
+    why_text: str | None = None
+    moderation_status: str = "draft"
+    rejection_reason: str | None = None
+
+
+class ChallengeContentLayerUpdateRequest(BaseModel):
+    """PUT /brands/challenges/:id/content -- Build Prompt 8I's added
+    fields, kept separate from ChallengeCreateRequest (Prompt 8G) since
+    only why_text is required here."""
+
+    goal_text: str | None = None
+    rules_text: str | None = None
+    judging_criteria: str | None = None
+    prize_reward_text: str | None = None
+    why_text: str
+
+    @field_validator("why_text")
+    @classmethod
+    def _why_text_length(cls, value: str) -> str:
+        words = value.split()
+        if len(words) > 150:
+            raise ValueError(f"why_text must be at most 150 words (got {len(words)})")
+        return value
 
 
 class ChallengeSubmissionTalentCardResponse(BaseModel):
