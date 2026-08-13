@@ -26,21 +26,25 @@ pnpm install
 ## Run both apps at once (recommended)
 
 ```bash
-docker compose up -d
+./scripts/dc-up.sh
 # apps/web  -> http://localhost:3300
 # apps/api  -> http://localhost:8300/health
 
 docker compose logs -f      # tail both apps' logs
-docker compose down         # stop both
+docker compose down         # stop both (Supabase keeps running)
 ```
+
+`./scripts/dc-up.sh` starts the local Supabase CLI stack (idempotent —
+safe to run even if it's already up) and then `docker compose up -d`, so
+it's the only command you need for a full local environment. Once
+containers are up, plain `docker compose up -d` / `down` work too.
 
 Builds once, then bind-mounts your source into both containers with
 hot reload (`next dev` / `uvicorn --reload`) — edits on your machine take
 effect immediately, no rebuild needed. `node_modules` lives in a named
 Docker volume so `pnpm install` only reruns when `pnpm-lock.yaml` changes.
-Requires the local Supabase CLI stack for the database (see below) —
-`apps/api/.env.local` should point `DATABASE_URL`/`NEXT_PUBLIC_SUPABASE_URL`
-at `host.docker.internal`, not `localhost`/`127.0.0.1`, so the container
+`apps/api/.env.local` points `DATABASE_URL`/`NEXT_PUBLIC_SUPABASE_URL` at
+`host.docker.internal`, not `localhost`/`127.0.0.1`, so the api container
 can reach the host-run Supabase stack.
 
 This is separate from `scripts/local-dev/docker-compose.yml`, which only
