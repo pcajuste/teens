@@ -28,7 +28,7 @@ export default function RecruiterLayout({
           me.pending_reason === "pending_admin_approval" &&
           !ALLOWED_WHILE_PENDING_PATHS.has(pathname) ? (
             <CenteredMessage title="Your account is under review">
-              <p className="max-w-sm text-sm text-muted-foreground">
+              <p className="max-w-sm text-sm text-text-2">
                 Every recruiter on Teenure is verified before searching or
                 contacting talents This also requires an active subscription.
                 We&apos;ll email you as soon as your institution is approved --

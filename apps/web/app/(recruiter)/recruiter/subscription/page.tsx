@@ -125,7 +125,7 @@ export default function RecruiterSubscriptionPage() {
           once admin review finishes too).
         </p>
       ) : checkoutResult === "cancelled" ? (
-        <p className="rounded-lg bg-warning/15 px-3 py-2 text-sm text-warning-foreground">
+        <p className="rounded-lg bg-secondary px-3 py-2 text-sm text-text-2">
           Checkout was cancelled.
         </p>
       ) : null}
@@ -142,26 +142,34 @@ export default function RecruiterSubscriptionPage() {
         </CardHeader>
         <CardContent>
           {loading ? (
-            <p className="text-sm text-muted-foreground">Loading...</p>
+            <p className="text-sm text-text-2">Loading...</p>
           ) : credits ? (
             <div className="flex flex-wrap items-center gap-3">
+              {/* DS Section 8: same >5/1-3/0 scarcity coloring as the
+                  nav credit badge. */}
               <Badge
-                variant={credits.low_credit_warning ? "warning" : "outline"}
-                className="px-3 py-1.5 text-sm"
+                className={
+                  credits.contact_credits_remaining === 0
+                    ? "border-danger-border bg-danger-dim text-danger"
+                    : credits.contact_credits_remaining <= 3
+                      ? "border-gold-border bg-gold-dim text-gold"
+                      : undefined
+                }
+                variant={credits.contact_credits_remaining === 0 ? "destructive" : "outline"}
               >
                 {credits.contact_credits_remaining} remaining
               </Badge>
               {credits.credits_reset_date ? (
-                <span className="text-sm text-muted-foreground">
+                <span className="text-sm text-text-2">
                   Resets {credits.credits_reset_date}
                 </span>
               ) : null}
               {credits.low_credit_warning ? (
-                <Badge variant="warning">Below 20% — consider a top-up</Badge>
+                <Badge variant="earned">Below 20% — consider a top-up</Badge>
               ) : null}
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-text-2">
               No active subscription yet — subscribe below to start receiving
               contact credits.
             </p>
@@ -176,7 +184,7 @@ export default function RecruiterSubscriptionPage() {
               <CardTitle>{label}</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-sm text-muted-foreground">{blurb}</p>
+              <p className="text-sm text-text-2">{blurb}</p>
               <Button
                 type="button"
                 className="mt-2"
@@ -217,7 +225,7 @@ export default function RecruiterSubscriptionPage() {
             </Button>
           </form>
           {topUpNotice ? (
-            <p className="mt-3 text-sm text-muted-foreground">{topUpNotice}</p>
+            <p className="mt-3 text-sm text-text-2">{topUpNotice}</p>
           ) : null}
         </CardContent>
       </Card>

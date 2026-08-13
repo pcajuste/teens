@@ -86,7 +86,7 @@ export default function RecruiterSignupPage() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-text-2">
             A .edu address speeds up verification, but isn&apos;t required.
           </p>
         </div>
@@ -117,7 +117,7 @@ export default function RecruiterSignupPage() {
           {pending ? "Creating account..." : "Sign up"}
         </Button>
 
-        <p className="text-center text-xs text-muted-foreground">
+        <p className="text-center text-xs text-text-2">
           Every recruiter account is verified before you can search or contact
           talents, and requires an active subscription.
         </p>

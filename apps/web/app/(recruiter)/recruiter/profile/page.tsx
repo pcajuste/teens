@@ -73,7 +73,7 @@ export default function RecruiterProfilePage() {
   if (loading) {
     return (
       <RecruiterShell title="Institution profile">
-        <p className="text-sm text-muted-foreground">Loading...</p>
+        <p className="text-sm text-text-2">Loading...</p>
       </RecruiterShell>
     );
   }
@@ -82,11 +82,14 @@ export default function RecruiterProfilePage() {
     <RecruiterShell title="Institution profile">
       <form onSubmit={handleSubmit} className="flex max-w-xl flex-col gap-5">
         <div className="flex items-center gap-2">
-          <Badge variant={verified ? "success" : "outline"}>
+          {/* DS: an admin-verified institution is an earned credential
+              moment (gold), consistent with every other "VERIFIED" badge
+              on the platform -- not a generic green completion state. */}
+          <Badge variant={verified ? "earned" : "pending"}>
             {verified ? "Verified" : "Pending verification"}
           </Badge>
           {me?.account_status === "pending" ? (
-            <span className="text-xs text-muted-foreground">
+            <span className="text-xs text-text-2">
               Approval and an active subscription are both required before you
               can search or contact talents.
             </span>

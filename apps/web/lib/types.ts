@@ -511,7 +511,7 @@ export interface RecruiterSearchCard {
  * (deducted server-side before this is ever returned -- lib/api.ts's
  * response  is the only source of truth for the new credit balance,
  * never a locally-decremented counter). */
-export interface RecruiterRepDetail {
+export interface RecruiterTalentDetail {
   talent_id: string;
   display_name: string;
   school_name: string;

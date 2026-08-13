@@ -80,7 +80,7 @@ export default function RecruiterMessagesPage() {
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <p className="font-semibold">{m.talent_display_name}</p>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-xs text-text-2">
                       Sent {new Date(m.messaged_at).toLocaleString()}
                     </p>
                   </div>

@@ -199,7 +199,7 @@ export default function RecruiterSavedPage() {
                       key={row.talent_id}
                       className="flex flex-wrap items-center justify-between gap-2 py-2"
                     >
-                      <span className="text-sm text-muted-foreground">
+                      <span className="text-sm text-text-2">
                        talent #{row.talent_id.slice(0, 8)}
                       </span>
                       <div className="flex items-center gap-2">

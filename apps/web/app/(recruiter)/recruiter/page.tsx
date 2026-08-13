@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { RecruiterShell } from "@/components/recruiter/recruiter-shell";
+import { LogoMark } from "@/components/logo";
 import { CreditConfirmDialog } from "@/components/recruiter/credit-confirm-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,7 +21,7 @@ import {
 } from "@/lib/categories";
 import type {
   RecruiterCredits,
-  RecruiterRepDetail,
+  RecruiterTalentDetail,
   RecruiterSearchCard,
 } from "@/lib/types";
 
@@ -64,7 +65,7 @@ export default function RecruiterSearchPage() {
 
   // Profile-view credit flow
   const [pendingRepId, setPendingRepId] = useState<string | null>(null);
-  const [detail, setDetail] = useState<RecruiterRepDetail | null>(null);
+  const [detail, setDetail] = useState<RecruiterTalentDetail | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
 
   // Contact/message credit flow
@@ -125,7 +126,7 @@ export default function RecruiterSearchPage() {
     try {
       // The response  is the sole source of truth for the new credit
       // balance -- no local decrement anywhere in this flow.
-      const talent = await api.get<RecruiterRepDetail>(
+      const talent = await api.get<RecruiterTalentDetail>(
         `/recruiters/talents/${pendingRepId}`,
       );
       // Aggregate-safe properties only -- no talent identity (name, id,
@@ -193,8 +194,18 @@ export default function RecruiterSearchPage() {
       action={
         credits ? (
           <div className="flex items-center gap-2">
+            {/* DS Section 8: >5 credits is neutral information; 1-3 is
+                gold (scarcity of a premium resource warrants the
+                credential accent); 0 is danger. */}
             <Badge
-              variant={credits.low_credit_warning ? "warning" : "secondary"}
+              className={
+                credits.contact_credits_remaining === 0
+                  ? "border-danger-border bg-danger-dim text-danger"
+                  : credits.contact_credits_remaining <= 3
+                    ? "border-gold-border bg-gold-dim text-gold"
+                    : undefined
+              }
+              variant={credits.contact_credits_remaining === 0 ? "destructive" : "secondary"}
             >
               {credits.contact_credits_remaining} credit
               {credits.contact_credits_remaining === 1 ? "" : "s"} left
@@ -295,7 +306,7 @@ export default function RecruiterSearchPage() {
                   className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
                     filters.categories.includes(c)
                       ? "border-primary bg-primary/10 text-primary"
-                      : "border-border bg-background text-muted-foreground hover:text-foreground"
+                      : "border-border-muted bg-transparent text-text-2 hover:text-foreground"
                   }`}
                 >
                   {CATEGORY_LABELS[c]}
@@ -353,27 +364,33 @@ export default function RecruiterSearchPage() {
                     <p className="font-semibold">
                       {card.city}, {card.state}
                     </p>
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-sm text-text-2">
                       Class of {card.graduation_year}
                     </p>
                   </div>
                   {card.school_type ? (
-                    <Badge variant="outline">{card.school_type}</Badge>
+                    <Badge variant="pending">{card.school_type}</Badge>
                   ) : null}
                 </div>
                 <div className="mt-2 flex flex-wrap gap-1">
                   {card.categories.map((c) => (
-                    <Badge key={c} variant="secondary">
+                    <Badge key={c} variant="active">
                       {CATEGORY_LABELS[c as Category] ?? c}
                     </Badge>
                   ))}
                 </div>
-                <div className="mt-3 flex items-center gap-4 text-sm text-muted-foreground">
+                <div className="mt-3 flex items-center gap-4 text-sm text-text-2">
                   <span>{card.total_campaigns_completed} campaigns</span>
                   <span>
-                    {card.average_rating != null
-                      ? `${card.average_rating.toFixed(1)}★`
-                      : "No rating yet"}
+                    {card.average_rating != null ? (
+                      // DS Section 7/8: an exceptional track record (>=4.5)
+                      // is a credential signal worth surfacing in gold.
+                      <span className={card.average_rating >= 4.5 ? "font-semibold text-gold" : undefined}>
+                        {card.average_rating.toFixed(1)}★
+                      </span>
+                    ) : (
+                      "No rating yet"
+                    )}
                   </span>
                   <span>{card.profile_completeness_score}% complete</span>
                 </div>
@@ -421,10 +438,10 @@ export default function RecruiterSearchPage() {
                 <h2 className="text-lg font-semibold tracking-tight">
                   {detail.display_name}
                 </h2>
-                <p className="text-sm text-muted-foreground">
+                <p className="text-sm text-text-2">
                   {detail.school_name} · Class of {detail.graduation_year}
                 </p>
-                <p className="text-sm text-muted-foreground">
+                <p className="text-sm text-text-2">
                   {detail.city}, {detail.state}
                 </p>
               </div>
@@ -442,26 +459,39 @@ export default function RecruiterSearchPage() {
 
             <div className="mt-3 flex flex-wrap gap-1">
               {detail.categories.map((c) => (
-                <Badge key={c} variant="secondary">
+                <Badge key={c} variant="active">
                   {CATEGORY_LABELS[c as Category] ?? c}
                 </Badge>
               ))}
             </div>
 
-            <div className="mt-3 flex flex-col gap-1 text-sm text-muted-foreground">
+            {/* DS Section 8: every verified data point gets a small
+                teal checkmark next to the label. */}
+            <div className="mt-3 flex flex-col gap-1 text-sm text-text-2">
               {detail.instagram_handle ? (
-                <span>Instagram: @{detail.instagram_handle}</span>
+                <span>
+                  <span className="text-teal">✓</span> Instagram: @{detail.instagram_handle}
+                </span>
               ) : null}
               {detail.tiktok_handle ? (
-                <span>TikTok: @{detail.tiktok_handle}</span>
+                <span>
+                  <span className="text-teal">✓</span> TikTok: @{detail.tiktok_handle}
+                </span>
               ) : null}
               <span>
-                {detail.total_campaigns_completed} campaigns completed
+                <span className="text-teal">✓</span> {detail.total_campaigns_completed} campaigns completed
               </span>
               <span>
-                {detail.average_rating != null
-                  ? `${detail.average_rating.toFixed(1)}★ average rating`
-                  : "No rating yet"}
+                {detail.average_rating != null ? (
+                  <>
+                    <span className="text-teal">✓</span>{" "}
+                    <span className={detail.average_rating >= 4.5 ? "font-semibold text-gold" : undefined}>
+                      {detail.average_rating.toFixed(1)}★ average rating
+                    </span>
+                  </>
+                ) : (
+                  "No rating yet"
+                )}
               </span>
             </div>
 
@@ -483,6 +513,10 @@ export default function RecruiterSearchPage() {
                 Save
               </Button>
             </div>
+
+            <p className="mt-4 flex items-center gap-1.5 text-xs text-text-3">
+              <LogoMark darkMode size={14} /> Powered by Teenure
+            </p>
           </div>
         </div>
       ) : null}
