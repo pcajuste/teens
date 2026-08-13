@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { TalentShell } from "@/components/talent/talent-shell";
 import { api, ApiError } from "@/lib/api";
 import type {
+  QuizResult,
   TalentAvailableChallenge,
   TalentChallengeSubmissionResponse,
   SubmitChallengeRequest,
@@ -33,6 +34,9 @@ export default function ChallengeDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [quizAnswers, setQuizAnswers] = useState<number[]>([]);
+  const [quizResult, setQuizResult] = useState<QuizResult | null>(null);
+  const [quizSubmitting, setQuizSubmitting] = useState(false);
 
   useEffect(() => {
     api
@@ -69,6 +73,9 @@ export default function ChallengeDetailPage() {
         `/talents/challenges/${challengeId}/submit`,
         body,
       );
+      if (challenge && challenge.quiz_questions.length > 0) {
+        setQuizAnswers(new Array(challenge.quiz_questions.length).fill(-1));
+      }
       setSubmitted(true);
     } catch (err) {
       setError(
@@ -76,6 +83,21 @@ export default function ChallengeDetailPage() {
       );
     } finally {
       setPending(false);
+    }
+  }
+
+  async function handleQuizSubmit() {
+    setQuizSubmitting(true);
+    setError(null);
+    try {
+      const result = await api.post<QuizResult>(`/talents/challenges/${challengeId}/quiz/submit`, {
+        answers: quizAnswers,
+      });
+      setQuizResult(result);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not submit the quiz.");
+    } finally {
+      setQuizSubmitting(false);
     }
   }
 
@@ -88,6 +110,10 @@ export default function ChallengeDetailPage() {
   }
 
   if (submitted) {
+    const quizQuestions = challenge?.quiz_questions ?? [];
+    const hasQuiz = quizQuestions.length > 0;
+    const canSubmitQuiz = hasQuiz && quizAnswers.every((a) => a >= 0);
+
     return (
       <TalentShell title="Challenge" backHref="/talent">
         <Card className="p-6 text-center">
@@ -95,10 +121,49 @@ export default function ChallengeDetailPage() {
           <p className="mt-1 text-sm text-muted-foreground">
             You&apos;ll hear from us if a brand wants to work with you.
           </p>
-          <Button className="mt-4" onClick={() => router.push("/talent")}>
-            Back to dashboard
-          </Button>
         </Card>
+
+        {hasQuiz && !quizResult ? (
+          <Card className="mt-4 p-5">
+            <p className="text-sm font-semibold">This challenge has a quiz.</p>
+            <div className="mt-3 flex flex-col gap-4">
+              {quizQuestions.map((q, qi) => (
+                <div key={qi} className="flex flex-col gap-2">
+                  <p className="text-sm font-medium">{q.question}</p>
+                  {q.options.map((option, oi) => (
+                    <label key={oi} className="flex items-center gap-2 text-sm">
+                      <input
+                        type="radio"
+                        name={`quiz-${qi}`}
+                        checked={quizAnswers[qi] === oi}
+                        onChange={() =>
+                          setQuizAnswers((prev) => prev.map((a, i) => (i === qi ? oi : a)))
+                        }
+                      />
+                      {option}
+                    </label>
+                  ))}
+                </div>
+              ))}
+              <Button disabled={!canSubmitQuiz || quizSubmitting} onClick={handleQuizSubmit} className="w-fit">
+                {quizSubmitting ? "Submitting…" : "Submit quiz"}
+              </Button>
+            </div>
+          </Card>
+        ) : null}
+
+        {quizResult ? (
+          <Card className="mt-4 p-5">
+            <p className="text-sm font-semibold">
+              You scored {quizResult.score}/{quizResult.total}
+              {quizResult.passed ? " -- nice work!" : ""}
+            </p>
+          </Card>
+        ) : null}
+
+        <Button className="mt-4" onClick={() => router.push("/talent")}>
+          Back to dashboard
+        </Button>
       </TalentShell>
     );
   }

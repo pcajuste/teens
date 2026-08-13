@@ -32,6 +32,7 @@ from app.repositories import (
     exclusivity_repository,
     insight_feedback_repository,
     intelligence_repository,
+    internships_repository,
     scholarships_repository,
     talent_profiles_repository,
     users_repository,
@@ -67,9 +68,14 @@ from app.schemas.exclusivity import (
     AdminExclusivityListResponse,
 )
 from app.routers.challenges import _to_challenge_response
-from app.routers.content_templates import _to_insight_campaign_response, _to_scholarship_response
+from app.routers.content_templates import _to_insight_campaign_response, _to_internship_response, _to_scholarship_response
 from app.schemas.challenges import AdminChallengeAnalyticsResponse, ChallengeResponse
-from app.schemas.content_templates import InsightCampaignResponse, InsightResponseModerationItem, ScholarshipResponse
+from app.schemas.content_templates import (
+    InsightCampaignResponse,
+    InsightResponseModerationItem,
+    InternshipResponse,
+    ScholarshipResponse,
+)
 from app.schemas.intelligence import TrendBucketResponse
 from app.services import payout_service, stripe_service
 from app.services.email_service import (
@@ -718,6 +724,33 @@ async def reject_scholarship(
 ) -> ScholarshipResponse:
     updated = await scholarships_repository.review(conn, scholarship_id, approved=False, reviewer_id=admin.id, rejection_reason=body.reason)
     return _to_scholarship_response(updated)
+
+
+@admin_router.get("/content-templates/internships/queue", response_model=list[InternshipResponse])
+async def internships_review_queue(conn: asyncpg.Connection = Depends(get_connection)) -> list[InternshipResponse]:
+    rows = await internships_repository.list_pending_review(conn)
+    return [_to_internship_response(i) for i in rows]
+
+
+@admin_router.post("/content-templates/internships/{internship_id}/approve", response_model=InternshipResponse)
+async def approve_internship(
+    internship_id: str,
+    admin: AuthenticatedUser = Depends(require_role("admin")),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> InternshipResponse:
+    updated = await internships_repository.review(conn, internship_id, approved=True, reviewer_id=admin.id, rejection_reason=None)
+    return _to_internship_response(updated)
+
+
+@admin_router.post("/content-templates/internships/{internship_id}/reject", response_model=InternshipResponse)
+async def reject_internship(
+    internship_id: str,
+    body: RejectRequest,
+    admin: AuthenticatedUser = Depends(require_role("admin")),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> InternshipResponse:
+    updated = await internships_repository.review(conn, internship_id, approved=False, reviewer_id=admin.id, rejection_reason=body.reason)
+    return _to_internship_response(updated)
 
 
 @admin_router.get("/content-templates/challenges/queue", response_model=list[ChallengeResponse])

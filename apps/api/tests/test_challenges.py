@@ -717,3 +717,118 @@ def test_parent_dashboard_excludes_declined_submissions(
     activity = talents.json()["challenge_activity"]
     assert activity["total_submitted"] == 0
     assert activity["recent_submissions"] == []
+
+
+# ---------------------------------------------------------------------
+# Interactive quiz builder for Skills Challenges (issue #51)
+# ---------------------------------------------------------------------
+
+_QUIZ_QUESTIONS = [
+    {
+        "question": "What's the max video length for a challenge submission?",
+        "options": ["30s", "60s", "90s", "120s"],
+        "correct_index": 1,
+    },
+    {
+        "question": "Can a brand hand-pick which talents see a challenge?",
+        "options": ["Yes, always", "No, never", "Only for Premium brands", "Only with parent consent"],
+        "correct_index": 1,
+    },
+]
+
+
+def _create_challenge_with_quiz(client, db, brand_headers, *, quiz_questions=None) -> dict:
+    body = {**_CHALLENGE_BODY}
+    created = client.post("/brands/challenges", json=body, headers=brand_headers)
+    assert created.status_code == 201, created.text
+    challenge_id = created.json()["id"]
+    content = client.put(
+        f"/brands/challenges/{challenge_id}/content",
+        json={
+            "why_text": "We want to test quiz knowledge.",
+            "quiz_questions": _QUIZ_QUESTIONS if quiz_questions is None else quiz_questions,
+        },
+        headers=brand_headers,
+    )
+    assert content.status_code == 200, content.text
+    db.execute("UPDATE public.challenges SET moderation_status = 'approved' WHERE id = $1", challenge_id)
+    activated = client.post(f"/brands/challenges/{challenge_id}/activate", headers=brand_headers)
+    assert activated.status_code == 200, activated.text
+    return activated.json()
+
+
+def test_quiz_questions_never_expose_correct_index_to_talent(client, db, brand_headers, talent_headers_factory, onboarded_brand):
+    challenge = _create_challenge_with_quiz(client, db, brand_headers)
+    talent_id, talent_user_id = _seed_rep(db)
+    talent_headers = talent_headers_factory(talent_user_id)
+
+    available = client.get("/talents/challenges/available", headers=talent_headers)
+    assert available.status_code == 200
+
+    # No talent-facing response  anywhere in this router (including
+    # brand's own list) may contain correct_index -- the stripped
+    # public_quiz_questions accessor is the only path that produces a
+    # response  body.
+    brand_view = client.get("/brands/challenges", headers=brand_headers)
+    assert brand_view.status_code == 200
+    body_text = json.dumps(brand_view.json())
+    assert "correct_index" not in body_text
+
+    quiz = next(c for c in brand_view.json() if c["id"] == challenge["id"])["quiz_questions"]
+    assert len(quiz) == 2
+    assert set(quiz[0].keys()) == {"question", "options"}
+
+
+def test_quiz_submit_scores_correctly_and_is_one_attempt_only(client, db, brand_headers, talent_headers_factory, onboarded_brand):
+    challenge = _create_challenge_with_quiz(client, db, brand_headers)
+    talent_id, talent_user_id = _seed_rep(db)
+    talent_headers = talent_headers_factory(talent_user_id)
+
+    # Quiz requires an existing submission first.
+    no_submission = client.post(
+        f"/talents/challenges/{challenge['id']}/quiz/submit", json={"answers": [1, 1]}, headers=talent_headers
+    )
+    assert no_submission.status_code == 400
+    assert no_submission.json()["error"]["code"] == "submission_required"
+
+    _submit(client, talent_headers, challenge["id"])
+
+    result = client.post(
+        f"/talents/challenges/{challenge['id']}/quiz/submit", json={"answers": [1, 0]}, headers=talent_headers
+    )
+    assert result.status_code == 200, result.text
+    body = result.json()
+    assert body["score"] == 1
+    assert body["total"] == 2
+    assert body["passed"] is False
+    assert body["wrong_answers"] == [{"question_index": 1, "correct_index": 1, "talent_answer_index": 0}]
+
+    again = client.post(
+        f"/talents/challenges/{challenge['id']}/quiz/submit", json={"answers": [1, 1]}, headers=talent_headers
+    )
+    assert again.status_code == 400
+    assert again.json()["error"]["code"] == "already_answered"
+
+
+def test_quiz_submit_wrong_answer_count_rejected(client, db, brand_headers, talent_headers_factory, onboarded_brand):
+    challenge = _create_challenge_with_quiz(client, db, brand_headers)
+    talent_id, talent_user_id = _seed_rep(db)
+    talent_headers = talent_headers_factory(talent_user_id)
+    _submit(client, talent_headers, challenge["id"])
+
+    result = client.post(
+        f"/talents/challenges/{challenge['id']}/quiz/submit", json={"answers": [1]}, headers=talent_headers
+    )
+    assert result.status_code == 400
+    assert result.json()["error"]["code"] == "wrong_answer_count"
+
+
+def test_challenge_without_quiz_rejects_quiz_submit(client, db, brand_headers, talent_headers_factory, onboarded_brand):
+    challenge = _create_and_activate_challenge(client, db, brand_headers)
+    talent_id, talent_user_id = _seed_rep(db)
+    talent_headers = talent_headers_factory(talent_user_id)
+    _submit(client, talent_headers, challenge["id"])
+
+    result = client.post(f"/talents/challenges/{challenge['id']}/quiz/submit", json={"answers": []}, headers=talent_headers)
+    assert result.status_code == 400
+    assert result.json()["error"]["code"] == "no_quiz"

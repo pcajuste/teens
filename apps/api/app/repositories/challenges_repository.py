@@ -12,6 +12,7 @@ given connection.
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -26,8 +27,24 @@ _CHALLENGE_COLUMNS = """
     submission_prompt, status, max_submissions, submissions_count, opens_at,
     closes_at, conversion_count, created_at, updated_at,
     goal_text, rules_text, judging_criteria, prize_reward_text, why_text,
-    moderation_status, reviewed_by, reviewed_at, rejection_reason
+    moderation_status, reviewed_by, reviewed_at, rejection_reason, quiz_questions
 """
+
+
+def strip_quiz_answer_keys(quiz_questions: list[dict]) -> list[dict]:
+    """Same rule as learning_modules_repository.strip_correct_index,
+    applied to a Skills Challenge's quiz_questions column instead of a
+    learning module's content_blocks (issue #51): this is the ONLY
+    function allowed to turn a raw quiz_questions value into something
+    safe to put in a response  body. Every route that returns a
+    challenge's quiz -- including admin/brand preview -- must go
+    through this (directly or via Challenge.public_quiz_questions),
+    never the raw column."""
+    return [{k: v for k, v in q.items() if k != "correct_index"} for q in quiz_questions]
+
+
+def _load_quiz_questions(raw) -> list[dict]:
+    return json.loads(raw) if isinstance(raw, str) else list(raw or [])
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,6 +76,11 @@ class Challenge:
     reviewed_by: str | None
     reviewed_at: datetime | None
     rejection_reason: str | None
+    quiz_questions: list[dict]  # RAW -- includes correct_index. Never serialize directly.
+
+    @property
+    def public_quiz_questions(self) -> list[dict]:
+        return strip_quiz_answer_keys(self.quiz_questions)
 
     @classmethod
     def from_row(cls, row: asyncpg.Record) -> "Challenge":
@@ -88,6 +110,7 @@ class Challenge:
             reviewed_by=str(row["reviewed_by"]) if row["reviewed_by"] else None,
             reviewed_at=row["reviewed_at"],
             rejection_reason=row["rejection_reason"],
+            quiz_questions=_load_quiz_questions(row["quiz_questions"]),
         )
 
 
@@ -214,27 +237,51 @@ async def update_content_layer(
     judging_criteria: str | None,
     prize_reward_text: str | None,
     why_text: str,
+    quiz_questions: list[dict] | None = None,
 ) -> Challenge | None:
     """Build Prompt 8I's Skills Challenge fields -- kept separate from
     update_challenge (Prompt 8G's own draft-only edit) so it can be
     called independently of the 8G edit flow. Legal only in 'draft',
-    same restriction as update_challenge."""
-    row = await conn.fetchrow(
-        f"""
-        UPDATE public.challenges
-        SET goal_text = $3, rules_text = $4, judging_criteria = $5,
-            prize_reward_text = $6, why_text = $7, updated_at = now()
-        WHERE id = $1 AND brand_id = $2 AND status = 'draft'
-        RETURNING {_CHALLENGE_COLUMNS}
-        """,
-        challenge_id,
-        brand_id,
-        goal_text,
-        rules_text,
-        judging_criteria,
-        prize_reward_text,
-        why_text,
-    )
+    same restriction as update_challenge.
+
+    quiz_questions (issue #51) is None-means-unchanged, not
+    None-means-clear -- omitting it from a content-layer edit must not
+    silently wipe an already-authored quiz."""
+    if quiz_questions is None:
+        row = await conn.fetchrow(
+            f"""
+            UPDATE public.challenges
+            SET goal_text = $3, rules_text = $4, judging_criteria = $5,
+                prize_reward_text = $6, why_text = $7, updated_at = now()
+            WHERE id = $1 AND brand_id = $2 AND status = 'draft'
+            RETURNING {_CHALLENGE_COLUMNS}
+            """,
+            challenge_id,
+            brand_id,
+            goal_text,
+            rules_text,
+            judging_criteria,
+            prize_reward_text,
+            why_text,
+        )
+    else:
+        row = await conn.fetchrow(
+            f"""
+            UPDATE public.challenges
+            SET goal_text = $3, rules_text = $4, judging_criteria = $5,
+                prize_reward_text = $6, why_text = $7, quiz_questions = $8::jsonb, updated_at = now()
+            WHERE id = $1 AND brand_id = $2 AND status = 'draft'
+            RETURNING {_CHALLENGE_COLUMNS}
+            """,
+            challenge_id,
+            brand_id,
+            goal_text,
+            rules_text,
+            judging_criteria,
+            prize_reward_text,
+            why_text,
+            json.dumps(quiz_questions),
+        )
     return Challenge.from_row(row) if row else None
 
 
@@ -366,7 +413,8 @@ async def auto_close_due(conn: asyncpg.Connection, *, now: datetime) -> list[Cha
 _SUBMISSION_COLUMNS = """
     id, challenge_id, talent_id, submission_text, submission_file_urls, status, brand_note,
     converted_to_campaign_id, payout_cents, payout_status, stripe_transfer_id,
-    submitted_at, reviewed_at, converted_at, paid_at
+    submitted_at, reviewed_at, converted_at, paid_at,
+    quiz_answers, quiz_score, quiz_total, quiz_answered_at
 """
 
 
@@ -387,6 +435,10 @@ class ChallengeSubmission:
     reviewed_at: datetime | None
     converted_at: datetime | None
     paid_at: datetime | None
+    quiz_answers: list[int] | None
+    quiz_score: int | None
+    quiz_total: int | None
+    quiz_answered_at: datetime | None
 
     @classmethod
     def from_row(cls, row: asyncpg.Record) -> "ChallengeSubmission":
@@ -406,6 +458,10 @@ class ChallengeSubmission:
             reviewed_at=row["reviewed_at"],
             converted_at=row["converted_at"],
             paid_at=row["paid_at"],
+            quiz_answers=_load_quiz_questions(row["quiz_answers"]) if row["quiz_answers"] is not None else None,
+            quiz_score=row["quiz_score"],
+            quiz_total=row["quiz_total"],
+            quiz_answered_at=row["quiz_answered_at"],
         )
 
 
@@ -456,6 +512,27 @@ async def get_for_talent_and_challenge(conn: asyncpg.Connection, talent_id: str,
         challenge_id,
     )
     return ChallengeSubmission.from_row(row) if row else None
+
+
+async def record_quiz_result(
+    conn: asyncpg.Connection, submission_id: str, *, quiz_answers: list[int], quiz_score: int, quiz_total: int
+) -> ChallengeSubmission:
+    """One attempt only -- callers must check quiz_answered_at IS NULL
+    (get_for_talent_and_challenge) before calling this, same
+    once-only pattern as insight_feedback_repository.has_responded."""
+    row = await conn.fetchrow(
+        f"""
+        UPDATE public.challenge_submissions
+        SET quiz_answers = $2::jsonb, quiz_score = $3, quiz_total = $4, quiz_answered_at = now()
+        WHERE id = $1
+        RETURNING {_SUBMISSION_COLUMNS}
+        """,
+        submission_id,
+        json.dumps(quiz_answers),
+        quiz_score,
+        quiz_total,
+    )
+    return ChallengeSubmission.from_row(row)
 
 
 async def get_by_stripe_transfer_id(conn: asyncpg.Connection, stripe_transfer_id: str) -> ChallengeSubmission | None:

@@ -244,6 +244,114 @@ def test_scholarship_rejection_records_reason(client, brand_headers, onboarded_b
 
 
 # ---------------------------------------------------------------------
+# Internship / Apprenticeship template (issue #50)
+# ---------------------------------------------------------------------
+
+_INTERNSHIP_BODY = {
+    "role_title": "Junior Social Media Assistant",
+    "description": "Help plan and post weekly content for our teen-focused product line.",
+    "time_commitment": "8 hrs/week, 10 weeks",
+    "compensation_type": "paid",
+    "compensation_why": "Standard hourly rate for the role.",
+    "requirements_text": "Must be 16+ and available two afternoons per week.",
+    "application_process_text": "Submit a short answer through Teenure -- no off-platform links.",
+    "why_text": "We want to give a motivated teen real marketing experience.",
+    "deadline": (datetime.now(timezone.utc) + timedelta(days=30)).isoformat(),
+}
+
+
+def test_internship_creation_blocked_without_company_profile(client, brand_headers, onboarded_brand):
+    response = client.post("/brands/internships", json=_INTERNSHIP_BODY, headers=brand_headers)
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "company_profile_incomplete"
+
+
+def test_internship_rejects_unknown_compensation_type(client, brand_headers, onboarded_brand):
+    _complete_company_profile(client, brand_headers)
+    response = client.post(
+        "/brands/internships", json={**_INTERNSHIP_BODY, "compensation_type": "commission"}, headers=brand_headers
+    )
+    assert response.status_code == 422
+
+
+def test_internship_full_lifecycle(client, db, brand_headers, talent_headers_factory, onboarded_brand, onboarded_admin):
+    _complete_company_profile(client, brand_headers)
+    created = client.post("/brands/internships", json=_INTERNSHIP_BODY, headers=brand_headers)
+    assert created.status_code == 201, created.text
+    internship_id = created.json()["id"]
+    assert created.json()["moderation_status"] == "draft"
+
+    # Cannot activate before approval
+    premature = client.post(f"/brands/internships/{internship_id}/activate", headers=brand_headers)
+    assert premature.status_code == 400
+    assert premature.json()["error"]["code"] == "not_approved"
+
+    submitted = client.post(f"/brands/internships/{internship_id}/submit-for-review", headers=brand_headers)
+    assert submitted.status_code == 200
+    assert submitted.json()["moderation_status"] == "pending_review"
+
+    queue = client.get("/admin/content-templates/internships/queue", headers=onboarded_admin)
+    assert queue.status_code == 200
+    assert any(i["id"] == internship_id for i in queue.json())
+
+    approved = client.post(f"/admin/content-templates/internships/{internship_id}/approve", headers=onboarded_admin)
+    assert approved.status_code == 200
+    assert approved.json()["moderation_status"] == "approved"
+
+    activated = client.post(f"/brands/internships/{internship_id}/activate", headers=brand_headers)
+    assert activated.status_code == 200
+    assert activated.json()["status"] == "active"
+
+    talent_id, talent_user_id = _seed_talent(db)
+    talent_headers = talent_headers_factory(talent_user_id)
+
+    available = client.get("/talents/internships/available", headers=talent_headers)
+    assert available.status_code == 200
+    assert any(i["id"] == internship_id for i in available.json())
+
+    apply = client.post(
+        f"/talents/internships/{internship_id}/apply", json={"response_text": "I'd love this role."}, headers=talent_headers
+    )
+    assert apply.status_code == 201, apply.text
+
+    duplicate = client.post(
+        f"/talents/internships/{internship_id}/apply", json={"response_text": "Again."}, headers=talent_headers
+    )
+    assert duplicate.status_code == 400
+    assert duplicate.json()["error"]["code"] == "already_applied"
+
+    my_apps = client.get("/talents/internships/applications", headers=talent_headers)
+    assert my_apps.status_code == 200
+    assert len(my_apps.json()) == 1
+
+    brand_apps = client.get(f"/brands/internships/{internship_id}/applications", headers=brand_headers)
+    assert brand_apps.status_code == 200
+    application_id = brand_apps.json()[0]["id"]
+
+    accepted = client.post(
+        f"/brands/internships/{internship_id}/applications/{application_id}/accept", headers=brand_headers
+    )
+    assert accepted.status_code == 200
+    assert accepted.json()["status"] == "accepted"
+
+
+def test_internship_rejection_records_reason(client, brand_headers, onboarded_brand, onboarded_admin):
+    _complete_company_profile(client, brand_headers)
+    created = client.post("/brands/internships", json=_INTERNSHIP_BODY, headers=brand_headers)
+    internship_id = created.json()["id"]
+    client.post(f"/brands/internships/{internship_id}/submit-for-review", headers=brand_headers)
+
+    rejected = client.post(
+        f"/admin/content-templates/internships/{internship_id}/reject",
+        json={"reason": "Requirements section needs more detail."},
+        headers=onboarded_admin,
+    )
+    assert rejected.status_code == 200
+    assert rejected.json()["moderation_status"] == "rejected"
+    assert rejected.json()["rejection_reason"] == "Requirements section needs more detail."
+
+
+# ---------------------------------------------------------------------
 # Skills Challenge content layer (Build Prompt 8I extending 8G)
 # ---------------------------------------------------------------------
 

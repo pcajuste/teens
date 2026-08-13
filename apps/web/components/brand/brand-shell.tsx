@@ -14,6 +14,7 @@ const NAV = [
   { href: "/brand", label: "Campaigns" },
   { href: "/brand/challenges", label: "Challenges" },
   { href: "/brand/scholarships", label: "Scholarships" },
+  { href: "/brand/internships", label: "Internships" },
   { href: "/brand/insight-feedback", label: "Insight & Feedback" },
   { href: "/brand/exclusivity", label: "Market tools" },
   { href: "/brand/company-profile", label: "Company profile" },

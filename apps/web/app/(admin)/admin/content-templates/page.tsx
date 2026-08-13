@@ -7,18 +7,20 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api, ApiError } from "@/lib/api";
-import type { Challenge, InsightCampaign, Scholarship } from "@/lib/types";
+import type { Challenge, InsightCampaign, Internship, Scholarship } from "@/lib/types";
 
-type QueueType = "scholarships" | "challenges" | "insight-campaigns";
+type QueueType = "scholarships" | "internships" | "challenges" | "insight-campaigns";
 
 const QUEUE_LABEL: Record<QueueType, string> = {
   scholarships: "Scholarships",
+  internships: "Internships & Apprenticeships",
   challenges: "Skills Challenges",
   "insight-campaigns": "Insight & Feedback",
 };
 
 export default function AdminContentTemplatesPage() {
   const [scholarships, setScholarships] = useState<Scholarship[] | null>(null);
+  const [internships, setInternships] = useState<Internship[] | null>(null);
   const [challenges, setChallenges] = useState<Challenge[] | null>(null);
   const [insightCampaigns, setInsightCampaigns] = useState<InsightCampaign[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -30,6 +32,7 @@ export default function AdminContentTemplatesPage() {
       .get<Scholarship[]>("/admin/content-templates/scholarships/queue")
       .then(setScholarships)
       .catch((err) => setError(err instanceof ApiError ? err.message : "Could not load the review queue."));
+    api.get<Internship[]>("/admin/content-templates/internships/queue").then(setInternships).catch(() => undefined);
     api.get<Challenge[]>("/admin/content-templates/challenges/queue").then(setChallenges).catch(() => undefined);
     api
       .get<InsightCampaign[]>("/admin/content-templates/insight-campaigns/queue")
@@ -51,7 +54,8 @@ export default function AdminContentTemplatesPage() {
     load();
   }
 
-  const totalPending = (scholarships?.length ?? 0) + (challenges?.length ?? 0) + (insightCampaigns?.length ?? 0);
+  const totalPending =
+    (scholarships?.length ?? 0) + (internships?.length ?? 0) + (challenges?.length ?? 0) + (insightCampaigns?.length ?? 0);
 
   return (
     <AdminShell title="Content review" action={<Badge variant={totalPending > 0 ? "pending" : "done"}>{totalPending} pending</Badge>}>
@@ -68,6 +72,24 @@ export default function AdminContentTemplatesPage() {
         rejectReason={rejectReason}
         setRejectReason={setRejectReason}
         onConfirmReject={(id) => reject("scholarships", id)}
+        onCancelReject={() => setRejectingId(null)}
+      />
+
+      <QueueSection
+        title={QUEUE_LABEL.internships}
+        items={internships}
+        renderTitle={(i) => i.role_title}
+        renderMeta={(i) =>
+          `${i.time_commitment} -- ${i.compensation_type} -- why: "${i.why_text}"${
+            i.compensation_type !== "paid" ? ` -- compensation rationale: "${i.compensation_why}"` : ""
+          }`
+        }
+        onApprove={(id) => approve("internships", id)}
+        onReject={(id) => setRejectingId(id)}
+        rejectingId={rejectingId}
+        rejectReason={rejectReason}
+        setRejectReason={setRejectReason}
+        onConfirmReject={(id) => reject("internships", id)}
         onCancelReject={() => setRejectingId(null)}
       />
 

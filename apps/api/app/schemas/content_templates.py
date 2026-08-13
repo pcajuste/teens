@@ -302,6 +302,93 @@ class InsightBrandResultsResponse(BaseModel):
     results: list[InsightBrandResultResponse]
 
 
+# ──────────────────────────────────────────────────────────────────
+# Internship / Apprenticeship template (issue #50)
+# ──────────────────────────────────────────────────────────────────
+
+
+class InternshipCreateRequest(BaseModel):
+    role_title: str
+    description: str
+    time_commitment: str
+    compensation_type: str
+    compensation_why: str
+    requirements_text: str
+    application_process_text: str
+    why_text: str
+    deadline: datetime
+
+    @field_validator("compensation_type")
+    @classmethod
+    def _known_compensation_type(cls, value: str) -> str:
+        if value not in ("paid", "stipend", "unpaid"):
+            raise ValueError("compensation_type must be one of: paid, stipend, unpaid")
+        return value
+
+    @field_validator("compensation_why")
+    @classmethod
+    def _compensation_why_non_empty(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("compensation_why must not be empty")
+        return value
+
+    @field_validator("why_text")
+    @classmethod
+    def _why_text_length(cls, value: str) -> str:
+        return _word_count_at_most(value, 150, "why_text")
+
+
+class InternshipResponse(BaseModel):
+    id: str
+    role_title: str
+    description: str
+    time_commitment: str
+    compensation_type: str
+    compensation_why: str
+    requirements_text: str
+    application_process_text: str
+    why_text: str
+    deadline: datetime
+    moderation_status: str
+    rejection_reason: str | None
+    status: str
+    created_at: datetime
+
+
+class InternshipApplyRequest(BaseModel):
+    response_text: str
+
+    @field_validator("response_text")
+    @classmethod
+    def _non_empty(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("response_text must not be empty")
+        return value
+
+
+class InternshipApplicationResponse(BaseModel):
+    id: str
+    internship_id: str
+    response_text: str
+    status: str
+    submitted_at: datetime
+    reviewed_at: datetime | None
+
+
+class InternshipApplicationBrandView(BaseModel):
+    """Brand-facing application list -- same non-pseudonymous shape as
+    ScholarshipApplicationBrandView; internship applicants are
+    on-platform Talent accounts with a name attached, not pseudonymous
+    panelists (8I's pseudonym requirement is scoped to Insight &
+    Feedback only)."""
+
+    id: str
+    talent_id: str
+    response_text: str
+    status: str
+    submitted_at: datetime
+
+
 class InsightResponseModerationItem(BaseModel):
     """Admin-facing queue item for a pending structured_qa response.
     Pseudonymous like every other brand/admin-adjacent Insight &

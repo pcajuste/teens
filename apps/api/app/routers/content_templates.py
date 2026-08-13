@@ -14,6 +14,7 @@ from app.db.pool import get_connection
 from app.repositories import (
     brand_profiles_repository,
     insight_feedback_repository,
+    internships_repository,
     scholarships_repository,
     talent_profiles_repository,
 )
@@ -27,6 +28,11 @@ from app.schemas.content_templates import (
     InsightInvitationResponse,
     InsightResponseAck,
     InsightResponseSubmitRequest,
+    InternshipApplicationBrandView,
+    InternshipApplicationResponse,
+    InternshipApplyRequest,
+    InternshipCreateRequest,
+    InternshipResponse,
     ScholarshipApplicationBrandView,
     ScholarshipApplicationResponse,
     ScholarshipApplyRequest,
@@ -37,6 +43,8 @@ from app.services import insight_feedback_service, pseudonym_service
 
 brands_scholarships_router = APIRouter(prefix="/brands/scholarships", tags=["content-templates"])
 talents_scholarships_router = APIRouter(prefix="/talents/scholarships", tags=["content-templates"])
+brands_internships_router = APIRouter(prefix="/brands/internships", tags=["content-templates"])
+talents_internships_router = APIRouter(prefix="/talents/internships", tags=["content-templates"])
 brands_insight_router = APIRouter(prefix="/brands/insight", tags=["content-templates"])
 talents_insight_router = APIRouter(prefix="/talents/insight", tags=["content-templates"])
 
@@ -293,6 +301,231 @@ async def my_scholarship_applications(
     return [
         ScholarshipApplicationResponse(
             id=a.id, scholarship_id=a.scholarship_id, response_text=a.response_text,
+            status=a.status, submitted_at=a.submitted_at, reviewed_at=a.reviewed_at,
+        )
+        for a in rows
+    ]
+
+
+# ══════════════════════════════════════════════════════════════════
+# /brands/internships & /talents/internships (issue #50) -- same
+# lifecycle shape as /brands/scholarships above.
+# ══════════════════════════════════════════════════════════════════
+
+
+def _to_internship_response(i: internships_repository.Internship) -> InternshipResponse:
+    return InternshipResponse(
+        id=i.id,
+        role_title=i.role_title,
+        description=i.description,
+        time_commitment=i.time_commitment,
+        compensation_type=i.compensation_type,
+        compensation_why=i.compensation_why,
+        requirements_text=i.requirements_text,
+        application_process_text=i.application_process_text,
+        why_text=i.why_text,
+        deadline=i.deadline,
+        moderation_status=i.moderation_status,
+        rejection_reason=i.rejection_reason,
+        status=i.status,
+        created_at=i.created_at,
+    )
+
+
+async def _require_owned_internship(conn: asyncpg.Connection, internship_id: str, brand_id: str) -> internships_repository.Internship:
+    internship = await internships_repository.get_by_id_and_brand(conn, internship_id, brand_id)
+    if internship is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "internship_not_found", "message": "No internship found for that id."},
+        )
+    return internship
+
+
+@brands_internships_router.post("", response_model=InternshipResponse, status_code=status.HTTP_201_CREATED)
+async def create_internship(
+    body: InternshipCreateRequest,
+    user: AuthenticatedUser = Depends(require_role("brand")),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> InternshipResponse:
+    brand = await _get_own_brand_profile(conn, user)
+    _require_company_profile_complete(brand)
+    internship = await internships_repository.create(
+        conn,
+        brand_id=brand.id,
+        role_title=body.role_title,
+        description=body.description,
+        time_commitment=body.time_commitment,
+        compensation_type=body.compensation_type,
+        compensation_why=body.compensation_why,
+        requirements_text=body.requirements_text,
+        application_process_text=body.application_process_text,
+        why_text=body.why_text,
+        deadline=body.deadline,
+    )
+    return _to_internship_response(internship)
+
+
+@brands_internships_router.get("", response_model=list[InternshipResponse])
+async def list_own_internships(
+    user: AuthenticatedUser = Depends(require_role("brand")),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> list[InternshipResponse]:
+    brand = await _get_own_brand_profile(conn, user)
+    rows = await internships_repository.list_for_brand(conn, brand.id)
+    return [_to_internship_response(i) for i in rows]
+
+
+@brands_internships_router.post("/{internship_id}/submit-for-review", response_model=InternshipResponse)
+async def submit_internship_for_review(
+    internship_id: str,
+    user: AuthenticatedUser = Depends(require_role("brand")),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> InternshipResponse:
+    brand = await _get_own_brand_profile(conn, user)
+    await _require_owned_internship(conn, internship_id, brand.id)
+    updated = await internships_repository.submit_for_review(conn, internship_id)
+    return _to_internship_response(updated)
+
+
+@brands_internships_router.post("/{internship_id}/activate", response_model=InternshipResponse)
+async def activate_internship(
+    internship_id: str,
+    user: AuthenticatedUser = Depends(require_role("brand")),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> InternshipResponse:
+    """Self-service to build, human review to publish (8I content
+    rules) -- go-live is gated on moderation_status='approved', both
+    here (clean 400) and at the DB layer (CHECK constraint backstop).
+    Carries the same review gate as every other template despite the
+    added legal weight (minors + labor/earnings) -- that weight is
+    handled by the reviewer's own judgment on this queue, not a
+    separate code path."""
+    brand = await _get_own_brand_profile(conn, user)
+    internship = await _require_owned_internship(conn, internship_id, brand.id)
+    if internship.moderation_status != "approved":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "not_approved", "message": "This internship has not been approved by Teenure review yet."},
+        )
+    updated = await internships_repository.activate(conn, internship_id)
+    return _to_internship_response(updated)
+
+
+@brands_internships_router.post("/{internship_id}/close", response_model=InternshipResponse)
+async def close_internship(
+    internship_id: str,
+    user: AuthenticatedUser = Depends(require_role("brand")),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> InternshipResponse:
+    brand = await _get_own_brand_profile(conn, user)
+    await _require_owned_internship(conn, internship_id, brand.id)
+    updated = await internships_repository.close(conn, internship_id)
+    return _to_internship_response(updated)
+
+
+@brands_internships_router.get("/{internship_id}/applications", response_model=list[InternshipApplicationBrandView])
+async def list_internship_applications(
+    internship_id: str,
+    user: AuthenticatedUser = Depends(require_role("brand")),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> list[InternshipApplicationBrandView]:
+    brand = await _get_own_brand_profile(conn, user)
+    await _require_owned_internship(conn, internship_id, brand.id)
+    applications = await internships_repository.list_for_internship(conn, internship_id)
+    return [
+        InternshipApplicationBrandView(
+            id=a.id, talent_id=a.talent_id, response_text=a.response_text, status=a.status, submitted_at=a.submitted_at
+        )
+        for a in applications
+    ]
+
+
+@brands_internships_router.post(
+    "/{internship_id}/applications/{application_id}/accept", response_model=InternshipApplicationBrandView
+)
+async def accept_internship_application(
+    internship_id: str,
+    application_id: str,
+    user: AuthenticatedUser = Depends(require_role("brand")),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> InternshipApplicationBrandView:
+    brand = await _get_own_brand_profile(conn, user)
+    await _require_owned_internship(conn, internship_id, brand.id)
+    updated = await internships_repository.set_application_status(conn, application_id, "accepted")
+    return InternshipApplicationBrandView(
+        id=updated.id, talent_id=updated.talent_id, response_text=updated.response_text,
+        status=updated.status, submitted_at=updated.submitted_at,
+    )
+
+
+@brands_internships_router.post(
+    "/{internship_id}/applications/{application_id}/decline", response_model=InternshipApplicationBrandView
+)
+async def decline_internship_application(
+    internship_id: str,
+    application_id: str,
+    user: AuthenticatedUser = Depends(require_role("brand")),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> InternshipApplicationBrandView:
+    brand = await _get_own_brand_profile(conn, user)
+    await _require_owned_internship(conn, internship_id, brand.id)
+    updated = await internships_repository.set_application_status(conn, application_id, "declined")
+    return InternshipApplicationBrandView(
+        id=updated.id, talent_id=updated.talent_id, response_text=updated.response_text,
+        status=updated.status, submitted_at=updated.submitted_at,
+    )
+
+
+@talents_internships_router.get("/available", response_model=list[InternshipResponse])
+async def available_internships(
+    user: AuthenticatedUser = Depends(require_role("talent")),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> list[InternshipResponse]:
+    rows = await internships_repository.list_active(conn)
+    return [_to_internship_response(i) for i in rows]
+
+
+@talents_internships_router.post(
+    "/{internship_id}/apply", response_model=InternshipApplicationResponse, status_code=status.HTTP_201_CREATED
+)
+async def apply_to_internship(
+    internship_id: str,
+    body: InternshipApplyRequest,
+    user: AuthenticatedUser = Depends(require_role("talent")),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> InternshipApplicationResponse:
+    profile = await _get_own_talent_profile(conn, user)
+    internship = await internships_repository.get_by_id(conn, internship_id)
+    if internship is None or internship.status != "active":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "internship_not_found", "message": "No active internship found for that id."},
+        )
+    if await internships_repository.has_applied(conn, internship_id=internship_id, talent_id=profile.id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "already_applied", "message": "You've already applied to this internship."},
+        )
+    application = await internships_repository.apply(
+        conn, internship_id=internship_id, talent_id=profile.id, response_text=body.response_text
+    )
+    return InternshipApplicationResponse(
+        id=application.id, internship_id=application.internship_id, response_text=application.response_text,
+        status=application.status, submitted_at=application.submitted_at, reviewed_at=application.reviewed_at,
+    )
+
+
+@talents_internships_router.get("/applications", response_model=list[InternshipApplicationResponse])
+async def my_internship_applications(
+    user: AuthenticatedUser = Depends(require_role("talent")),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> list[InternshipApplicationResponse]:
+    profile = await _get_own_talent_profile(conn, user)
+    rows = await internships_repository.list_for_talent(conn, profile.id)
+    return [
+        InternshipApplicationResponse(
+            id=a.id, internship_id=a.internship_id, response_text=a.response_text,
             status=a.status, submitted_at=a.submitted_at, reviewed_at=a.reviewed_at,
         )
         for a in rows

@@ -69,6 +69,8 @@ def create_app() -> FastAPI:
     app.include_router(challenges.talents_challenges_router)
     app.include_router(content_templates.brands_scholarships_router)
     app.include_router(content_templates.talents_scholarships_router)
+    app.include_router(content_templates.brands_internships_router)
+    app.include_router(content_templates.talents_internships_router)
     app.include_router(content_templates.brands_insight_router)
     app.include_router(content_templates.talents_insight_router)
     app.include_router(exclusivity.router)

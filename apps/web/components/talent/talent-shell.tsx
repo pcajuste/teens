@@ -13,6 +13,7 @@ const NAV = [
   { href: "/talent", label: "Dashboard" },
   { href: "/talent/learning", label: "Learning Hub" },
   { href: "/talent/scholarships", label: "Scholarships" },
+  { href: "/talent/internships", label: "Internships" },
   { href: "/talent/insight-feedback", label: "Insight & Feedback" },
   { href: "/talent/profile-preview", label: "Preview profile" },
 ];

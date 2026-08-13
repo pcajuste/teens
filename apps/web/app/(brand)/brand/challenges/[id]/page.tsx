@@ -16,7 +16,10 @@ import type {
   BrandChallengeSubmission,
   Campaign,
   Challenge,
+  QuizQuestionInput,
 } from "@/lib/types";
+
+const EMPTY_QUIZ_QUESTION: QuizQuestionInput = { question: "", options: ["", "", "", ""], correct_index: 0 };
 
 function money(cents: number | null): string {
   if (cents === null) return "—";
@@ -91,6 +94,7 @@ export default function BrandChallengeDetailPage() {
     why_text: "",
   });
   const [savingContent, setSavingContent] = useState(false);
+  const [quizQuestions, setQuizQuestions] = useState<QuizQuestionInput[]>([]);
 
   useEffect(() => {
     if (!challenge) return;
@@ -101,6 +105,13 @@ export default function BrandChallengeDetailPage() {
       prize_reward_text: challenge.prize_reward_text ?? "",
       why_text: challenge.why_text ?? "",
     });
+    // The stripped public shape has no correct_index -- editing an
+    // already-authored quiz starts each question's correct_index back
+    // at 0 rather than pretending we know the brand's original answer
+    // (issue #51: correct_index is write-only, never sent back down).
+    setQuizQuestions(
+      challenge.quiz_questions.map((q) => ({ question: q.question, options: q.options, correct_index: 0 })),
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [challenge?.id]);
 
@@ -108,13 +119,36 @@ export default function BrandChallengeDetailPage() {
     setSavingContent(true);
     setError(null);
     try {
-      await api.put<Challenge>(`/brands/challenges/${challengeId}/content`, contentForm);
+      await api.put<Challenge>(`/brands/challenges/${challengeId}/content`, {
+        ...contentForm,
+        quiz_questions: quizQuestions.length > 0 ? quizQuestions : null,
+      });
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not save these details.");
     } finally {
       setSavingContent(false);
     }
+  }
+
+  function addQuizQuestion() {
+    setQuizQuestions((prev) => [...prev, { ...EMPTY_QUIZ_QUESTION, options: [...EMPTY_QUIZ_QUESTION.options] }]);
+  }
+
+  function removeQuizQuestion(index: number) {
+    setQuizQuestions((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function updateQuizQuestion(index: number, patch: Partial<QuizQuestionInput>) {
+    setQuizQuestions((prev) => prev.map((q, i) => (i === index ? { ...q, ...patch } : q)));
+  }
+
+  function updateQuizOption(questionIndex: number, optionIndex: number, value: string) {
+    setQuizQuestions((prev) =>
+      prev.map((q, i) =>
+        i === questionIndex ? { ...q, options: q.options.map((o, oi) => (oi === optionIndex ? value : o)) } : q,
+      ),
+    );
   }
 
   async function handleSubmitForReview() {
@@ -334,6 +368,46 @@ export default function BrandChallengeDetailPage() {
                   onChange={(e) => setContentForm({ ...contentForm, why_text: e.target.value })}
                 />
               </div>
+              <div className="flex flex-col gap-2 border-t border-border-muted pt-3">
+                <p className="text-sm font-semibold">Quiz (optional -- reviewed with everything else)</p>
+                {quizQuestions.map((q, qi) => (
+                  <div key={qi} className="flex flex-col gap-2 rounded-md border border-border-muted p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <Label htmlFor={`quiz-question-${qi}`}>Question {qi + 1}</Label>
+                      <Button size="sm" variant="ghost" onClick={() => removeQuizQuestion(qi)}>
+                        Remove
+                      </Button>
+                    </div>
+                    <Input
+                      id={`quiz-question-${qi}`}
+                      value={q.question}
+                      onChange={(e) => updateQuizQuestion(qi, { question: e.target.value })}
+                    />
+                    <div className="grid grid-cols-2 gap-2">
+                      {q.options.map((option, oi) => (
+                        <div key={oi} className="flex items-center gap-2">
+                          <input
+                            type="radio"
+                            name={`quiz-correct-${qi}`}
+                            checked={q.correct_index === oi}
+                            onChange={() => updateQuizQuestion(qi, { correct_index: oi })}
+                          />
+                          <Input
+                            placeholder={`Option ${oi + 1}`}
+                            value={option}
+                            onChange={(e) => updateQuizOption(qi, oi, e.target.value)}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-xs text-text-3">Select the radio button next to the correct answer.</p>
+                  </div>
+                ))}
+                <Button size="sm" variant="outline" className="w-fit" onClick={addQuizQuestion}>
+                  Add quiz question
+                </Button>
+              </div>
+
               <Button size="sm" className="w-fit" disabled={savingContent} onClick={handleSaveContent}>
                 {savingContent ? "Saving..." : "Save details"}
               </Button>

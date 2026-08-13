@@ -844,6 +844,8 @@ export interface Challenge {
   why_text: string | null;
   moderation_status: ModerationStatus;
   rejection_reason: string | null;
+  // Stripped -- never includes correct_index (issue #51).
+  quiz_questions: QuizQuestionPublic[];
 }
 
 export interface ChallengeCreateRequest {
@@ -892,6 +894,7 @@ export interface TalentAvailableChallenge {
   submission_prompt: string;
   target_cities: string[];
   closes_at: string | null;
+  quiz_questions: QuizQuestionPublic[];
 }
 
 export interface TalentSubmittedChallenge {
@@ -1065,12 +1068,90 @@ export interface ScholarshipApplicationBrandView {
   submitted_at: string;
 }
 
+// Public shape only -- correct_index intentionally absent, never sent
+// by the server (see Challenge.quiz_questions).
+export interface QuizQuestionPublic {
+  question: string;
+  options: string[];
+}
+
+export interface QuizQuestionInput extends QuizQuestionPublic {
+  correct_index: number;
+}
+
 export interface ChallengeContentLayerUpdateRequest {
   goal_text?: string | null;
   rules_text?: string | null;
   judging_criteria?: string | null;
   prize_reward_text?: string | null;
   why_text: string;
+  quiz_questions?: QuizQuestionInput[] | null;
+}
+
+export interface QuizWrongAnswerEntry {
+  question_index: number;
+  correct_index: number;
+  talent_answer_index: number;
+}
+
+export interface QuizResult {
+  challenge_id: string;
+  score: number;
+  total: number;
+  passed: boolean;
+  wrong_answers: QuizWrongAnswerEntry[];
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Internship / Apprenticeship template (issue #50)
+// ──────────────────────────────────────────────────────────────────
+
+export type CompensationType = "paid" | "stipend" | "unpaid";
+
+export interface Internship {
+  id: string;
+  role_title: string;
+  description: string;
+  time_commitment: string;
+  compensation_type: CompensationType;
+  compensation_why: string;
+  requirements_text: string;
+  application_process_text: string;
+  why_text: string;
+  deadline: string;
+  moderation_status: ModerationStatus;
+  rejection_reason: string | null;
+  status: "draft" | "active" | "closed";
+  created_at: string;
+}
+
+export interface InternshipCreateRequest {
+  role_title: string;
+  description: string;
+  time_commitment: string;
+  compensation_type: CompensationType;
+  compensation_why: string;
+  requirements_text: string;
+  application_process_text: string;
+  why_text: string;
+  deadline: string;
+}
+
+export interface InternshipApplication {
+  id: string;
+  internship_id: string;
+  response_text: string;
+  status: "submitted" | "under_review" | "accepted" | "declined";
+  submitted_at: string;
+  reviewed_at: string | null;
+}
+
+export interface InternshipApplicationBrandView {
+  id: string;
+  talent_id: string;
+  response_text: string;
+  status: string;
+  submitted_at: string;
 }
 
 export interface InsightEligibility {

@@ -11,6 +11,31 @@ SubmissionFormat = Literal["text", "file", "both"]
 ChallengeStatus = Literal["draft", "active", "closed"]
 
 
+class QuizQuestionInput(BaseModel):
+    """Brand-authored quiz question (issue #51) -- correct_index is
+    write-only: accepted here, stored, but never present on any
+    response  schema in this file. Same shape/validation as
+    learning_modules.QuizQuestionInput."""
+
+    question: str
+    options: list[str]
+    correct_index: int
+
+    @field_validator("options")
+    @classmethod
+    def _exactly_four_options(cls, value: list[str]) -> list[str]:
+        if len(value) != 4:
+            raise ValueError("quiz questions must have exactly 4 options")
+        return value
+
+    @field_validator("correct_index")
+    @classmethod
+    def _valid_index(cls, value: int) -> int:
+        if not (0 <= value <= 3):
+            raise ValueError("correct_index must be between 0 and 3")
+        return value
+
+
 class ChallengeCreateRequest(BaseModel):
     title: str
     brief: str
@@ -63,18 +88,27 @@ class ChallengeResponse(BaseModel):
     why_text: str | None = None
     moderation_status: str = "draft"
     rejection_reason: str | None = None
+    # Stripped (never includes correct_index) -- see
+    # Challenge.public_quiz_questions / strip_quiz_answer_keys.
+    quiz_questions: list[dict] = []
 
 
 class ChallengeContentLayerUpdateRequest(BaseModel):
     """PUT /brands/challenges/:id/content -- Build Prompt 8I's added
     fields, kept separate from ChallengeCreateRequest (Prompt 8G) since
-    only why_text is required here."""
+    only why_text is required here. quiz_questions (issue #51) is
+    optional and, per Section 5's "highest-scrutiny" requirement, still
+    rides through the same why_text-gated moderation queue as the rest
+    of the content layer -- omitted entirely means "leave the existing
+    quiz unchanged," not "clear it" (see
+    challenges_repository.update_content_layer)."""
 
     goal_text: str | None = None
     rules_text: str | None = None
     judging_criteria: str | None = None
     prize_reward_text: str | None = None
     why_text: str
+    quiz_questions: list[QuizQuestionInput] | None = None
 
     @field_validator("why_text")
     @classmethod
@@ -83,6 +117,40 @@ class ChallengeContentLayerUpdateRequest(BaseModel):
         if len(words) > 150:
             raise ValueError(f"why_text must be at most 150 words (got {len(words)})")
         return value
+
+    @field_validator("quiz_questions")
+    @classmethod
+    def _quiz_length(cls, value: list[QuizQuestionInput] | None) -> list[QuizQuestionInput] | None:
+        if value is not None and not 1 <= len(value) <= 10:
+            raise ValueError("quiz_questions must have between 1 and 10 questions")
+        return value
+
+
+class SubmitQuizRequest(BaseModel):
+    """POST /talents/challenges/:id/quiz/submit -- one answer index per
+    quiz_questions entry, in order."""
+
+    answers: list[int]
+
+
+class QuizWrongAnswerEntry(BaseModel):
+    """Reveals correct_index only for questions the talent already
+    answered wrong, and only after the one-time attempt is scored --
+    same disclosure shape as learning_modules' WrongAnswerEntry. This
+    is the ONLY response  model in this file allowed to carry
+    correct_index."""
+
+    question_index: int
+    correct_index: int
+    talent_answer_index: int
+
+
+class QuizResultResponse(BaseModel):
+    challenge_id: str
+    score: int
+    total: int
+    passed: bool
+    wrong_answers: list[QuizWrongAnswerEntry]
 
 
 class ChallengeSubmissionTalentCardResponse(BaseModel):
@@ -152,6 +220,10 @@ class TalentChallengeAvailableResponse(BaseModel):
     submission_prompt: str
     target_cities: list[str]
     closes_at: datetime | None
+    # Stripped -- never includes correct_index (issue #51). Safe to
+    # show up front since taking the quiz is gated on having an
+    # existing submission, not on not having seen the questions.
+    quiz_questions: list[dict] = []
 
 
 class TalentChallengeSubmittedResponse(BaseModel):

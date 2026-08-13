@@ -32,6 +32,9 @@ from app.schemas.challenges import (
     BrandSubmissionResponse,
     ConvertSubmissionRequest,
     ConvertSubmissionResponse,
+    QuizResultResponse,
+    QuizWrongAnswerEntry,
+    SubmitQuizRequest,
     TalentChallengeAvailableResponse,
     TalentChallengeSubmissionResponse,
     TalentChallengeSubmittedResponse,
@@ -81,6 +84,7 @@ def _to_challenge_response(c: challenges_repository.Challenge) -> ChallengeRespo
         why_text=c.why_text,
         moderation_status=c.moderation_status,
         rejection_reason=c.rejection_reason,
+        quiz_questions=c.public_quiz_questions,
     )
 
 
@@ -198,6 +202,7 @@ async def update_challenge_content_layer(
         judging_criteria=body.judging_criteria,
         prize_reward_text=body.prize_reward_text,
         why_text=body.why_text,
+        quiz_questions=[q.model_dump() for q in body.quiz_questions] if body.quiz_questions is not None else None,
     )
     if updated is None:
         raise HTTPException(
@@ -581,6 +586,7 @@ async def available_challenges(
             submission_prompt=c.submission_prompt,
             target_cities=c.target_cities,
             closes_at=c.closes_at,
+            quiz_questions=c.public_quiz_questions,
         )
         for c in rows
     ]
@@ -715,3 +721,69 @@ async def submit_challenge(
     # Neutral confirmation only -- no estimated response  time, no
     # implication the brand will respond (spec deliverable 4i).
     return TalentChallengeSubmissionResponse(id=created.id, challenge_id=created.challenge_id, status="submitted", submitted_at=created.submitted_at)
+
+
+@talents_challenges_router.post("/{challenge_id}/quiz/submit", response_model=QuizResultResponse)
+async def submit_challenge_quiz(
+    challenge_id: str,
+    body: SubmitQuizRequest,
+    user: AuthenticatedUser = Depends(require_role("talent")),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> QuizResultResponse:
+    """Issue #51: scoring is the ONE code path in this router allowed
+    to read a challenge's raw quiz_questions (including correct_index)
+    -- fetched here via challenges_repository.get_by_id, never through
+    a response  schema. Requires an existing submission on this
+    challenge (the talent must already have submitted per the 8G flow
+    above) so a quiz attempt is always tied to an actual challenge
+    participation record, one attempt only."""
+    profile = await _get_own_talent_profile(conn, user)
+    challenge = await challenges_repository.get_by_id(conn, challenge_id)
+    if challenge is None or challenge.status != "active":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "challenge_not_found", "message": "No active challenge found for that id."},
+        )
+    if not challenge.quiz_questions:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "no_quiz", "message": "This challenge has no quiz attached."},
+        )
+    submission = await challenges_repository.get_for_talent_and_challenge(conn, profile.id, challenge_id)
+    if submission is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "submission_required", "message": "Submit to this challenge before taking its quiz."},
+        )
+    if submission.quiz_answered_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "already_answered", "message": "You've already taken this challenge's quiz."},
+        )
+    if len(body.answers) != len(challenge.quiz_questions):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": "wrong_answer_count",
+                "message": f"Expected {len(challenge.quiz_questions)} answers, got {len(body.answers)}.",
+            },
+        )
+
+    score = 0
+    wrong_answers: list[QuizWrongAnswerEntry] = []
+    for idx, (question, talent_answer) in enumerate(zip(challenge.quiz_questions, body.answers)):
+        correct_index = question["correct_index"]
+        if talent_answer == correct_index:
+            score += 1
+        else:
+            wrong_answers.append(
+                QuizWrongAnswerEntry(question_index=idx, correct_index=correct_index, talent_answer_index=talent_answer)
+            )
+
+    total = len(challenge.quiz_questions)
+    await challenges_repository.record_quiz_result(
+        conn, submission.id, quiz_answers=body.answers, quiz_score=score, quiz_total=total
+    )
+    return QuizResultResponse(
+        challenge_id=challenge_id, score=score, total=total, passed=(score == total), wrong_answers=wrong_answers
+    )
