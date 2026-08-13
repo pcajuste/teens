@@ -28,6 +28,35 @@ export interface ParentModuleActivity {
   ftc_module_passed: boolean;
 }
 
+export interface ParentScholarshipActivityApplication {
+  scholarship_title: string;
+  submitted_at: string;
+  status: "submitted" | "under_review" | "awarded" | "declined";
+  award_amount_cents: number | null;
+}
+
+export interface ParentScholarshipActivity {
+  total_applied: number;
+  total_awarded: number;
+  total_awarded_cents: number;
+  recent_applications: ParentScholarshipActivityApplication[];
+}
+
+export interface ParentInsightFeedbackActivityInvitation {
+  campaign_title: string;
+  confidentiality_terms: string;
+  invited_at: string;
+  status: "invited" | "responded";
+  compensation_cents: number | null;
+}
+
+export interface ParentInsightFeedbackActivity {
+  total_invited: number;
+  total_responded: number;
+  total_earned_cents: number;
+  recent_invitations: ParentInsightFeedbackActivityInvitation[];
+}
+
 export interface ParentDashboard {
   display_name: string;
   school_name: string;
@@ -38,6 +67,8 @@ export interface ParentDashboard {
   total_campaigns_completed: number;
   challenge_activity: ParentChallengeActivity;
   module_activity: ParentModuleActivity;
+  scholarship_activity: ParentScholarshipActivity;
+  insight_feedback_activity: ParentInsightFeedbackActivity;
 }
 
 export interface ParentPendingCampaign {

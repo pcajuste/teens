@@ -273,3 +273,46 @@ async def set_application_status(conn: asyncpg.Connection, application_id: str, 
         status,
     )
     return ScholarshipApplication.from_row(row)
+
+
+async def parent_dashboard_activity(conn: asyncpg.Connection, talent_id: str) -> dict:
+    """GET /parent/dashboard's scholarship_activity block. Mirrors
+    challenges_repository.parent_dashboard_activity's shape: totals plus a
+    short recent list, no rejection-reason detail exposed to the parent."""
+    totals = await conn.fetchrow(
+        """
+        SELECT
+            COUNT(*) AS total_applied,
+            COUNT(*) FILTER (WHERE sa.status = 'awarded') AS total_awarded,
+            COALESCE(SUM(s.award_amount_cents) FILTER (WHERE sa.status = 'awarded'), 0) AS total_awarded_cents
+        FROM public.scholarship_applications sa
+        JOIN public.scholarships s ON s.id = sa.scholarship_id
+        WHERE sa.talent_id = $1
+        """,
+        talent_id,
+    )
+    recent = await conn.fetch(
+        """
+        SELECT sa.status, sa.submitted_at, s.title AS scholarship_title, s.award_amount_cents
+        FROM public.scholarship_applications sa
+        JOIN public.scholarships s ON s.id = sa.scholarship_id
+        WHERE sa.talent_id = $1
+        ORDER BY sa.submitted_at DESC
+        LIMIT 5
+        """,
+        talent_id,
+    )
+    return {
+        "total_applied": totals["total_applied"],
+        "total_awarded": totals["total_awarded"],
+        "total_awarded_cents": totals["total_awarded_cents"],
+        "recent_applications": [
+            {
+                "scholarship_title": r["scholarship_title"],
+                "submitted_at": r["submitted_at"],
+                "status": r["status"],
+                "award_amount_cents": r["award_amount_cents"] if r["status"] == "awarded" else None,
+            }
+            for r in recent
+        ],
+    }

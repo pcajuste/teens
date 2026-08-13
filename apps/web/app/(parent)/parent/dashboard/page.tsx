@@ -160,6 +160,86 @@ export default function ParentDashboardPage() {
             ) : null}
           </Card>
 
+          <Card className="p-5">
+            <p className="text-sm font-semibold">Scholarship activity</p>
+            <p className="mb-4 text-sm text-text-2">
+              Brand-funded scholarship applications your teen has submitted.
+            </p>
+            <div className="grid grid-cols-3 gap-3 text-center">
+              <div>
+                <p className="text-xl font-semibold">{dashboard.scholarship_activity.total_applied}</p>
+                <p className="text-xs text-text-3">Applied</p>
+              </div>
+              <div>
+                <p className="text-xl font-semibold text-gold">{dashboard.scholarship_activity.total_awarded}</p>
+                <p className="text-xs text-text-3">Awarded</p>
+              </div>
+              <div>
+                <p className="text-xl font-semibold text-gold">{money(dashboard.scholarship_activity.total_awarded_cents)}</p>
+                <p className="text-xs text-text-3">Total awarded</p>
+              </div>
+            </div>
+
+            {dashboard.scholarship_activity.recent_applications.length > 0 ? (
+              <ul className="mt-4 flex flex-col gap-2 border-t border-border-muted pt-4">
+                {dashboard.scholarship_activity.recent_applications.map((a, i) => (
+                  <li key={i} className="flex items-center justify-between text-sm">
+                    <span>{a.scholarship_title}</span>
+                    {a.status === "awarded" ? (
+                      <Badge variant="earned">
+                        Awarded{a.award_amount_cents != null ? ` · ${money(a.award_amount_cents)}` : ""}
+                      </Badge>
+                    ) : (
+                      <Badge variant="pending">{a.status === "under_review" ? "Under review" : "Submitted"}</Badge>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </Card>
+
+          <Card className="p-5">
+            <p className="text-sm font-semibold">Insight &amp; Feedback activity</p>
+            <p className="mb-4 text-sm text-text-2">
+              Private, paid feedback sessions where brands share pre-release material for your teen&apos;s
+              opinion -- never public, and brands only ever see a pseudonym, never your teen&apos;s name.
+            </p>
+            <div className="grid grid-cols-3 gap-3 text-center">
+              <div>
+                <p className="text-xl font-semibold">{dashboard.insight_feedback_activity.total_invited}</p>
+                <p className="text-xs text-text-3">Invited</p>
+              </div>
+              <div>
+                <p className="text-xl font-semibold text-gold">{dashboard.insight_feedback_activity.total_responded}</p>
+                <p className="text-xs text-text-3">Responded</p>
+              </div>
+              <div>
+                <p className="text-xl font-semibold text-gold">{money(dashboard.insight_feedback_activity.total_earned_cents)}</p>
+                <p className="text-xs text-text-3">Earned</p>
+              </div>
+            </div>
+
+            {dashboard.insight_feedback_activity.recent_invitations.length > 0 ? (
+              <ul className="mt-4 flex flex-col gap-3 border-t border-border-muted pt-4">
+                {dashboard.insight_feedback_activity.recent_invitations.map((inv, i) => (
+                  <li key={i} className="flex flex-col gap-1 text-sm">
+                    <div className="flex items-center justify-between">
+                      <span>{inv.campaign_title}</span>
+                      {inv.status === "responded" ? (
+                        <Badge variant="earned">
+                          Responded{inv.compensation_cents != null ? ` · +${money(inv.compensation_cents)}` : ""}
+                        </Badge>
+                      ) : (
+                        <Badge variant="pending">Invited</Badge>
+                      )}
+                    </div>
+                    <p className="text-xs text-text-3">{inv.confidentiality_terms}</p>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </Card>
+
           <ExplainerPanel />
         </div>
       ) : null}

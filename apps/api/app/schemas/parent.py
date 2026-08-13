@@ -53,6 +53,35 @@ class ModuleActivityResponse(BaseModel):
     ftc_module_passed: bool
 
 
+class ScholarshipActivityApplicationEntry(BaseModel):
+    scholarship_title: str
+    submitted_at: datetime
+    status: Literal["submitted", "under_review", "awarded", "declined"]
+    award_amount_cents: int | None = None
+
+
+class ScholarshipActivityResponse(BaseModel):
+    total_applied: int
+    total_awarded: int
+    total_awarded_cents: int
+    recent_applications: list[ScholarshipActivityApplicationEntry]
+
+
+class InsightFeedbackActivityInvitationEntry(BaseModel):
+    campaign_title: str
+    confidentiality_terms: str
+    invited_at: datetime
+    status: Literal["invited", "responded"]
+    compensation_cents: int | None = None
+
+
+class InsightFeedbackActivityResponse(BaseModel):
+    total_invited: int
+    total_responded: int
+    total_earned_cents: int
+    recent_invitations: list[InsightFeedbackActivityInvitationEntry]
+
+
 class DashboardResponse(BaseModel):
     display_name: str
     school_name: str
@@ -63,6 +92,8 @@ class DashboardResponse(BaseModel):
     total_campaigns_completed: int
     challenge_activity: ChallengeActivityResponse
     module_activity: ModuleActivityResponse
+    scholarship_activity: ScholarshipActivityResponse
+    insight_feedback_activity: InsightFeedbackActivityResponse
 
 
 class PendingCampaignResponse(BaseModel):

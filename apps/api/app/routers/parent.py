@@ -13,7 +13,14 @@ from app.core.age import compute_age
 from app.core.config import Settings, get_settings
 from app.core.security import ParentSession, get_active_parent_session
 from app.db.pool import get_connection
-from app.repositories import campaign_talents_repository, challenges_repository, learning_modules_repository, parent_records_repository
+from app.repositories import (
+    campaign_talents_repository,
+    challenges_repository,
+    insight_feedback_repository,
+    learning_modules_repository,
+    parent_records_repository,
+    scholarships_repository,
+)
 from app.repositories.users_repository import set_account_status
 from app.schemas.parent import (
     AccountControlResponse,
@@ -23,8 +30,10 @@ from app.schemas.parent import (
     DashboardResponse,
     DigestPreviewResponse,
     DigestSettingRequest,
+    InsightFeedbackActivityResponse,
     ModuleActivityResponse,
     PendingCampaignResponse,
+    ScholarshipActivityResponse,
     SettingsResponse,
     ValuesFiltersRequest,
 )
@@ -56,6 +65,8 @@ async def dashboard(
     module_activity = await learning_modules_repository.parent_dashboard_activity(
         conn, session.talent_id, ftc_module_id=settings.ftc_module_id or None
     )
+    scholarship_activity = await scholarships_repository.parent_dashboard_activity(conn, session.talent_id)
+    insight_activity = await insight_feedback_repository.parent_dashboard_activity(conn, session.talent_id)
     return DashboardResponse(
         display_name=talent.display_name,
         school_name=talent.school_name,
@@ -66,6 +77,8 @@ async def dashboard(
         total_campaigns_completed=talent.total_campaigns_completed,
         challenge_activity=ChallengeActivityResponse(**activity),
         module_activity=ModuleActivityResponse(**module_activity),
+        scholarship_activity=ScholarshipActivityResponse(**scholarship_activity),
+        insight_feedback_activity=InsightFeedbackActivityResponse(**insight_activity),
     )
 
 

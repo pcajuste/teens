@@ -133,6 +133,98 @@ def test_dashboard_without_session_returns_401(client):
     assert response .status_code == 401
 
 
+def test_dashboard_includes_scholarship_and_insight_feedback_activity(client, db, parent_headers_factory, seed_talent_with_parent):
+    """#54: parent dashboard has no visibility into Scholarships or
+    Insight & Feedback -- these blocks close that gap, including
+    confidentiality_terms per that column's own "shown to teen + parent
+    before joining" comment."""
+    import uuid
+
+    seeded = seed_talent_with_parent()
+    headers = parent_headers_factory(parent_id=seeded.parent_id, talent_id=seeded.talent_id)
+
+    brand_user_id, brand_id = str(uuid.uuid4()), str(uuid.uuid4())
+    brand_email = f"brand-{brand_user_id}@example.com"
+    db.execute("INSERT INTO auth.users (id, email) VALUES ($1, $2)", brand_user_id, brand_email)
+    db.execute(
+        "INSERT INTO public.users (id, email, role, account_status, date_of_birth) VALUES ($1, $2, 'brand', 'active', '1990-01-01')",
+        brand_user_id,
+        brand_email,
+    )
+    db.execute(
+        "INSERT INTO public.brand_profiles (id, user_id, company_name) VALUES ($1, $2, 'Acme Co')",
+        brand_id,
+        brand_user_id,
+    )
+
+    scholarship_id = str(uuid.uuid4())
+    db.execute(
+        """
+        INSERT INTO public.scholarships (id, brand_id, title, award_amount_cents, number_of_awards, application_requirements, why_text, deadline, status, moderation_status)
+        VALUES ($1, $2, 'Future Coders Award', 200000, 1, 'A short essay.', 'why', CURRENT_DATE + 30, 'active', 'approved')
+        """,
+        scholarship_id,
+        brand_id,
+    )
+    db.execute(
+        """
+        INSERT INTO public.scholarship_applications (scholarship_id, talent_id, response_text, status)
+        VALUES ($1, $2, 'my response', 'awarded')
+        """,
+        scholarship_id,
+        seeded.talent_id,
+    )
+
+    campaign_id = str(uuid.uuid4())
+    db.execute(
+        """
+        INSERT INTO public.insight_feedback_campaigns
+            (id, brand_id, title, material_url, business_question, panel_size, compensation_cents,
+             confidentiality_terms, status, moderation_status)
+        VALUES ($1, $2, 'New App Concept', 'https://example.com/concept', 'What do you think?', 1, 5000,
+                'Keep this concept confidential until public launch.', 'active', 'approved')
+        """,
+        campaign_id,
+        brand_id,
+    )
+    pseudonym_id = str(uuid.uuid4())
+    db.execute(
+        "INSERT INTO public.talent_pseudonyms (id, talent_id, handle) VALUES ($1, $2, 'Contributor_TEST')",
+        pseudonym_id,
+        seeded.talent_id,
+    )
+    panel_member_id = str(uuid.uuid4())
+    db.execute(
+        "INSERT INTO public.insight_feedback_panel_members (id, campaign_id, talent_id, pseudonym_id, responded_at) VALUES ($1, $2, $3, $4, now())",
+        panel_member_id,
+        campaign_id,
+        seeded.talent_id,
+        pseudonym_id,
+    )
+    db.execute(
+        "INSERT INTO public.insight_feedback_responses (campaign_id, panel_member_id, ratings) VALUES ($1, $2, $3)",
+        campaign_id,
+        panel_member_id,
+        '[{"question": "Overall rating", "score": 5}]',
+    )
+
+    response = client.get("/parent/dashboard", headers=headers)
+    assert response.status_code == 200
+    body = response.json()
+
+    assert body["scholarship_activity"]["total_applied"] == 1
+    assert body["scholarship_activity"]["total_awarded"] == 1
+    assert body["scholarship_activity"]["total_awarded_cents"] == 200000
+    assert body["scholarship_activity"]["recent_applications"][0]["scholarship_title"] == "Future Coders Award"
+
+    assert body["insight_feedback_activity"]["total_invited"] == 1
+    assert body["insight_feedback_activity"]["total_responded"] == 1
+    assert body["insight_feedback_activity"]["total_earned_cents"] == 5000
+    invitation = body["insight_feedback_activity"]["recent_invitations"][0]
+    assert invitation["campaign_title"] == "New App Concept"
+    assert invitation["confidentiality_terms"] == "Keep this concept confidential until public launch."
+
+
 # ---------------------------------------------------------------------
 # Deliverable 3: campaign approval queue
 # ---------------------------------------------------------------------

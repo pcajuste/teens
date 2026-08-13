@@ -485,3 +485,53 @@ async def talent_own_insight_history(conn: asyncpg.Connection, talent_id: str) -
         talent_id,
     )
     return [{"campaign_title": r["campaign_title"], "submitted_at": r["submitted_at"]} for r in rows]
+
+
+async def parent_dashboard_activity(conn: asyncpg.Connection, talent_id: str) -> dict:
+    """GET /parent/dashboard's insight_feedback_activity block.
+    confidentiality_terms is included per
+    insight_feedback_campaigns.confidentiality_terms's own column
+    comment ("shown to teen + parent before joining") -- this is the
+    parent-facing half of that requirement. Uses talent_id directly
+    (never pseudonym_id) since this is the teen's own real-named
+    record, same trust boundary as talent_own_insight_history above --
+    not the brand-facing path."""
+    totals = await conn.fetchrow(
+        """
+        SELECT
+            COUNT(*) AS total_invited,
+            COUNT(*) FILTER (WHERE m.responded_at IS NOT NULL) AS total_responded,
+            COALESCE(SUM(c.compensation_cents) FILTER (WHERE m.responded_at IS NOT NULL), 0) AS total_earned_cents
+        FROM public.insight_feedback_panel_members m
+        JOIN public.insight_feedback_campaigns c ON c.id = m.campaign_id
+        WHERE m.talent_id = $1
+        """,
+        talent_id,
+    )
+    recent = await conn.fetch(
+        """
+        SELECT c.title AS campaign_title, c.confidentiality_terms, c.compensation_cents,
+               m.invited_at, m.responded_at
+        FROM public.insight_feedback_panel_members m
+        JOIN public.insight_feedback_campaigns c ON c.id = m.campaign_id
+        WHERE m.talent_id = $1
+        ORDER BY m.invited_at DESC
+        LIMIT 5
+        """,
+        talent_id,
+    )
+    return {
+        "total_invited": totals["total_invited"],
+        "total_responded": totals["total_responded"],
+        "total_earned_cents": totals["total_earned_cents"],
+        "recent_invitations": [
+            {
+                "campaign_title": r["campaign_title"],
+                "confidentiality_terms": r["confidentiality_terms"],
+                "invited_at": r["invited_at"],
+                "status": "responded" if r["responded_at"] is not None else "invited",
+                "compensation_cents": r["compensation_cents"] if r["responded_at"] is not None else None,
+            }
+            for r in recent
+        ],
+    }
