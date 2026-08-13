@@ -45,19 +45,33 @@ const AUDIENCES = [
 export default function MarketingHomePage() {
   return (
     <>
-      <section className="border-b border-border bg-secondary/30">
+      <section
+        className="border-b border-border-muted"
+        style={{ background: "radial-gradient(ellipse at 30% 50%, rgba(13, 155, 122, 0.07) 0%, transparent 60%)" }}
+      >
         <div className="mx-auto max-w-4xl px-4 py-20 text-center sm:py-28">
-          <p className="text-xs font-semibold uppercase tracking-wide text-primary">
+          <span className="inline-flex items-center gap-2 rounded-[var(--r-pill)] border border-teal-border bg-teal-dim py-[5px] pr-[13px] pl-[9px] text-[11.5px] font-semibold uppercase tracking-[0.07em] text-teal">
+            <span
+              className="size-[7px] rounded-full bg-teal"
+              style={{ boxShadow: "0 0 8px var(--teal)" }}
+              aria-hidden="true"
+            />
             Earn yours early
-          </p>
-          <h1 className="mt-4 text-3xl font-semibold tracking-tight sm:text-5xl">
+          </span>
+          <h1 className="mt-5 text-3xl font-black tracking-[-0.04em] sm:text-5xl">
             A verified professional achievement record for teenagers.
           </h1>
-          <p className="mx-auto mt-5 max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-lg">
-            Every other teen platform captures attention. Teenure captures
-            verified performance. Teens complete real brand campaigns, earn real
-            money, and build a documented record that colleges and employers can
-            trust — because a brand confirmed it, not because a teen claimed it.
+          <p className="mx-auto mt-5 max-w-2xl text-base leading-relaxed text-text-2 sm:text-lg">
+            Every other teen platform captures attention.{" "}
+            <span
+              className="bg-clip-text font-semibold text-transparent"
+              style={{ backgroundImage: "linear-gradient(135deg, var(--teal) 0%, var(--gold) 100%)" }}
+            >
+              Teenure captures verified performance.
+            </span>{" "}
+            Teens complete real brand campaigns, earn real money, and build a
+            documented record that colleges and employers can trust — because a
+            brand confirmed it, not because a teen claimed it.
           </p>
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <Link
@@ -77,15 +91,15 @@ export default function MarketingHomePage() {
       </section>
 
       <Section className="max-w-3xl text-center">
-        <p className="text-xs font-semibold uppercase tracking-wide text-primary">
+        <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-teal">
           The platform rule
         </p>
-        <blockquote className="mt-4 text-xl font-semibold leading-snug tracking-tight sm:text-2xl">
+        <blockquote className="text-xl font-semibold leading-snug tracking-tight sm:text-2xl">
           &ldquo;Teenure is a verified professional achievement record for
           teenagers. Every feature either adds to that record or it does not
           belong on the platform.&rdquo;
         </blockquote>
-        <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
+        <p className="mt-4 text-sm leading-relaxed text-text-2">
           If a proposed feature doesn&apos;t directly build, verify, or surface
           a talent&apos;s achievement record, it doesn&apos;t get built — full
           stop. That single rule is why Teenure looks nothing like a teen social
@@ -99,9 +113,9 @@ export default function MarketingHomePage() {
         </SectionHeading>
         <div className="mt-8 grid gap-4 sm:grid-cols-3">
           {AUDIENCES.map((a) => (
-            <Card key={a.href} className="justify-between">
+            <Card key={a.href} variant="featured" className="justify-between">
               <CardHeader>
-                <p className="text-xs font-semibold uppercase tracking-wide text-primary">
+                <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-teal">
                   {a.label}
                 </p>
                 <CardTitle className="text-lg">{a.title}</CardTitle>
@@ -122,7 +136,7 @@ export default function MarketingHomePage() {
 
       <Section className="max-w-3xl">
         <SectionHeading>What Teenure is not</SectionHeading>
-        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+        <p className="mt-2 text-sm leading-relaxed text-text-2">
           Teenure is deliberately narrow. That restraint is a feature, not a
           limitation.
         </p>
@@ -166,16 +180,35 @@ export default function MarketingHomePage() {
         </p>
       </Section>
 
-      <section className="border-t border-border bg-secondary/30">
-        <div className="mx-auto max-w-3xl px-4 py-16 text-center">
-          <h2 className="text-2xl font-semibold tracking-tight">
+      <section className="px-4 py-12 sm:px-6">
+        <div
+          className="relative mx-auto max-w-3xl overflow-hidden rounded-[var(--r-xl)] px-6 py-16 text-center"
+          style={{
+            border: "1px solid rgba(13, 155, 122, 0.24)",
+            background: "linear-gradient(140deg, rgba(13, 155, 122, 0.13) 0%, rgba(240, 165, 53, 0.06) 100%)",
+          }}
+        >
+          <div
+            className="pointer-events-none absolute inset-0"
+            style={{ background: "radial-gradient(circle, rgba(13, 155, 122, 0.06) 0%, transparent 70%)" }}
+            aria-hidden="true"
+          />
+          <div
+            className="pointer-events-none absolute inset-x-0 top-0 h-px"
+            style={{
+              background:
+                "linear-gradient(90deg, transparent, rgba(13, 155, 122, 0.45), rgba(240, 165, 53, 0.35), transparent)",
+            }}
+            aria-hidden="true"
+          />
+          <h2 className="relative text-2xl font-extrabold tracking-[-0.03em]">
             See it before you sign up for it
           </h2>
-          <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground">
+          <p className="relative mx-auto mt-3 max-w-xl text-sm leading-relaxed text-text-2">
             Walk through a real Talent dashboard — profile, campaigns, and
             earnings — with no account required.
           </p>
-          <div className="mt-6">
+          <div className="relative mt-6">
             <Link href="/demo/talent" className={buttonVariants({ size: "lg" })}>
               Try the Talent demo
             </Link>

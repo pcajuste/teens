@@ -14,14 +14,17 @@ export function MarketingHero({
   children?: ReactNode;
 }) {
   return (
-    <div className="border-b border-border bg-muted/30">
+    <div
+      className="border-b border-border-muted"
+      style={{ background: "radial-gradient(ellipse at 30% 50%, rgba(13, 155, 122, 0.07) 0%, transparent 60%)" }}
+    >
       <div className="mx-auto max-w-3xl px-4 py-16 sm:px-6 sm:py-20">
         {eyebrow ? (
-          <p className="text-sm font-medium uppercase tracking-wide text-primary">{eyebrow}</p>
+          <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-teal">{eyebrow}</p>
         ) : null}
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">{title}</h1>
+        <h1 className="text-3xl font-extrabold tracking-[-0.03em] sm:text-4xl">{title}</h1>
         {description ? (
-          <p className="mt-4 text-base leading-relaxed text-muted-foreground sm:text-lg">{description}</p>
+          <p className="mt-4 text-base leading-relaxed text-text-2 sm:text-lg">{description}</p>
         ) : null}
         {children}
       </div>

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LogoMark } from "@/components/logo";
+import { LogoWordmark } from "@/components/logo";
 import { cn } from "@/lib/utils";
 
 // DS Section 3E: the sidebar nav pattern shared by every portal
@@ -78,9 +78,9 @@ export function PortalShell({
     <div className="min-h-screen bg-background md:flex">
       {/* Desktop sidebar */}
       <aside className="sticky top-0 hidden h-screen w-[240px] shrink-0 flex-col border-r border-border-muted bg-surface-1 px-3 py-6 md:flex">
-        <Link href={homeHref} className="flex items-center gap-2 px-2 pb-6">
-          <LogoMark darkMode size={32} />
-          <span className="text-xs font-semibold uppercase tracking-wide text-text-3">{portalLabel}</span>
+        <Link href={homeHref} className="flex flex-col gap-2 px-2 pb-7">
+          <LogoWordmark darkMode height={26} />
+          <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-text-2">{portalLabel}</span>
         </Link>
         <nav className="flex flex-1 flex-col gap-1">{navItems.map((item) => navLink(item, false))}</nav>
         <button
@@ -95,9 +95,10 @@ export function PortalShell({
         {/* Mobile top bar */}
         <header className="border-b border-border-muted bg-card md:hidden">
           <div className="flex items-center justify-between px-4 py-3">
-            <Link href={homeHref} className="flex items-center gap-2">
-              <LogoMark darkMode size={28} />
-              <span className="text-sm font-semibold tracking-tight text-foreground">{portalLabel}</span>
+            <Link href={homeHref} className="flex items-center gap-2.5">
+              <LogoWordmark darkMode height={24} />
+              <span className="h-4 w-px bg-border-dim" aria-hidden="true" />
+              <span className="text-xs font-semibold uppercase tracking-wide text-text-2">{portalLabel}</span>
             </Link>
             <button onClick={onSignOut} className="text-sm font-medium text-text-2 hover:text-foreground">
               Sign out
