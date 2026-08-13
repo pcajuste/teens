@@ -32,7 +32,7 @@ const badgeVariants = cva(
         done: "rounded-full bg-green-dim text-green border-green-border font-semibold tracking-wide",
         pending: "rounded-full bg-white/5 text-text-2 border-border-muted font-medium",
         verified:
-          "rounded-md bg-gradient-to-br from-gold to-[#D4851A] text-[#0A0A12] font-extrabold tracking-wide px-2.5",
+          "rounded-md bg-gradient-to-br from-gold to-gold-gradient-end text-verified-badge-ink font-extrabold tracking-wide px-2.5",
       },
     },
     defaultVariants: {
