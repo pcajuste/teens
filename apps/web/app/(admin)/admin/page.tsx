@@ -91,7 +91,7 @@ function QueueSection({ type, title }: { type: AccountType; title: string }) {
                   <div className="flex gap-2">
                     <Button
                       size="sm"
-                      variant="destructive"
+                      variant="danger"
                       disabled={!reason.trim()}
                       onClick={() => reject(entry.user_id)}
                     >

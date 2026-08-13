@@ -197,7 +197,7 @@ export default function AdminExclusivityPage() {
                       <td className="py-2 pr-4 font-mono text-xs">{a.brand_id.slice(0, 8)}</td>
                       <td className="py-2 pr-4">
                         {a.status === "active" ? (
-                          <Button size="sm" variant="destructive" onClick={() => setCancelTarget(a)}>
+                          <Button size="sm" variant="danger" onClick={() => setCancelTarget(a)}>
                             Cancel
                           </Button>
                         ) : null}

@@ -167,7 +167,7 @@ export default function AdminCampaignsPage() {
                         </Button>
                         <Button
                           size="sm"
-                          variant="destructive"
+                          variant="danger"
                           onClick={() => resolve(c.id, "force_cancel_refund")}
                         >
                           Force cancel + refund

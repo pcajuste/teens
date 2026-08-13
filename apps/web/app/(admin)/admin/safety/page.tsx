@@ -127,7 +127,7 @@ export default function AdminSafetyPage() {
                 ) : (
                   <Button
                     size="sm"
-                    variant="destructive"
+                    variant="danger"
                     onClick={() => setResolvingId(r.id)}
                   >
                     Review
