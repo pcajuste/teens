@@ -26,6 +26,7 @@ from app.routers import (
     learning_modules,
     parent,
     parent_auth,
+    public,
     recruiters,
     talents,
     webhooks,
@@ -71,6 +72,7 @@ def create_app() -> FastAPI:
     app.include_router(learning_modules.admin_modules_router)
     app.include_router(learning_modules.admin_module_analytics_router)
     app.include_router(learning_modules.talents_modules_router)
+    app.include_router(public.router)
     app.include_router(webhooks.router)
 
     return app

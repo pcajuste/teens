@@ -10,6 +10,7 @@ JSONB).
 from __future__ import annotations
 
 import json
+import secrets
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -21,6 +22,7 @@ _COLUMNS = (
     "total_campaigns_completed, total_earnings_cents, average_rating, "
     "profile_completeness_score, stripe_account_id, stripe_onboarding_complete, "
     "challenges_submitted_count, challenges_converted_count, badges, badges_earned_count, "
+    "achievement_link_token, verified_profile_public, earnings_visible_on_public_profile, "
     "created_at, updated_at"
 )
 
@@ -50,6 +52,9 @@ class TalentProfile:
     challenges_converted_count: int
     badges: list[dict]
     badges_earned_count: int
+    achievement_link_token: str | None
+    verified_profile_public: bool
+    earnings_visible_on_public_profile: bool
     created_at: datetime
     updated_at: datetime
 
@@ -88,6 +93,9 @@ class TalentProfile:
             challenges_converted_count=row["challenges_converted_count"],
             badges=json.loads(row["badges"]) if isinstance(row["badges"], str) else list(row["badges"] or []),
             badges_earned_count=row["badges_earned_count"],
+            achievement_link_token=row["achievement_link_token"],
+            verified_profile_public=row["verified_profile_public"],
+            earnings_visible_on_public_profile=row["earnings_visible_on_public_profile"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )
@@ -493,3 +501,93 @@ async def browse_for_brand(
         )
         for row in rows
     ]
+
+
+async def get_or_create_achievement_link_token(conn: asyncpg.Connection, talent_id: str) -> str:
+    """Build Prompt 5 deliverable 12: the token is generated once and
+    never regenerated (spec: "the same URL works forever"), so this
+    reads first and only writes on a genuine first call -- a second
+    call for the same talent is a no-op read, not a fresh secrets.token_urlsafe
+    call that would silently orphan a previously-shared link."""
+    existing = await conn.fetchval("SELECT achievement_link_token FROM public.talent_profiles WHERE id = $1", talent_id)
+    if existing:
+        return existing
+    token = secrets.token_urlsafe(24)  # 24 raw bytes -> 32 URL-safe base64 chars, matching the spec's "32-character" token
+    await conn.execute(
+        "UPDATE public.talent_profiles SET achievement_link_token = $2, updated_at = now() WHERE id = $1",
+        talent_id,
+        token,
+    )
+    return token
+
+
+async def update_achievement_link_visibility(
+    conn: asyncpg.Connection, talent_id: str, *, verified_profile_public: bool, earnings_visible_on_public_profile: bool
+) -> TalentProfile:
+    row = await conn.fetchrow(
+        f"""
+        UPDATE public.talent_profiles
+        SET verified_profile_public = $2, earnings_visible_on_public_profile = $3, updated_at = now()
+        WHERE id = $1
+        RETURNING {_COLUMNS}
+        """,
+        talent_id,
+        verified_profile_public,
+        earnings_visible_on_public_profile,
+    )
+    return TalentProfile.from_row(row)
+
+
+@dataclass(frozen=True, slots=True)
+class PublicVerifiedProfile:
+    """Deliberately its own type, not a reuse of TalentProfile -- the
+    public /verified/:token route (Build Prompt 5 deliverable 12) must
+    be structurally incapable of leaking a field this type doesn't
+    declare (Instagram/TikTok handles, bio, submission content,
+    recruiter messages, parent info), regardless of what the SELECT
+    below happens to fetch."""
+
+    display_name: str
+    school_name: str
+    graduation_year: int
+    city: str
+    categories: list[str]
+    badges: list[dict]
+    total_campaigns_completed: int
+    average_rating: float | None
+    total_earnings_cents: int | None  # None when earnings_visible_on_public_profile is False
+    verified_profile_public: bool
+    updated_at: datetime
+
+
+async def get_public_profile_by_token(conn: asyncpg.Connection, token: str) -> PublicVerifiedProfile | None:
+    """Returns None only when the token itself doesn't exist (404 case).
+    A talent who has the token but has verified_profile_public = FALSE
+    still gets a row back here -- the router is what turns that into
+    the "not currently public" response (spec: not a 404, since the
+    talent may share the link before flipping visibility on)."""
+    row = await conn.fetchrow(
+        """
+        SELECT display_name, school_name, graduation_year, city, categories, badges,
+               total_campaigns_completed, average_rating, total_earnings_cents,
+               verified_profile_public, earnings_visible_on_public_profile, updated_at
+        FROM public.talent_profiles
+        WHERE achievement_link_token = $1
+        """,
+        token,
+    )
+    if row is None:
+        return None
+    return PublicVerifiedProfile(
+        display_name=row["display_name"],
+        school_name=row["school_name"],
+        graduation_year=row["graduation_year"],
+        city=row["city"],
+        categories=list(row["categories"] or []),
+        badges=json.loads(row["badges"]) if isinstance(row["badges"], str) else list(row["badges"] or []),
+        total_campaigns_completed=row["total_campaigns_completed"],
+        average_rating=float(row["average_rating"]) if row["average_rating"] is not None else None,
+        total_earnings_cents=row["total_earnings_cents"] if row["earnings_visible_on_public_profile"] else None,
+        verified_profile_public=row["verified_profile_public"],
+        updated_at=row["updated_at"],
+    )

@@ -17,7 +17,7 @@ criterion).
 """
 from __future__ import annotations
 
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
@@ -34,6 +34,7 @@ from app.repositories import (
     campaigns_repository,
     parent_records_repository,
     recruiter_contacts_repository,
+    talent_goals_repository,
     talent_profiles_repository,
     users_repository,
 )
@@ -42,10 +43,15 @@ from app.schemas.admin import SafetyReportCreateRequest, SafetyReportResponse
 from app.schemas.recruiters import InboxMessageResponse
 from app.schemas.talents import (
     AcceptCampaignRequest,
+    AchievementLinkResponse,
+    AchievementLinkVisibilityUpdateRequest,
     AchievementRecordResponse,
     CampaignParticipationResponse,
     CampaignSummaryResponse,
+    CreateGoalRequest,
     EarningsResponse,
+    GoalResponse,
+    GoalSuggestion,
     MilestoneEarningsEntry,
     MilestoneParticipationResponse,
     TalentProfilePreviewResponse,
@@ -56,7 +62,7 @@ from app.schemas.talents import (
     SubmitMilestoneRequest,
 )
 from app.services import stripe_service
-from app.services.email_service import send_milestone_submitted_email
+from app.services.email_service import send_goal_completed_email, send_milestone_submitted_email
 from app.services.parent_service import apply_values_filter, determine_parent_approval, send_campaign_approval_request
 from app.services.resend_client import ResendClient, resend_client_dependency
 from app.services.storage_service import SubmissionUploadError, get_storage_client
@@ -165,6 +171,36 @@ def _to_preview_response(p: talent_profiles_repository.TalentProfile) -> TalentP
         challenge_conversion_rate=p.challenge_conversion_rate,
         badges=p.badges,
         badges_earned_count=p.badges_earned_count,
+    )
+
+
+def _to_goal_response(g: talent_goals_repository.TalentGoal) -> GoalResponse:
+    """Projected completion date is linear extrapolation from
+    current_value/elapsed-time-since-created -- no historical progress
+    snapshots exist to compute a real trend line, so "current pace"
+    here means "average pace since the goal was created", not a
+    recent-velocity estimate. None when there's no progress yet or the
+    goal is already resolved (completed/abandoned) -- projecting a
+    finished goal isn't meaningful."""
+    projected: date | None = None
+    if g.status == "active" and g.current_value > 0:
+        elapsed_days = max((datetime.now(timezone.utc) - g.created_at).days, 1)
+        rate_per_day = g.current_value / elapsed_days
+        if rate_per_day > 0:
+            remaining = max(g.target_value - g.current_value, 0)
+            days_needed = remaining / rate_per_day
+            projected = (datetime.now(timezone.utc) + timedelta(days=days_needed)).date()
+    return GoalResponse(
+        id=g.id,
+        goal_type=g.goal_type,
+        target_value=g.target_value,
+        target_date=g.target_date,
+        current_value=g.current_value,
+        progress_percentage=g.progress_percentage,
+        status=g.status,
+        completed_at=g.completed_at,
+        created_at=g.created_at,
+        projected_completion_date=projected,
     )
 
 
@@ -283,6 +319,7 @@ async def put_me(
     body: TalentProfileUpdateRequest,
     user: AuthenticatedUser = Depends(require_role("talent")),
     conn: asyncpg.Connection = Depends(get_connection),
+    resend_client: ResendClient = Depends(resend_client_dependency),
 ) -> TalentProfileResponse:
     """Creates talent_profiles on first call (onboarding) or updates it on
     subsequent calls. On first creation only, also creates the linked
@@ -344,9 +381,22 @@ async def put_me(
             )
 
         new_score = _score(profile)
+        newly_completed_goals: list[talent_goals_repository.TalentGoal] = []
         if new_score != profile.profile_completeness_score:
             await talent_profiles_repository.update_profile_completeness_score(conn, profile.id, new_score)
             profile = await talent_profiles_repository.get_by_id(conn, profile.id)
+            # Build Prompt 5 deliverable 13: only profile_completeness
+            # goals can move from this endpoint, but recompute_progress
+            # is cheap and generic enough to just call outright rather
+            # than special-casing a single-goal-type recompute.
+            newly_completed_goals = await talent_goals_repository.recompute_progress(conn, profile.id)
+
+    for goal in newly_completed_goals:
+        await send_goal_completed_email(
+            user.email,
+            goal_description=talent_goals_repository.describe_goal(goal.goal_type, goal.target_value),
+            client=resend_client,
+        )
 
     return _to_profile_response(profile)
 
@@ -384,6 +434,127 @@ async def achievement_record(
         generated_at=datetime.now(timezone.utc),
         record=_to_preview_response(profile),
     )
+
+
+@talents_router.get("/me/achievement-link", response_model=AchievementLinkResponse)
+async def get_achievement_link(
+    user: AuthenticatedUser = Depends(require_role("talent")),
+    conn: asyncpg.Connection = Depends(get_connection),
+    settings: Settings = Depends(get_settings),
+) -> AchievementLinkResponse:
+    profile = await _get_own_profile(conn, user)
+    token = await talent_profiles_repository.get_or_create_achievement_link_token(conn, profile.id)
+    return AchievementLinkResponse(
+        url=f"{settings.next_public_app_url}/verified/{token}",
+        token=token,
+        verified_profile_public=profile.verified_profile_public,
+        earnings_visible_on_public_profile=profile.earnings_visible_on_public_profile,
+    )
+
+
+@talents_router.put("/me/achievement-link/visibility", response_model=AchievementLinkResponse)
+async def update_achievement_link_visibility(
+    body: AchievementLinkVisibilityUpdateRequest,
+    user: AuthenticatedUser = Depends(require_role("talent")),
+    conn: asyncpg.Connection = Depends(get_connection),
+    settings: Settings = Depends(get_settings),
+) -> AchievementLinkResponse:
+    profile = await _get_own_profile(conn, user)
+    token = await talent_profiles_repository.get_or_create_achievement_link_token(conn, profile.id)
+    updated = await talent_profiles_repository.update_achievement_link_visibility(
+        conn,
+        profile.id,
+        verified_profile_public=body.verified_profile_public,
+        earnings_visible_on_public_profile=body.earnings_visible_on_public_profile,
+    )
+    return AchievementLinkResponse(
+        url=f"{settings.next_public_app_url}/verified/{token}",
+        token=token,
+        verified_profile_public=updated.verified_profile_public,
+        earnings_visible_on_public_profile=updated.earnings_visible_on_public_profile,
+    )
+
+
+@talents_router.post("/goals", response_model=GoalResponse, status_code=status.HTTP_201_CREATED)
+async def create_goal(
+    body: CreateGoalRequest,
+    user: AuthenticatedUser = Depends(require_role("talent")),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> GoalResponse:
+    profile = await _get_own_profile(conn, user)
+    active_count = await talent_goals_repository.count_active_goals(conn, profile.id)
+    if active_count >= talent_goals_repository.MAX_ACTIVE_GOALS:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "max_active_goals_exceeded",
+                "message": "You already have 3 active goals. Abandon one before adding another.",
+            },
+        )
+    goal = await talent_goals_repository.create_goal(
+        conn, profile.id, goal_type=body.goal_type, target_value=body.target_value, target_date=body.target_date
+    )
+    return _to_goal_response(goal)
+
+
+@talents_router.delete("/goals/{goal_id}", response_model=GoalResponse)
+async def abandon_goal(
+    goal_id: str,
+    user: AuthenticatedUser = Depends(require_role("talent")),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> GoalResponse:
+    profile = await _get_own_profile(conn, user)
+    goal = await talent_goals_repository.get_goal(conn, profile.id, goal_id)
+    if goal is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"code": "goal_not_found", "message": "No goal with that id."})
+    if goal.status == "completed":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "goal_already_completed", "message": "A completed goal cannot be abandoned."},
+        )
+    if goal.status == "abandoned":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "goal_already_abandoned", "message": "This goal was already abandoned."},
+        )
+    updated = await talent_goals_repository.abandon_goal(conn, goal_id)
+    return _to_goal_response(updated)
+
+
+@talents_router.get("/goals", response_model=list[GoalResponse])
+async def list_goals(
+    user: AuthenticatedUser = Depends(require_role("talent")),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> list[GoalResponse]:
+    profile = await _get_own_profile(conn, user)
+    goals = await talent_goals_repository.list_goals(conn, profile.id)
+    return [_to_goal_response(g) for g in goals]
+
+
+@talents_router.get("/goals/suggestions", response_model=list[GoalSuggestion])
+async def goal_suggestions(
+    user: AuthenticatedUser = Depends(require_role("talent")),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> list[GoalSuggestion]:
+    """Stateless, rule-based (Build Prompt 5 deliverable 13) -- computed
+    fresh on every request from the profile's current stats, not stored.
+    Excludes goal_types the talent already has an active goal for, and
+    returns at most 3."""
+    profile = await _get_own_profile(conn, user)
+    active_goals = await talent_goals_repository.list_goals(conn, profile.id)
+    active_types = {g.goal_type for g in active_goals if g.status == "active"}
+
+    candidates: list[GoalSuggestion] = []
+    if profile.total_campaigns_completed < 5 and "campaigns_completed" not in active_types:
+        candidates.append(GoalSuggestion(goal_type="campaigns_completed", label="Complete 5 campaigns", suggested_target_value=5))
+    if profile.profile_completeness_score < 80 and "profile_completeness" not in active_types:
+        candidates.append(GoalSuggestion(goal_type="profile_completeness", label="Reach 80% profile completeness", suggested_target_value=80))
+    if profile.badges_earned_count == 0 and "badges_earned" not in active_types:
+        candidates.append(GoalSuggestion(goal_type="badges_earned", label="Earn your first badge", suggested_target_value=1))
+    categories_active = await talent_goals_repository.current_metric_values(conn, profile.id)
+    if categories_active["categories_active"] < 2 and "categories_active" not in active_types:
+        candidates.append(GoalSuggestion(goal_type="categories_active", label="Work in 2 categories", suggested_target_value=2))
+    return candidates[:3]
 
 
 @talents_router.get("/campaigns/available", response_model=list[CampaignSummaryResponse])

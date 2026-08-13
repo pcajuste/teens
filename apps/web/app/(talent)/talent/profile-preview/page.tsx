@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ProfileView } from "@/components/talent/profile-view";
+import { AchievementLinkShare } from "@/components/talent/achievement-link-share";
 import { api, ApiError } from "@/lib/api";
 import type { TalentProfilePreview } from "@/lib/types";
 
@@ -40,6 +41,7 @@ export default function ProfilePreviewPage() {
       </p>
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
       {preview ? <ProfileView profile={preview} /> : null}
+      {preview ? <AchievementLinkShare /> : null}
       {preview ? (
         <Link
           href="/talent/achievement-record"

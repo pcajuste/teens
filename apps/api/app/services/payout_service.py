@@ -24,7 +24,14 @@ from datetime import datetime
 import asyncpg
 
 from app.core.config import Settings
-from app.repositories import admin_repository, campaign_milestones_repository, campaign_talents_repository, challenges_repository, talent_profiles_repository
+from app.repositories import (
+    admin_repository,
+    campaign_milestones_repository,
+    campaign_talents_repository,
+    challenges_repository,
+    talent_goals_repository,
+    talent_profiles_repository,
+)
 from app.services import stripe_service
 
 
@@ -127,7 +134,7 @@ async def admin_release_payout(
     return PayoutResult(outcome="transferred", campaign_rep=updated, stripe_transfer_id=transfer_id)
 
 
-async def handle_transfer_paid(conn: asyncpg.Connection, stripe_transfer_id: str, *, at: datetime) -> None:
+async def handle_transfer_paid(conn: asyncpg.Connection, stripe_transfer_id: str, *, at: datetime) -> list[talent_goals_repository.TalentGoal]:
     """transfer.paid webhook. Marks the row 'paid' (both
     talent_campaign_status and payout_status) and recomputes the talent's
     cached talent_profiles totals (deliverable 7) -- see
@@ -135,14 +142,21 @@ async def handle_transfer_paid(conn: asyncpg.Connection, stripe_transfer_id: str
     that recompute happens here in application code rather than a DB
     trigger. Unknown transfer id or an already-'paid' row is a silent
     no-op -- not every Transfer in a Stripe account need be ours, and a
-    duplicate webhook delivery must not double-count earnings."""
+    duplicate webhook delivery must not double-count earnings.
+
+    Also recomputes goal progress (Build Prompt 5 deliverable 13) right
+    after the cached totals it reads from, and returns any goals that
+    completed in this call so the webhook handler can send the
+    completion email -- this function has no ResendClient, so it can't
+    send it itself."""
     cr = await campaign_talents_repository.get_by_stripe_transfer_id(conn, stripe_transfer_id)
     if cr is None:
-        return
+        return []
     updated = await campaign_talents_repository.set_payout_paid(conn, cr.id, at=at)
     if updated is None:
-        return
+        return []
     await talent_profiles_repository.recompute_cached_totals(conn, updated.talent_id)
+    return await talent_goals_repository.recompute_progress(conn, updated.talent_id)
 
 
 async def release_milestone_payout(
@@ -191,21 +205,26 @@ async def release_milestone_payout(
     return PayoutResult(outcome="transferred", campaign_rep=cr, stripe_transfer_id=transfer_id)
 
 
-async def handle_transfer_paid_milestone(conn: asyncpg.Connection, stripe_transfer_id: str, *, at: datetime) -> None:
+async def handle_transfer_paid_milestone(
+    conn: asyncpg.Connection, stripe_transfer_id: str, *, at: datetime
+) -> list[talent_goals_repository.TalentGoal]:
     """transfer.paid webhook, metadata.payment_type == 'milestone'
     branch (Build Prompt 8B deliverable 9). Unknown transfer id or an
     already-'paid' row is a silent no-op, same rationale as
-    handle_transfer_paid above."""
+    handle_transfer_paid above. Returns newly-completed goals, same
+    contract as handle_transfer_paid."""
     crm = await campaign_milestones_repository.get_by_stripe_transfer_id(conn, stripe_transfer_id)
     if crm is None:
-        return
+        return []
     updated = await campaign_milestones_repository.set_payout_paid(conn, crm.id, at=at)
     if updated is None:
-        return
+        return []
     await campaign_milestones_repository.bump_campaign_talent_milestone_totals(conn, crm.campaign_talent_id)
     cr = await campaign_talents_repository.get_by_id(conn, crm.campaign_talent_id)
-    if cr is not None:
-        await talent_profiles_repository.recompute_cached_totals(conn, cr.talent_id)
+    if cr is None:
+        return []
+    await talent_profiles_repository.recompute_cached_totals(conn, cr.talent_id)
+    return await talent_goals_repository.recompute_progress(conn, cr.talent_id)
 
 
 async def handle_transfer_failed_milestone(
@@ -262,7 +281,9 @@ async def release_challenge_conversion_bonus(
     return PayoutResult(outcome="transferred", campaign_rep=None, stripe_transfer_id=transfer_id)
 
 
-async def handle_transfer_paid_challenge(conn: asyncpg.Connection, stripe_transfer_id: str, *, at: datetime) -> None:
+async def handle_transfer_paid_challenge(
+    conn: asyncpg.Connection, stripe_transfer_id: str, *, at: datetime
+) -> list[talent_goals_repository.TalentGoal]:
     """transfer.paid webhook, metadata.payment_type ==
     'challenge_conversion_bonus' branch (Build Prompt 8G deliverable 6).
     Touches ONLY challenge_submissions and talent_profiles.total_earnings_cents
@@ -270,14 +291,16 @@ async def handle_transfer_paid_challenge(conn: asyncpg.Connection, stripe_transf
     handle_transfer_paid_milestone above stays fully isolated from the
     flat-campaign path. Unknown transfer id or an already-'paid' row is
     a silent no-op, same rationale as every other handler in this
-    module."""
+    module. Returns newly-completed goals, same contract as
+    handle_transfer_paid."""
     submission = await challenges_repository.get_by_stripe_transfer_id(conn, stripe_transfer_id)
     if submission is None:
-        return
+        return []
     updated = await challenges_repository.set_payout_paid(conn, submission.id, at=at)
     if updated is None:
-        return
+        return []
     await talent_profiles_repository.recompute_cached_totals(conn, updated.talent_id)
+    return await talent_goals_repository.recompute_progress(conn, updated.talent_id)
 
 
 async def handle_transfer_failed_challenge(conn: asyncpg.Connection, stripe_transfer_id: str) -> challenges_repository.ChallengeSubmission | None:

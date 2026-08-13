@@ -33,7 +33,7 @@ const STATUS_LABEL: Record<string, string> = {
   paid: "Paid",
 };
 
-export default function DemoRepDashboardPage() {
+export default function DemoTalentDashboardPage() {
   return (
     <main className="mx-auto flex min-h-screen max-w-md flex-col gap-6 p-4 pb-16">
       <DemoPageViewTracker demo="talent_dashboard" />

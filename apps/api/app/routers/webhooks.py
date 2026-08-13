@@ -39,6 +39,7 @@ from app.repositories import (
     campaigns_repository,
     exclusivity_repository,
     recruiter_profiles_repository,
+    talent_goals_repository,
     talent_profiles_repository,
     stripe_events_repository,
     users_repository,
@@ -48,6 +49,7 @@ from app.services.email_service import (
     send_campaign_payment_failed_email,
     send_exclusivity_purchase_confirmed_email,
     send_exclusivity_purchase_failed_email,
+    send_goal_completed_email,
 )
 from app.services.resend_client import ResendClient, resend_client_dependency
 
@@ -229,20 +231,45 @@ def _transfer_payment_type(transfer: "stripe.StripeObject") -> str | None:
     return metadata["payment_type"] if "payment_type" in metadata else None
 
 
+async def _notify_completed_goals(
+    conn: asyncpg.Connection, completed_goals: list[talent_goals_repository.TalentGoal], resend_client: ResendClient
+) -> None:
+    """Build Prompt 5 deliverable 13's "you hit your goal" email --
+    shared by every transfer.paid branch below since goal completion can
+    be triggered from any of them. A goal-progress recompute finding no
+    completions returns an empty list, so this is a no-op on the common
+    path."""
+    for goal in completed_goals:
+        profile = await talent_profiles_repository.get_by_id(conn, goal.talent_id)
+        if profile is None:
+            continue
+        db_user = await users_repository.get_user_by_id(conn, profile.user_id)
+        if db_user is None:
+            continue
+        await send_goal_completed_email(
+            db_user.email,
+            goal_description=talent_goals_repository.describe_goal(goal.goal_type, goal.target_value),
+            client=resend_client,
+        )
+
+
 async def _handle_transfer_paid(conn: asyncpg.Connection, event: "stripe.Event", settings: Settings, resend_client: ResendClient) -> None:
     transfer = event["data"]["object"]
     payment_type = _transfer_payment_type(transfer)
     if payment_type == "milestone":
-        await payout_service.handle_transfer_paid_milestone(conn, transfer["id"], at=datetime.now(timezone.utc))
+        completed = await payout_service.handle_transfer_paid_milestone(conn, transfer["id"], at=datetime.now(timezone.utc))
+        await _notify_completed_goals(conn, completed, resend_client)
         return
     if payment_type == "challenge_conversion_bonus":
         # Build Prompt 8G deliverable 6: touches ONLY challenge_submissions
         # and talent_profiles.total_earnings_cents -- never campaign_talents or
         # any campaign payout row (never let a challenge bonus webhook
         # handler touch campaign payout rows or vice versa).
-        await payout_service.handle_transfer_paid_challenge(conn, transfer["id"], at=datetime.now(timezone.utc))
+        completed = await payout_service.handle_transfer_paid_challenge(conn, transfer["id"], at=datetime.now(timezone.utc))
+        await _notify_completed_goals(conn, completed, resend_client)
         return
-    await payout_service.handle_transfer_paid(conn, transfer["id"], at=datetime.now(timezone.utc))
+    completed = await payout_service.handle_transfer_paid(conn, transfer["id"], at=datetime.now(timezone.utc))
+    await _notify_completed_goals(conn, completed, resend_client)
 
 
 async def _handle_transfer_failed(conn: asyncpg.Connection, event: "stripe.Event", settings: Settings, resend_client: ResendClient) -> None:

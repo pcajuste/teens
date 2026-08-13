@@ -18,7 +18,7 @@ vi.mock("@/lib/auth-context", () => ({
   useAuth: () => ({ signOut: vi.fn() }),
 }));
 
-import RepDashboardPage from "@/app/(talent)/talent/page";
+import TalentDashboardPage from "@/app/(talent)/talent/page";
 
 const ALLOWED_CAMPAIGN = {
   id: "camp-allowed",
@@ -90,7 +90,7 @@ describe("available-campaigns panel", () => {
       return Promise.reject(new Error(`unexpected path ${path}`));
     });
 
-    render(<RepDashboardPage />);
+    render(<TalentDashboardPage />);
 
     expect(await screen.findByText("Gaming Gear Drop")).toBeInTheDocument();
     expect(screen.queryByText("Craft Brewery Tour")).not.toBeInTheDocument();

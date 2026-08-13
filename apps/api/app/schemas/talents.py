@@ -221,3 +221,92 @@ class StripeOnboardingResponse(BaseModel):
     this is a POST, not a GET."""
 
     url: str
+
+
+# ── Living Achievement Link (Build Prompt 5 deliverable 12) ─────────
+
+
+class AchievementLinkResponse(BaseModel):
+    url: str
+    token: str
+    verified_profile_public: bool
+    earnings_visible_on_public_profile: bool
+
+
+class AchievementLinkVisibilityUpdateRequest(BaseModel):
+    verified_profile_public: bool
+    earnings_visible_on_public_profile: bool
+
+
+class PublicVerifiedProfileResponse(BaseModel):
+    """GET /verified/:token -- public, unauthenticated. `public` is False
+    when the token is valid but the talent has verified_profile_public
+    turned off; every field below it is then null rather than omitted,
+    so the frontend can render a single response  shape either way."""
+
+    public: bool
+    display_name: str | None = None
+    school_name: str | None = None
+    graduation_year: int | None = None
+    city: str | None = None
+    categories: list[str] | None = None
+    badges: list[dict] | None = None
+    total_campaigns_completed: int | None = None
+    average_rating: float | None = None
+    total_earnings_cents: int | None = None
+    last_updated: datetime | None = None
+
+
+# ── Goal Setting and Progress Tracking (Build Prompt 5 deliverable 13) ─
+
+GoalType = Literal["campaigns_completed", "earnings_total", "categories_active", "badges_earned", "profile_completeness"]
+
+_GOAL_MIN_TARGETS: dict[str, int] = {
+    "campaigns_completed": 1,
+    "earnings_total": 1000,  # $10 minimum, spec deliverable 13
+    "categories_active": 1,
+    "badges_earned": 1,
+    "profile_completeness": 1,
+}
+_GOAL_MAX_TARGETS: dict[str, int] = {
+    "profile_completeness": 100,
+}
+
+
+class CreateGoalRequest(BaseModel):
+    goal_type: GoalType
+    target_value: int
+    target_date: date | None = None
+
+    @field_validator("target_value")
+    @classmethod
+    def _target_value_in_range(cls, value: int, info) -> int:
+        goal_type = info.data.get("goal_type")
+        if goal_type is None:
+            return value
+        minimum = _GOAL_MIN_TARGETS.get(goal_type, 1)
+        if value < minimum:
+            raise ValueError(f"target_value for {goal_type} must be >= {minimum}")
+        maximum = _GOAL_MAX_TARGETS.get(goal_type)
+        if maximum is not None and value > maximum:
+            raise ValueError(f"target_value for {goal_type} must be <= {maximum}")
+        return value
+
+
+class GoalResponse(BaseModel):
+    id: str
+    goal_type: GoalType
+    target_value: int
+    target_date: date | None
+    current_value: int
+    progress_percentage: int
+    status: Literal["active", "completed", "abandoned"]
+    completed_at: datetime | None
+    created_at: datetime
+    projected_completion_date: date | None = None
+
+
+class GoalSuggestion(BaseModel):
+    goal_type: GoalType
+    label: str
+    suggested_target_value: int

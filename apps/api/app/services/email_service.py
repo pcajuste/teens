@@ -218,6 +218,17 @@ async def send_challenge_converted_email(talent_email: str, *, campaign_title: s
     await client.send_email(to=talent_email, subject=f"You've been invited to {campaign_title}", html=html)
 
 
+async def send_goal_completed_email(talent_email: str, *, goal_description: str, client: ResendClient) -> None:
+    """Build Prompt 5 deliverable 13: "You hit your goal." No confetti,
+    no points, no leaderboard -- spec is explicit that this is a clean
+    notification, not a gamification moment."""
+    html = f"""
+    <p>You hit your goal: <strong>{goal_description}</strong>.</p>
+    <p>Nice work. Set your next one from your Teenure dashboard whenever you're ready.</p>
+    """
+    await client.send_email(to=talent_email, subject="You hit your goal", html=html)
+
+
 async def send_digest_email(
     parent_email: str,
     client: ResendClient,

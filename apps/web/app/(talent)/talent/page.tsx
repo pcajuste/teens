@@ -12,6 +12,7 @@ import {
 } from "@/components/talent/challenges-panel";
 import { EarningsPanel } from "@/components/talent/earnings-panel";
 import { CompletenessPanel } from "@/components/talent/completeness-panel";
+import { GoalsPanel } from "@/components/talent/goals-panel";
 import { TalentShell } from "@/components/talent/talent-shell";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -22,21 +23,21 @@ import type {
   CampaignParticipation,
   CampaignSummary,
   Earnings,
-  RepAvailableChallenge,
+  TalentAvailableChallenge,
   TalentProfile,
-  RepSubmittedChallenge,
+  TalentSubmittedChallenge,
 } from "@/lib/types";
 
-export default function RepDashboardPage() {
+export default function TalentDashboardPage() {
   const [profile, setProfile] = useState<TalentProfile | null>(null);
   const [available, setAvailable] = useState<CampaignSummary[]>([]);
   const [active, setActive] = useState<CampaignParticipation[]>([]);
   const [earnings, setEarnings] = useState<Earnings | null>(null);
   const [availableChallenges, setAvailableChallenges] = useState<
-    RepAvailableChallenge[]
+    TalentAvailableChallenge[]
   >([]);
   const [submittedChallenges, setSubmittedChallenges] = useState<
-    RepSubmittedChallenge[]
+    TalentSubmittedChallenge[]
   >([]);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -56,8 +57,8 @@ export default function RepDashboardPage() {
         api.get<CampaignSummary[]>("/talents/campaigns/available"),
         api.get<CampaignParticipation[]>("/talents/campaigns/active"),
         api.get<Earnings>("/talents/earnings"),
-        api.get<RepAvailableChallenge[]>("/talents/challenges/available"),
-        api.get<RepSubmittedChallenge[]>("/talents/challenges/submitted"),
+        api.get<TalentAvailableChallenge[]>("/talents/challenges/available"),
+        api.get<TalentSubmittedChallenge[]>("/talents/challenges/submitted"),
       ]);
       setProfile(profileRes);
       setAvailable(availableRes);
@@ -138,6 +139,8 @@ export default function RepDashboardPage() {
                 </Card>
               ) : null}
             </div>
+
+            <GoalsPanel />
 
             <section className="flex flex-col gap-3">
               <h2 className="text-sm font-semibold text-muted-foreground">

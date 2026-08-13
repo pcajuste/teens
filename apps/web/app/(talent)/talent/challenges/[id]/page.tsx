@@ -12,8 +12,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { TalentShell } from "@/components/talent/talent-shell";
 import { api, ApiError } from "@/lib/api";
 import type {
-  RepAvailableChallenge,
-  RepChallengeSubmissionResponse,
+  TalentAvailableChallenge,
+  TalentChallengeSubmissionResponse,
   SubmitChallengeRequest,
 } from "@/lib/types";
 
@@ -22,7 +22,7 @@ export default function ChallengeDetailPage() {
   const router = useRouter();
   const challengeId = params.id;
 
-  const [challenge, setChallenge] = useState<RepAvailableChallenge | null>(
+  const [challenge, setChallenge] = useState<TalentAvailableChallenge | null>(
     null,
   );
   const [alreadySubmitted, setAlreadySubmitted] = useState(false);
@@ -36,7 +36,7 @@ export default function ChallengeDetailPage() {
 
   useEffect(() => {
     api
-      .get<RepAvailableChallenge[]>("/talents/challenges/available")
+      .get<TalentAvailableChallenge[]>("/talents/challenges/available")
       .then((list) => {
         const found = list.find((c) => c.id === challengeId) ?? null;
         setChallenge(found);
@@ -65,7 +65,7 @@ export default function ChallengeDetailPage() {
           : [],
         disclosure_acknowledged: disclosureAcknowledged,
       };
-      await api.post<RepChallengeSubmissionResponse>(
+      await api.post<TalentChallengeSubmissionResponse>(
         `/talents/challenges/${challengeId}/submit`,
         body,
       );

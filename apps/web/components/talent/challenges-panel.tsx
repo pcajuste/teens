@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
-import type { RepAvailableChallenge, RepSubmittedChallenge } from "@/lib/types";
+import type { TalentAvailableChallenge, TalentSubmittedChallenge } from "@/lib/types";
 
 function money(cents: number | null): string {
   if (cents === null) return "—";
@@ -18,7 +18,7 @@ function money(cents: number | null): string {
 export function ChallengesDiscoveryPanel({
   challenges,
 }: {
-  challenges: RepAvailableChallenge[];
+  challenges: TalentAvailableChallenge[];
 }) {
   return (
     <section className="flex flex-col gap-3 rounded-xl border border-dashed border-border bg-card/60 p-4">
@@ -71,7 +71,7 @@ export function ChallengesDiscoveryPanel({
 export function SubmittedChallengesPanel({
   submissions,
 }: {
-  submissions: RepSubmittedChallenge[];
+  submissions: TalentSubmittedChallenge[];
 }) {
   if (submissions.length === 0) return null;
   return (

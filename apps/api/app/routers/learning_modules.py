@@ -28,7 +28,9 @@ from app.core.config import Settings, get_settings
 from app.core.profile_score import compute_profile_completeness_score
 from app.core.security import AuthenticatedUser, require_role
 from app.db.pool import get_connection
-from app.repositories import learning_modules_repository, talent_profiles_repository
+from app.repositories import learning_modules_repository, talent_goals_repository, talent_profiles_repository
+from app.services.email_service import send_goal_completed_email
+from app.services.resend_client import ResendClient, resend_client_dependency
 from app.schemas.learning_modules import (
     AdminModuleAnalyticsResponse,
     BadgeSummary,
@@ -426,6 +428,7 @@ async def complete_module(
     body: ModuleCompleteRequest,
     user: AuthenticatedUser = Depends(require_role("talent")),
     conn: asyncpg.Connection = Depends(get_connection),
+    resend_client: ResendClient = Depends(resend_client_dependency),
 ) -> ModuleCompleteResponse:
     profile = await _get_own_talent_profile(conn, user)
 
@@ -492,6 +495,20 @@ async def complete_module(
             updated_profile = await talent_profiles_repository.append_badge_and_recompute_score(conn, profile.id, badge=badge, new_score=new_score)
             if updated_profile is None:
                 raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={"code": "badge_issuance_failed", "message": "Could not issue badge."})
+
+            # Build Prompt 5 deliverable 13: badges_earned and
+            # profile_completeness are the two goal types this endpoint
+            # can move -- recomputed inside the same transaction as the
+            # badge/score write so a goal's current_value is never
+            # readable ahead of the badge count it's derived from.
+            newly_completed_goals = await talent_goals_repository.recompute_progress(conn, profile.id)
+
+        for goal in newly_completed_goals:
+            await send_goal_completed_email(
+                user.email,
+                goal_description=talent_goals_repository.describe_goal(goal.goal_type, goal.target_value),
+                client=resend_client,
+            )
 
         return ModuleCompleteResponse(
             passed=True,

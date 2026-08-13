@@ -874,7 +874,7 @@ export interface BrandChallengeSubmission {
   payout_status: string | null;
 }
 
-export interface RepAvailableChallenge {
+export interface TalentAvailableChallenge {
   id: string;
   title: string;
   brief: string;
@@ -885,7 +885,7 @@ export interface RepAvailableChallenge {
   closes_at: string | null;
 }
 
-export interface RepSubmittedChallenge {
+export interface TalentSubmittedChallenge {
   challenge_id: string;
   challenge_title: string;
   category: string;
@@ -905,9 +905,81 @@ export interface SubmitChallengeRequest {
 
 export const CHALLENGE_CONVERSION_BONUS_DOLLARS = "$7.50";
 
-export interface RepChallengeSubmissionResponse {
+export interface TalentChallengeSubmissionResponse {
   id: string;
   challenge_id: string;
   status: "submitted";
   submitted_at: string;
 }
+
+// ── Living Achievement Link (Build Prompt 5/6 deliverable 12/9) ─────
+
+export interface AchievementLink {
+  url: string;
+  token: string;
+  verified_profile_public: boolean;
+  earnings_visible_on_public_profile: boolean;
+}
+
+export interface AchievementLinkVisibilityUpdate {
+  verified_profile_public: boolean;
+  earnings_visible_on_public_profile: boolean;
+}
+
+export interface PublicVerifiedProfile {
+  public: boolean;
+  display_name: string | null;
+  school_name: string | null;
+  graduation_year: number | null;
+  city: string | null;
+  categories: string[] | null;
+  badges: Badge[] | null;
+  total_campaigns_completed: number | null;
+  average_rating: number | null;
+  total_earnings_cents: number | null;
+  last_updated: string | null;
+}
+
+// ── Goal Setting and Progress Tracking (Build Prompt 5/6 deliverable 13/10) ─
+
+export type GoalType =
+  | "campaigns_completed"
+  | "earnings_total"
+  | "categories_active"
+  | "badges_earned"
+  | "profile_completeness";
+
+export interface Goal {
+  id: string;
+  goal_type: GoalType;
+  target_value: number;
+  target_date: string | null;
+  current_value: number;
+  progress_percentage: number;
+  status: "active" | "completed" | "abandoned";
+  completed_at: string | null;
+  created_at: string;
+  projected_completion_date: string | null;
+}
+
+export interface CreateGoalRequest {
+  goal_type: GoalType;
+  target_value: number;
+  target_date?: string | null;
+}
+
+export interface GoalSuggestion {
+  goal_type: GoalType;
+  label: string;
+  suggested_target_value: number;
+}
+
+export const GOAL_TYPE_LABELS: Record<GoalType, string> = {
+  campaigns_completed: "Complete campaigns",
+  earnings_total: "Earn money",
+  categories_active: "Work in categories",
+  badges_earned: "Earn badges",
+  profile_completeness: "Reach profile completeness",
+};
+
+export const MAX_ACTIVE_GOALS = 3;
