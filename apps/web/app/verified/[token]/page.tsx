@@ -29,9 +29,9 @@ export default function VerifiedProfilePage() {
 
   return (
     <main className="verified-light min-h-screen bg-[var(--vl-bg)] text-[var(--vl-ink)]">
-      <div className="mx-auto flex max-w-md flex-col gap-6 p-6">
+      <div className="mx-auto flex max-w-md flex-col items-start gap-6 p-6">
         <div className="pt-4">
-          <LogoStacked darkMode={false} width={140} />
+          <LogoStacked darkMode={false} width={200} />
         </div>
 
         {error ? <p className="text-center text-sm text-[var(--vl-danger)]">{error}</p> : null}

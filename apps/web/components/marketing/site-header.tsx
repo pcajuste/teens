@@ -27,7 +27,7 @@ export function SiteHeader() {
     >
       <div className="mx-auto flex h-[58px] max-w-6xl items-center justify-between px-4 sm:px-10">
         <Link href="/" className="flex items-center">
-          <LogoWordmark darkMode height={30} />
+          <LogoWordmark darkMode height={38} />
         </Link>
         <nav className="hidden items-center gap-1 md:flex">
           {NAV_LINKS.map((link) => {
