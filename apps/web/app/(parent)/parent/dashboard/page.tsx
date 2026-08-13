@@ -40,13 +40,13 @@ export default function ParentDashboardPage() {
         <div className="flex flex-col gap-6">
           <Card className="p-5">
             <p className="text-lg font-semibold">{dashboard.display_name}</p>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-text-2">
               {dashboard.school_name} &middot; Class of {dashboard.graduation_year}
             </p>
             {dashboard.categories.length > 0 ? (
               <div className="mt-3 flex flex-wrap gap-1.5">
                 {dashboard.categories.map((c) => (
-                  <Badge key={c} variant="secondary">
+                  <Badge key={c} variant="active">
                     {c}
                   </Badge>
                 ))}
@@ -56,23 +56,25 @@ export default function ParentDashboardPage() {
 
           <div className="grid gap-4 sm:grid-cols-3">
             <Card className="p-4">
-              <p className="text-xs text-muted-foreground">Profile completeness</p>
+              <p className="text-xs text-text-3">Profile completeness</p>
               <p className="text-xl font-semibold">{dashboard.profile_completeness_score}%</p>
             </Card>
-            <Card className="p-4">
-              <p className="text-xs text-muted-foreground">Total earnings</p>
-              <p className="text-xl font-semibold">{money(dashboard.total_earnings_cents)}</p>
+            {/* DS Section 9: total earnings is the most important number
+                the parent sees, and it's real earned money -- gold. */}
+            <Card variant="earned" className="p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.1em] text-gold">Total earnings</p>
+              <p className="text-2xl font-extrabold text-gold">{money(dashboard.total_earnings_cents)}</p>
             </Card>
-            <Card className="p-4">
-              <p className="text-xs text-muted-foreground">Campaigns completed</p>
-              <p className="text-xl font-semibold">{dashboard.total_campaigns_completed}</p>
+            <Card variant="earned" className="p-4">
+              <p className="text-xs text-text-3">Campaigns completed</p>
+              <p className="text-xl font-semibold text-gold">{dashboard.total_campaigns_completed}</p>
             </Card>
           </div>
 
-          <Card className="flex flex-row items-center justify-between p-5">
+          <Card variant="featured" className="flex flex-row items-center justify-between p-5">
             <div>
               <p className="text-sm font-medium">Campaign approvals</p>
-              <p className="text-sm text-muted-foreground">Review campaigns awaiting your sign-off.</p>
+              <p className="text-sm text-text-2">Review campaigns awaiting your sign-off.</p>
             </div>
             <Link href="/parent/campaigns" className="text-sm font-medium text-primary hover:underline">
               View queue
@@ -81,36 +83,36 @@ export default function ParentDashboardPage() {
 
           <Card className="p-5">
             <p className="text-sm font-semibold">Challenge activity</p>
-            <p className="mb-4 text-sm text-muted-foreground">
+            <p className="mb-4 text-sm text-text-2">
               Challenges are unpaid brand-discovery submissions -- no financial transaction happens
               unless a brand invites your teen to a paid campaign afterward.
             </p>
             <div className="grid grid-cols-3 gap-3 text-center">
               <div>
                 <p className="text-xl font-semibold">{dashboard.challenge_activity.total_submitted}</p>
-                <p className="text-xs text-muted-foreground">Submitted</p>
+                <p className="text-xs text-text-3">Submitted</p>
               </div>
               <div>
-                <p className="text-xl font-semibold">{dashboard.challenge_activity.total_converted}</p>
-                <p className="text-xs text-muted-foreground">Converted</p>
+                <p className="text-xl font-semibold text-gold">{dashboard.challenge_activity.total_converted}</p>
+                <p className="text-xs text-text-3">Converted</p>
               </div>
               <div>
-                <p className="text-xl font-semibold">{money(dashboard.challenge_activity.total_bonus_earned_cents)}</p>
-                <p className="text-xs text-muted-foreground">Bonus earned</p>
+                <p className="text-xl font-semibold text-gold">{money(dashboard.challenge_activity.total_bonus_earned_cents)}</p>
+                <p className="text-xs text-text-3">Bonus earned</p>
               </div>
             </div>
 
             {dashboard.challenge_activity.recent_submissions.length > 0 ? (
-              <ul className="mt-4 flex flex-col gap-2 border-t border-border pt-4">
+              <ul className="mt-4 flex flex-col gap-2 border-t border-border-muted pt-4">
                 {dashboard.challenge_activity.recent_submissions.map((s, i) => (
                   <li key={i} className="flex items-center justify-between text-sm">
                     <span>{s.challenge_title}</span>
                     {s.status === "converted" ? (
-                      <Badge variant="success">
+                      <Badge variant="earned">
                         Converted{s.bonus_earned_cents != null ? ` · +${money(s.bonus_earned_cents)}` : ""}
                       </Badge>
                     ) : (
-                      <Badge variant="secondary">Submitted</Badge>
+                      <Badge variant="pending">Submitted</Badge>
                     )}
                   </li>
                 ))}
@@ -120,34 +122,37 @@ export default function ParentDashboardPage() {
 
           <Card className="p-5">
             <p className="text-sm font-semibold">Learning modules</p>
-            <p className="mb-4 text-sm text-muted-foreground">
+            <p className="mb-4 text-sm text-text-2">
               Short, platform-curated modules your teen can complete to earn verified badges. You&apos;ll see
               completion status and badges earned here -- not quiz scores or which questions they missed.
             </p>
             <div className="grid grid-cols-3 gap-3 text-center">
               <div>
                 <p className="text-xl font-semibold">{dashboard.module_activity.total_started}</p>
-                <p className="text-xs text-muted-foreground">Started</p>
+                <p className="text-xs text-text-3">Started</p>
               </div>
               <div>
                 <p className="text-xl font-semibold">{dashboard.module_activity.total_passed}</p>
-                <p className="text-xs text-muted-foreground">Passed</p>
+                <p className="text-xs text-text-3">Passed</p>
               </div>
               <div>
                 <p className="text-xl font-semibold">{dashboard.module_activity.total_failed}</p>
-                <p className="text-xs text-muted-foreground">Retrying</p>
+                <p className="text-xs text-text-3">Retrying</p>
               </div>
             </div>
-            <div className="mt-4 flex items-center justify-between border-t border-border pt-4 text-sm">
+            <div className="mt-4 flex items-center justify-between border-t border-border-muted pt-4 text-sm">
               <span>FTC Disclosure Essentials</span>
-              <Badge variant={dashboard.module_activity.ftc_module_passed ? "success" : "secondary"}>
+              {/* DS Section 9: passed = green (compliance confirmed);
+                  not-yet is neutral, never alarming -- a parent doesn't
+                  need to see failure drama for a retake-eligible module. */}
+              <Badge variant={dashboard.module_activity.ftc_module_passed ? "done" : "pending"}>
                 {dashboard.module_activity.ftc_module_passed ? "Passed" : "Not yet completed"}
               </Badge>
             </div>
             {dashboard.module_activity.badges_earned.length > 0 ? (
               <ul className="mt-3 flex flex-wrap gap-2">
                 {dashboard.module_activity.badges_earned.map((b, i) => (
-                  <Badge key={i} variant="outline">
+                  <Badge key={i} variant="active">
                     {b.badge_title}
                   </Badge>
                 ))}

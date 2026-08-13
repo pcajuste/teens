@@ -65,11 +65,13 @@ export default function ParentCampaignsPage() {
       ) : campaigns && campaigns.length > 0 ? (
         <div className="flex flex-col gap-4">
           {campaigns.map((c) => (
-            <Card key={c.campaign_id} className="p-5">
+            // DS Section 9: a campaign awaiting approval is "your action
+            // is needed here" -- featured card, teal top edge.
+            <Card key={c.campaign_id} variant="featured" className="p-5">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-base font-semibold">{c.title}</p>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-sm text-text-2">
                     {c.brand_name} &middot; {c.product_name}
                   </p>
                 </div>
@@ -104,7 +106,7 @@ export default function ParentCampaignsPage() {
                   {c.start_date} to {c.end_date}
                 </p>
                 <div className="flex flex-wrap gap-1.5">
-                  {c.requires_in_person_activation ? <Badge variant="warning">In-person activation required</Badge> : null}
+                  {c.requires_in_person_activation ? <Badge variant="pending">In-person activation required</Badge> : null}
                 </div>
               </div>
 

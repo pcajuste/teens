@@ -54,7 +54,7 @@ export default function ParentLoginPage() {
       {sent ? (
         <div className="flex flex-col gap-3 text-center">
           <p className="text-sm text-foreground">Check your email</p>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-text-2">
             If that email is linked to a Teenure parent account, we&apos;ve sent a sign-in link to it. The
             link expires in 15 minutes.
           </p>

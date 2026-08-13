@@ -61,7 +61,7 @@ export default function ParentFiltersPage() {
 
   return (
     <ParentShell title="Values filters">
-      <p className="text-sm text-muted-foreground">
+      <p className="text-sm text-text-2">
         Block categories of campaigns your teen should never be offered. Blocked campaigns are filtered out
         before your teen ever sees them, and brands are never told why a category is blocked.
       </p>
@@ -82,7 +82,7 @@ export default function ParentFiltersPage() {
                 />
                 <Label htmlFor={`cat-${cat.value}`} className="flex flex-col items-start gap-0.5 font-normal">
                   <span className="text-sm font-medium">{cat.label}</span>
-                  <span className="text-xs font-normal text-muted-foreground">{cat.description}</span>
+                  <span className="text-xs font-normal text-text-2">{cat.description}</span>
                 </Label>
               </div>
             ))}
@@ -92,7 +92,7 @@ export default function ParentFiltersPage() {
             <Button onClick={handleSave} disabled={saving}>
               {saving ? "Saving..." : "Save filters"}
             </Button>
-            {saved ? <p className="text-sm text-muted-foreground">Saved.</p> : null}
+            {saved ? <p className="text-sm text-text-2">Saved.</p> : null}
           </div>
         </Card>
       ) : null}

@@ -136,12 +136,12 @@ export default function ParentSettingsPage() {
         <div className="flex flex-col gap-6">
           <Card className="p-5">
             <p className="text-sm font-semibold">Campaign approval required</p>
-            <p className="mt-1 text-sm text-muted-foreground">
+            <p className="mt-1 text-sm text-text-2">
               When on, every campaign your teen is matched to needs your
               approval before they can accept it.
             </p>
             {approvalLocked ? (
-              <p className="mt-2 rounded-lg bg-warning/20 px-3 py-2 text-sm text-warning-foreground">
+              <p className="mt-2 rounded-lg bg-secondary px-3 py-2 text-sm text-text-2">
                 Campaign approval is always required for talents under 16 and
                 can&apos;t be turned off.
               </p>
@@ -160,7 +160,7 @@ export default function ParentSettingsPage() {
 
           <Card className="p-5">
             <p className="text-sm font-semibold">Monthly email digest</p>
-            <p className="mt-1 text-sm text-muted-foreground">
+            <p className="mt-1 text-sm text-text-2">
               A monthly summary of campaign activity, earnings, and profile
               changes.
             </p>
@@ -174,8 +174,8 @@ export default function ParentSettingsPage() {
             </Button>
 
             {digest ? (
-              <div className="mt-4 rounded-lg border border-border bg-muted/30 p-3">
-                <p className="mb-2 text-xs font-medium text-muted-foreground">
+              <div className="mt-4 rounded-lg border border-border-muted bg-secondary p-3">
+                <p className="mb-2 text-xs font-medium text-text-2">
                   Next digest preview
                 </p>
                 <ul className="flex flex-col gap-1 text-sm">
@@ -207,12 +207,12 @@ export default function ParentSettingsPage() {
 
           <Card className="p-5">
             <p className="text-sm font-semibold">Account controls</p>
-            <p className="mt-1 text-sm text-muted-foreground">
+            <p className="mt-1 text-sm text-text-2">
               Suspending immediately pauses your teen&apos;s account. You can
               unsuspend it later if you were the one who suspended it.
             </p>
             {accountStatus ? (
-              <p className="mt-2 text-sm text-muted-foreground">
+              <p className="mt-2 text-sm text-text-2">
                 Current status: {accountStatus}
               </p>
             ) : null}

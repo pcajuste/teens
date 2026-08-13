@@ -95,7 +95,7 @@ export default function ParentVerifyPage() {
   return (
     <AuthShell title={title}>
       <div className="flex flex-col gap-4 text-center">
-        <p className="text-sm text-muted-foreground">{body}</p>
+        <p className="text-sm text-text-2">{body}</p>
         <a href="/parent" className="text-sm font-medium text-primary hover:underline">
           Back to sign-in
         </a>
