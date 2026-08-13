@@ -113,9 +113,9 @@ export default function LoginPage() {
           />
         </div>
 
-        {error ? (
-          <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>
-        ) : null}
+        {/* DS Section 11: error messages are small danger-colored text
+            below the relevant field, no decorative background box. */}
+        {error ? <p className="text-[13px] text-danger">{error}</p> : null}
 
         <Button type="submit" disabled={pending} size="lg" className="mt-1 w-full">
           {pending ? "Signing in..." : "Sign in"}

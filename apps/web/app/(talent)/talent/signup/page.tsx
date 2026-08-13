@@ -167,7 +167,7 @@ export default function SignupPage() {
         ) : null}
 
         {error ? (
-          <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          <p className="text-[13px] text-danger">
             {error}
           </p>
         ) : null}
