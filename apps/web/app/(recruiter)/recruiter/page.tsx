@@ -482,6 +482,12 @@ export default function RecruiterSearchPage() {
                 <span className="text-teal">✓</span> {detail.total_campaigns_completed} campaigns completed
               </span>
               <span>
+                <span className="text-teal">✓</span>{" "}
+                <span className="font-semibold text-gold">
+                  ${(detail.total_earnings_cents / 100).toFixed(2)} earned
+                </span>
+              </span>
+              <span>
                 {detail.average_rating != null ? (
                   <>
                     <span className="text-teal">✓</span>{" "}

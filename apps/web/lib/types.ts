@@ -524,6 +524,7 @@ export interface RecruiterTalentDetail {
   instagram_handle: string | null;
   tiktok_handle: string | null;
   total_campaigns_completed: number;
+  total_earnings_cents: number;
   average_rating: number | null;
   profile_completeness_score: number;
 }

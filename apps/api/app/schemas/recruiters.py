@@ -51,9 +51,14 @@ class RecruiterSearchCardResponse(BaseModel):
     badge_titles: list[str] = []
 
 
-class RecruiterRepDetailResponse(BaseModel):
+class RecruiterTalentDetailResponse(BaseModel):
     """GET /recruiters/talents/:id -- full identifying profile, costs 1
-    credit (deducted server-side before this is ever returned)."""
+    credit (deducted server-side before this is ever returned).
+    total_earnings_cents is the talent's own lifetime-paid figure
+    (talent_profiles.total_earnings_cents) -- a recruiter who has spent
+    a credit to view this profile sees the same earned-record number the
+    talent sees on their own dashboard, not a separate recruiter-facing
+    computation."""
 
     talent_id: str
     display_name: str
@@ -67,6 +72,7 @@ class RecruiterRepDetailResponse(BaseModel):
     instagram_handle: str | None
     tiktok_handle: str | None
     total_campaigns_completed: int
+    total_earnings_cents: int
     average_rating: float | None
     profile_completeness_score: int
 

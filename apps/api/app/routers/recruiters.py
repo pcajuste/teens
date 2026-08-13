@@ -45,7 +45,7 @@ from app.schemas.recruiters import (
     RecruiterMessageResponse,
     RecruiterProfileResponse,
     RecruiterProfileUpdateRequest,
-    RecruiterRepDetailResponse,
+    RecruiterTalentDetailResponse,
     RecruiterSearchCardResponse,
     SavedProfileResponse,
     SaveRequest,
@@ -287,12 +287,12 @@ async def search_reps(
     ]
 
 
-@recruiters_router.get("/talents/{talent_id}", response_model=RecruiterRepDetailResponse)
+@recruiters_router.get("/talents/{talent_id}", response_model=RecruiterTalentDetailResponse)
 async def get_talent_detail(
     talent_id: str,
     user: AuthenticatedUser = Depends(require_role("recruiter")),
     conn: asyncpg.Connection = Depends(get_connection),
-) -> RecruiterRepDetailResponse:
+) -> RecruiterTalentDetailResponse:
     """Costs 1 credit, deducted server-side in the same request as the
     read (Build Prompt 11 deliverable 3) -- the atomic decrement runs
     BEFORE the profile is fetched, so a talent's identifying fields are
@@ -314,7 +314,7 @@ async def get_talent_detail(
             detail={"code": "insufficient_credits", "message": "No contact credits remaining."},
         )
 
-    return RecruiterRepDetailResponse(
+    return RecruiterTalentDetailResponse(
         talent_id=talent.id,
         display_name=talent.display_name,
         school_name=talent.school_name,
@@ -327,6 +327,7 @@ async def get_talent_detail(
         instagram_handle=talent.instagram_handle,
         tiktok_handle=talent.tiktok_handle,
         total_campaigns_completed=talent.total_campaigns_completed,
+        total_earnings_cents=talent.total_earnings_cents,
         average_rating=talent.average_rating,
         profile_completeness_score=talent.profile_completeness_score,
     )

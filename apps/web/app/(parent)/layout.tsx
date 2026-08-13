@@ -9,7 +9,7 @@ import { CenteredMessage } from "@/lib/auth-gate";
 // screen and the verify callback (which establishes the session
 // itself). Everything else under /parent/* requires a valid,
 // not-yet-expired stored session token.
-const PUBLIC_PREFIXES = ["/parent/verify"];
+const PUBLIC_PREFIXES = ["/parent/verify", "/parent/consent"];
 const PUBLIC_EXACT = ["/parent"];
 
 function isPublicPath(pathname: string): boolean {
