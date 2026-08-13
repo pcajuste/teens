@@ -37,8 +37,14 @@ auth_api() {
 }
 
 echo "Removing any existing auth user for $ADMIN_EMAIL ..."
-EXISTING_ID="$(auth_api "$SUPABASE_URL/auth/v1/admin/users?email=$ADMIN_EMAIL" \
-  | python3 -c 'import json,sys; users=json.load(sys.stdin).get("users",[]); print(users[0]["id"] if users else "")')"
+# NB: this local GoTrue's admin list-users endpoint does NOT actually
+# filter by the ?email= query param -- it silently returns the full
+# user list. Filtering client-side by exact email match is load
+# bearing: relying on the query param instead deletes whatever
+# happens to be first in the unfiltered list (i.e. some *other* user),
+# not $ADMIN_EMAIL.
+EXISTING_ID="$(auth_api "$SUPABASE_URL/auth/v1/admin/users" \
+  | python3 -c "import json,sys; users=json.load(sys.stdin).get('users',[]); matches=[u['id'] for u in users if u['email']=='$ADMIN_EMAIL']; print(matches[0] if matches else '')")"
 if [ -n "$EXISTING_ID" ]; then
   auth_api -X DELETE "$SUPABASE_URL/auth/v1/admin/users/$EXISTING_ID" >/dev/null
   echo "Deleted existing auth user $EXISTING_ID."

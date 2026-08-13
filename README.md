@@ -76,10 +76,35 @@ pick them up. Supabase Studio (`http://127.0.0.1:54323` by default) gives
 you a UI over the local DB and auth users. `supabase stop` shuts the
 stack down.
 
+Admin has no self-serve signup (by design — see Build Prompt 13's auth
+note). To get an admin login against this stack, run:
+
+```bash
+scripts/local-dev/reset_admin_user.sh
+# admin@teenure.dev / AdminDev123! by default; override with
+# ADMIN_EMAIL / ADMIN_PASSWORD env vars. Safe to re-run.
+```
+
 This is a separate stack from `scripts/local-dev/docker-compose.yml`
 (bare Postgres on port 5434, no GoTrue) — that one exists only to give
 `pytest` a fast, isolated database that mirrors CI's ephemeral Postgres
 service; it's not meant for interactive use or real login flows.
+
+To reset this stack's DB entirely and get one working sample login per
+role (talent, brand, recruiter, admin) plus a ready-to-use parent
+portal session, run:
+
+```bash
+scripts/local-dev/reset_sample_users.sh
+# SKIP_DB_RESET=1 scripts/local-dev/reset_sample_users.sh  # keep existing data
+```
+
+Prints each account's credentials on completion. Parent has no
+password login (magic-link only, tied to the sample talent) — the
+script mints a ready-to-use portal session token instead of requiring
+Resend email delivery locally. Admin creation is delegated to
+`reset_admin_user.sh` above, so it stays the one source of truth for
+that.
 
 ## Design notes
 
