@@ -229,6 +229,81 @@ async def send_goal_completed_email(talent_email: str, *, goal_description: str,
     await client.send_email(to=talent_email, subject="You hit your goal", html=html)
 
 
+async def send_coach_attestation_email(
+    *,
+    coach_name: str,
+    coach_email: str,
+    talent_display_name: str,
+    sport: str,
+    season_year: int,
+    team_name: str,
+    level: str,
+    sport_stats: dict,
+    attestation_url: str,
+    client: ResendClient,
+) -> None:
+    """ATHLETICS-2: sent when a talent requests coach attestation of a
+    season record. PII rule: no talent contact info (email, phone,
+    address) in this email -- the coach already knows the talent from
+    coaching them, so contact details add nothing and would violate the
+    minor-safety rule in Teenure_Prompts_Athletics.md Section 0."""
+    stats_lines = "".join(f"<li>{key}: {value}</li>" for key, value in sport_stats.items())
+    html = f"""
+    <p>Teenure is a platform where teen athletes build a verified record
+    of their athletic achievements.</p>
+    <p>{talent_display_name} has asked you to confirm their {season_year}
+    {sport} season record with {team_name} ({level}):</p>
+    <ul>{stats_lines}</ul>
+    <p><a href="{attestation_url}">Confirm this record</a></p>
+    <p>If you can't confirm this record, you can
+    <a href="{attestation_url}">decline it from the same link</a>.</p>
+    """
+    await client.send_email(
+        to=coach_email,
+        subject=f"Confirm {talent_display_name}'s {season_year} {sport} season record",
+        html=html,
+    )
+
+
+async def send_talent_coach_attested_notification(
+    *,
+    talent_email: str,
+    talent_display_name: str,
+    sport: str,
+    season_year: int,
+    coach_name: str,
+    client: ResendClient,
+) -> None:
+    html = f"""
+    <p>{coach_name} has confirmed your {season_year} {sport} season
+    record. Your profile now shows an attested season.</p>
+    """
+    await client.send_email(
+        to=talent_email, subject=f"Your {season_year} {sport} season has been verified", html=html
+    )
+
+
+async def send_talent_coach_declined_notification(
+    *,
+    talent_email: str,
+    talent_display_name: str,
+    sport: str,
+    season_year: int,
+    client: ResendClient,
+) -> None:
+    """Neutral, no-blame body -- no coach name, no reason forwarded
+    (ATHLETICS-2 spec: the coach's reason for declining is never
+    relayed to the talent)."""
+    html = f"""
+    <p>The coach was unable to confirm your {season_year} {sport} season
+    record. If there's an error in the stats, edit the season and
+    re-request attestation from your Teenure dashboard.</p>
+    """
+    await client.send_email(
+        to=talent_email, subject=f"Coach attestation update for your {sport} season", html=html
+    )
+
+
 async def send_digest_email(
     parent_email: str,
     client: ResendClient,

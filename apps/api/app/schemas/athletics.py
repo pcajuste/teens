@@ -132,6 +132,32 @@ class RequestCoachAttestationResponse(BaseModel):
     message: str
 
 
+class CoachAttestationTokenResponse(BaseModel):
+    """GET /athletics/attest/:token response. Always 200 -- valid=False
+    with a reason instead of 404, to avoid token-enumeration timing
+    attacks. Never includes talent PII beyond display_name (no
+    school_name, city, state, or graduation_year)."""
+    valid: bool
+    reason: str | None = None
+    talent_display_name: str | None = None
+    sport: str | None = None
+    season_year: int | None = None
+    team_name: str | None = None
+    level: str | None = None
+    sport_stats: dict[str, Any] | None = None
+    coach_name: str | None = None
+
+
+class CoachAttestationDecisionResponse(BaseModel):
+    """POST /athletics/attest/:token/confirm and /decline response.
+    Always 200 -- success=False with a reason instead of 404/409."""
+    success: bool
+    reason: str | None = None
+    sport: str | None = None
+    season_year: int | None = None
+    team_name: str | None = None
+
+
 class NilEligibilityResponse(BaseModel):
     state: str
     nil_eligible_in_state: bool

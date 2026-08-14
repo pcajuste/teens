@@ -17,9 +17,12 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+import logging
+
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from app.core.config import Settings, get_settings
 from app.core.security import AuthenticatedUser, require_role
 from app.core.sport_stats_schemas import SportStatsValidationError, validate_sport_stats
 from app.core.sports import SUPPORTED_SPORTS
@@ -30,17 +33,42 @@ from app.repositories import (
     coach_attestation_tokens_repository,
     sport_profiles_repository,
     talent_profiles_repository,
+    users_repository,
 )
 from app.schemas.athletics import (
     AthleticSeasonResponse,
+    CoachAttestationDecisionResponse,
+    CoachAttestationTokenResponse,
     CreateAthleticSeasonRequest,
     EnableAthleticTrackResponse,
     RequestCoachAttestationResponse,
     SportProfileResponse,
     SportProfileUpdateRequest,
 )
+from app.services.email_service import (
+    send_coach_attestation_email,
+    send_talent_coach_attested_notification,
+    send_talent_coach_declined_notification,
+)
+from app.services.resend_client import ResendClient
+from app.services.resend_client import resend_client_dependency as _resend_client_dependency
+
+logger = logging.getLogger(__name__)
 
 athletics_router = APIRouter(prefix="/talents/athletics", tags=["athletics"])
+
+# Public (unauthenticated) coach-attestation verification endpoints --
+# ATHLETICS-2. Never behind require_role: a coach is never a platform
+# user and clicks this link from an email, not a logged-in session.
+athletics_public_router = APIRouter(prefix="/athletics", tags=["athletics-public"])
+
+
+def _log_posthog_event(event: str, properties: dict) -> None:
+    """No PostHog client exists anywhere in this codebase yet (verified
+    via repo-wide search) -- this is a placeholder that logs instead of
+    silently dropping the event, so the call site is ready to swap in a
+    real client without touching callers once one is wired in."""
+    logger.info("posthog_event", extra={"event": event, "properties": properties})
 
 
 def _require_talent_profile_row(row) -> talent_profiles_repository.TalentProfile:
@@ -330,6 +358,8 @@ async def request_attestation(
     season_id: str,
     user: AuthenticatedUser = Depends(require_role("talent")),
     conn: asyncpg.Connection = Depends(get_connection),
+    settings: Settings = Depends(get_settings),
+    resend_client: ResendClient = Depends(_resend_client_dependency),
 ) -> RequestCoachAttestationResponse:
     profile = await _get_own_profile(conn, user)
     _require_athletics_enabled(profile)
@@ -377,8 +407,27 @@ async def request_attestation(
             detail={"code": "illegal_transition", "message": "Cannot request attestation from the current status."},
         )
 
-    await coach_attestation_tokens_repository.issue_token(conn, season_id, season.coach_email)
-    # ATHLETICS-2: send_coach_attestation_email()
+    token = await coach_attestation_tokens_repository.issue_token(conn, season_id, season.coach_email)
+
+    # Email send failure never rolls back the state transition -- the
+    # token exists and the coach can be re-sent via the rate-limited
+    # re-request endpoint once resend is allowed again.
+    try:
+        attestation_url = f"{settings.next_public_app_url}/athletics/attest/{token.token}"
+        await send_coach_attestation_email(
+            coach_name=season.coach_name,
+            coach_email=season.coach_email,
+            talent_display_name=profile.display_name,
+            sport=season.sport,
+            season_year=season.season_year,
+            team_name=season.team_name,
+            level=season.level,
+            sport_stats=season.sport_stats,
+            attestation_url=attestation_url,
+            client=resend_client,
+        )
+    except Exception:
+        logger.exception("Failed to send coach attestation email for season %s", season_id)
 
     return RequestCoachAttestationResponse(
         success=True,
@@ -420,3 +469,141 @@ async def withdraw_attestation(
     # to 'draft', it never reaches 'attested').
 
     return _to_season_response(updated)
+
+
+# ══════════════════════════════════════════════════════════════════
+# Public coach attestation verification (ATHLETICS-2)
+# ══════════════════════════════════════════════════════════════════
+
+
+@athletics_public_router.get("/attest/{token}", response_model=CoachAttestationTokenResponse)
+async def get_attestation_token(
+    token: str,
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> CoachAttestationTokenResponse:
+    """Always 200, never 404 -- prevents token-enumeration timing
+    attacks (same rule as public.py's GET /verified/:token). Response
+    never includes the talent's school_name, city, state, or
+    graduation_year -- only what a coach needs to attest a record."""
+    record = await coach_attestation_tokens_repository.get_by_token(conn, token)
+    if record is None:
+        return CoachAttestationTokenResponse(valid=False, reason="not_found")
+    if record.used_at is not None:
+        return CoachAttestationTokenResponse(valid=False, reason="already_used")
+    if record.superseded_at is not None:
+        return CoachAttestationTokenResponse(valid=False, reason="superseded")
+    if record.expires_at <= datetime.now(timezone.utc):
+        return CoachAttestationTokenResponse(valid=False, reason="expired")
+
+    season = await athletic_seasons_repository.get_by_id(conn, record.athletic_season_id)
+    if season is None:
+        return CoachAttestationTokenResponse(valid=False, reason="not_found")
+    profile = await talent_profiles_repository.get_by_id(conn, season.talent_id)
+    if profile is None:
+        return CoachAttestationTokenResponse(valid=False, reason="not_found")
+
+    return CoachAttestationTokenResponse(
+        valid=True,
+        talent_display_name=profile.display_name,
+        sport=season.sport,
+        season_year=season.season_year,
+        team_name=season.team_name,
+        level=season.level,
+        sport_stats=season.sport_stats,
+        coach_name=season.coach_name,
+    )
+
+
+async def _validate_pending_token(
+    conn: asyncpg.Connection, token: str
+) -> tuple[coach_attestation_tokens_repository.CoachAttestationToken, athletic_seasons_repository.AthleticSeason] | None:
+    """Shared validation for confirm/decline -- returns None (caller
+    responds with success=False) on any invalid/expired/used/superseded
+    token, or if the season has already left pending_attestation."""
+    record = await coach_attestation_tokens_repository.get_by_token(conn, token)
+    if record is None or record.used_at is not None or record.superseded_at is not None:
+        return None
+    if record.expires_at <= datetime.now(timezone.utc):
+        return None
+    season = await athletic_seasons_repository.get_by_id(conn, record.athletic_season_id)
+    if season is None or season.status != "pending_attestation":
+        return None
+    return record, season
+
+
+@athletics_public_router.post("/attest/{token}/confirm", response_model=CoachAttestationDecisionResponse)
+async def confirm_attestation(
+    token: str,
+    conn: asyncpg.Connection = Depends(get_connection),
+    resend_client: ResendClient = Depends(_resend_client_dependency),
+) -> CoachAttestationDecisionResponse:
+    validated = await _validate_pending_token(conn, token)
+    if validated is None:
+        return CoachAttestationDecisionResponse(success=False, reason="already_resolved")
+    record, season = validated
+
+    now = datetime.now(timezone.utc)
+    async with conn.transaction():
+        await coach_attestation_tokens_repository.consume_token(conn, record.id, at=now)
+        updated = await athletic_seasons_repository.mark_attested(conn, season.id, at=now)
+
+    # updated is None on a race (already attested by a concurrent
+    # request) -- still return success, no double-processing.
+    profile = await talent_profiles_repository.get_by_id(conn, season.talent_id)
+    if profile is not None:
+        talent_user = await users_repository.get_user_by_id(conn, profile.user_id)
+        if talent_user is not None:
+            try:
+                await send_talent_coach_attested_notification(
+                    talent_email=talent_user.email,
+                    talent_display_name=profile.display_name,
+                    sport=season.sport,
+                    season_year=season.season_year,
+                    coach_name=season.coach_name or "Your coach",
+                    client=resend_client,
+                )
+            except Exception:
+                logger.exception("Failed to send coach-attested notification for season %s", season.id)
+
+    _log_posthog_event(
+        "coach_attestation_confirmed",
+        {"sport": season.sport, "season_year": season.season_year, "track": "athletics"},
+    )
+
+    return CoachAttestationDecisionResponse(
+        success=True, sport=season.sport, season_year=season.season_year, team_name=season.team_name
+    )
+
+
+@athletics_public_router.post("/attest/{token}/decline", response_model=CoachAttestationDecisionResponse)
+async def decline_attestation(
+    token: str,
+    conn: asyncpg.Connection = Depends(get_connection),
+    resend_client: ResendClient = Depends(_resend_client_dependency),
+) -> CoachAttestationDecisionResponse:
+    validated = await _validate_pending_token(conn, token)
+    if validated is None:
+        return CoachAttestationDecisionResponse(success=False, reason="already_resolved")
+    record, season = validated
+
+    now = datetime.now(timezone.utc)
+    async with conn.transaction():
+        await coach_attestation_tokens_repository.consume_token(conn, record.id, at=now)
+        await athletic_seasons_repository.mark_attestation_declined(conn, season.id)
+
+    profile = await talent_profiles_repository.get_by_id(conn, season.talent_id)
+    if profile is not None:
+        talent_user = await users_repository.get_user_by_id(conn, profile.user_id)
+        if talent_user is not None:
+            try:
+                await send_talent_coach_declined_notification(
+                    talent_email=talent_user.email,
+                    talent_display_name=profile.display_name,
+                    sport=season.sport,
+                    season_year=season.season_year,
+                    client=resend_client,
+                )
+            except Exception:
+                logger.exception("Failed to send coach-declined notification for season %s", season.id)
+
+    return CoachAttestationDecisionResponse(success=True)

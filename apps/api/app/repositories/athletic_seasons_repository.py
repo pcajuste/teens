@@ -249,3 +249,21 @@ async def mark_attested(conn: asyncpg.Connection, season_id: str, *, at: datetim
         at,
     )
     return AthleticSeason.from_row(row) if row else None
+
+
+async def mark_attestation_declined(conn: asyncpg.Connection, season_id: str) -> AthleticSeason | None:
+    """Sets coach_attestation_status='declined'. Does NOT change status
+    from 'pending_attestation' -- the season remains pending until the
+    talent manually withdraws or ATHLETICS-8's expiry job transitions it
+    back to draft. Returns None if season not found or not in
+    'pending_attestation'."""
+    row = await conn.fetchrow(
+        f"""
+        UPDATE public.athletic_seasons
+        SET coach_attestation_status = 'declined', updated_at = now()
+        WHERE id = $1 AND status = 'pending_attestation'
+        RETURNING {_COLUMNS}
+        """,
+        season_id,
+    )
+    return AthleticSeason.from_row(row) if row else None

@@ -392,3 +392,165 @@ def test_nil_state_rules_eligible_state(db):
 def test_nil_state_rules_ineligible_state(db):
     row = db.fetch("SELECT nil_eligible FROM public.nil_state_rules WHERE state = 'NY'")
     assert row[0]["nil_eligible"] is False
+
+
+# ---------------------------------------------------------------------
+# ATHLETICS-2: coach attestation email flow + public verification
+# ---------------------------------------------------------------------
+
+
+def _request_attestation_token(client, db, season_id, talent_headers) -> str:
+    resp = client.post(f"/talents/athletics/seasons/{season_id}/request-attestation", headers=talent_headers)
+    assert resp.status_code == 200
+    row = db.fetch(
+        "SELECT token FROM public.coach_attestation_tokens WHERE athletic_season_id = $1", season_id
+    )[0]
+    return row["token"]
+
+
+def test_request_attestation_sends_coach_email(client, db, athletics_talent_id, talent_headers, fake_resend_client):
+    create_resp = client.post("/talents/athletics/seasons", json=_create_season_body(), headers=talent_headers)
+    season_id = create_resp.json()["id"]
+
+    resp = client.post(f"/talents/athletics/seasons/{season_id}/request-attestation", headers=talent_headers)
+    assert resp.status_code == 200
+
+    assert len(fake_resend_client.sent) == 1
+    email = fake_resend_client.sent[0]
+    assert email.to == "coach@example.com"
+    assert "2025" in email.subject
+    assert "football" in email.subject
+    assert "Athlete Test" in email.subject
+    # Safety: no talent contact info in the coach attestation email.
+    assert "talent@example.com" not in email.html
+    assert "Test High" not in email.html
+    assert "Austin" not in email.html
+
+
+def test_get_attestation_token_valid(client, db, athletics_talent_id, talent_headers):
+    create_resp = client.post("/talents/athletics/seasons", json=_create_season_body(), headers=talent_headers)
+    season_id = create_resp.json()["id"]
+    token = _request_attestation_token(client, db, season_id, talent_headers)
+
+    resp = client.get(f"/athletics/attest/{token}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["valid"] is True
+    assert body["talent_display_name"] == "Athlete Test"
+    assert body["sport"] == "football"
+    assert body["season_year"] == 2025
+    assert body["sport_stats"]["passing_yards"] == 2400
+    # Safety: no school/city/grad-year PII in the public verification response.
+    for key in ("school_name", "city", "state", "graduation_year"):
+        assert key not in body
+
+
+def test_get_attestation_token_not_found_returns_200(client, db):
+    resp = client.get("/athletics/attest/nonexistent-token")
+    assert resp.status_code == 200
+    assert resp.json() == {
+        "valid": False,
+        "reason": "not_found",
+        "talent_display_name": None,
+        "sport": None,
+        "season_year": None,
+        "team_name": None,
+        "level": None,
+        "sport_stats": None,
+        "coach_name": None,
+    }
+
+
+def test_get_attestation_token_superseded_returns_200(client, db, athletics_talent_id, talent_headers):
+    create_resp = client.post("/talents/athletics/seasons", json=_create_season_body(), headers=talent_headers)
+    season_id = create_resp.json()["id"]
+    old_token = _request_attestation_token(client, db, season_id, talent_headers)
+
+    client.post(f"/talents/athletics/seasons/{season_id}/withdraw-attestation", headers=talent_headers)
+    client.post(f"/talents/athletics/seasons/{season_id}/request-attestation", headers=talent_headers)
+
+    resp = client.get(f"/athletics/attest/{old_token}")
+    assert resp.status_code == 200
+    assert resp.json()["valid"] is False
+    assert resp.json()["reason"] == "superseded"
+
+
+def test_confirm_attestation_marks_season_attested_and_notifies_talent(
+    client, db, athletics_talent_id, talent_headers, fake_resend_client
+):
+    create_resp = client.post("/talents/athletics/seasons", json=_create_season_body(), headers=talent_headers)
+    season_id = create_resp.json()["id"]
+    token = _request_attestation_token(client, db, season_id, talent_headers)
+    fake_resend_client.sent.clear()
+
+    resp = client.post(f"/athletics/attest/{token}/confirm")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["success"] is True
+    assert body["sport"] == "football"
+    assert body["season_year"] == 2025
+
+    season_resp = client.get(f"/talents/athletics/seasons/{season_id}", headers=talent_headers)
+    assert season_resp.json()["status"] == "attested"
+    assert season_resp.json()["coach_attestation_status"] == "attested"
+
+    assert len(fake_resend_client.sent) == 1
+    notif = fake_resend_client.sent[0]
+    assert notif.to == "talent@example.com"
+    assert "coach@example.com" not in notif.html
+
+
+def test_confirm_attestation_replay_is_idempotent(client, db, athletics_talent_id, talent_headers, fake_resend_client):
+    create_resp = client.post("/talents/athletics/seasons", json=_create_season_body(), headers=talent_headers)
+    season_id = create_resp.json()["id"]
+    token = _request_attestation_token(client, db, season_id, talent_headers)
+
+    first = client.post(f"/athletics/attest/{token}/confirm")
+    assert first.json()["success"] is True
+    fake_resend_client.sent.clear()
+
+    second = client.post(f"/athletics/attest/{token}/confirm")
+    assert second.status_code == 200
+    assert second.json()["success"] is False
+    assert second.json()["reason"] == "already_resolved"
+    assert len(fake_resend_client.sent) == 0
+
+
+def test_decline_attestation_keeps_season_pending_and_notifies_talent(
+    client, db, athletics_talent_id, talent_headers, fake_resend_client
+):
+    create_resp = client.post("/talents/athletics/seasons", json=_create_season_body(), headers=talent_headers)
+    season_id = create_resp.json()["id"]
+    token = _request_attestation_token(client, db, season_id, talent_headers)
+    fake_resend_client.sent.clear()
+
+    resp = client.post(f"/athletics/attest/{token}/decline")
+    assert resp.status_code == 200
+    assert resp.json()["success"] is True
+
+    season_resp = client.get(f"/talents/athletics/seasons/{season_id}", headers=talent_headers)
+    body = season_resp.json()
+    assert body["status"] == "pending_attestation"
+    assert body["coach_attestation_status"] == "declined"
+
+    assert len(fake_resend_client.sent) == 1
+    notif = fake_resend_client.sent[0]
+    assert notif.to == "talent@example.com"
+    assert "coach@example.com" not in notif.html
+    assert "declined" not in notif.html.lower()
+
+
+def test_get_attestation_token_expired_returns_200(client, db, athletics_talent_id, talent_headers):
+    create_resp = client.post("/talents/athletics/seasons", json=_create_season_body(), headers=talent_headers)
+    season_id = create_resp.json()["id"]
+    token = _request_attestation_token(client, db, season_id, talent_headers)
+
+    db.execute(
+        "UPDATE public.coach_attestation_tokens SET expires_at = now() - interval '1 hour' WHERE token = $1",
+        token,
+    )
+
+    resp = client.get(f"/athletics/attest/{token}")
+    assert resp.status_code == 200
+    assert resp.json()["valid"] is False
+    assert resp.json()["reason"] == "expired"

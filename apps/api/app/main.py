@@ -66,6 +66,7 @@ def create_app() -> FastAPI:
     app.include_router(talents.talents_router)
     app.include_router(talents.campaigns_router)
     app.include_router(athletics.athletics_router)
+    app.include_router(athletics.athletics_public_router)
     app.include_router(brands.brands_router)
     app.include_router(challenges.brands_challenges_router)
     app.include_router(challenges.talents_challenges_router)
