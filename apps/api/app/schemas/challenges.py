@@ -166,7 +166,7 @@ class ChallengeSubmissionTalentCardResponse(BaseModel):
     categories: list[str]
     profile_completeness_score: int
     campaigns_completed: int
-    average_rating: float | None
+    brand_average_rating: float | None
     challenges_converted_count: int
     challenge_conversion_rate: float | None
 

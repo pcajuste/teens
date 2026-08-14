@@ -15,8 +15,8 @@ _MAX_GRAD_YEAR = 2035
 
 class TalentProfileUpdateRequest(BaseModel):
     """PUT /talents/me body. Only talent-writable fields -- cached/computed
-    fields (total_campaigns_completed, total_earnings_cents,
-    average_rating, profile_completeness_score, recruiter_visible) are
+    fields (brand_campaigns_completed, total_earnings_cents,
+    brand_average_rating, profile_completeness_score, recruiter_visible) are
     absent on purpose; they cannot be set by this request at all, not
     even ignored silently -- there is no field here to send them in."""
 
@@ -63,9 +63,9 @@ class TalentProfileResponse(BaseModel):
     instagram_handle: str | None
     tiktok_handle: str | None
     recruiter_visible: bool
-    total_campaigns_completed: int
+    brand_campaigns_completed: int
     total_earnings_cents: int
-    average_rating: float | None
+    brand_average_rating: float | None
     profile_completeness_score: int
     stripe_onboarding_complete: bool
     challenges_submitted_count: int = 0
@@ -93,8 +93,8 @@ class TalentProfilePreviewResponse(BaseModel):
     categories: list[str]
     instagram_handle: str | None
     tiktok_handle: str | None
-    total_campaigns_completed: int
-    average_rating: float | None
+    brand_campaigns_completed: int
+    brand_average_rating: float | None
     profile_completeness_score: int
     challenges_submitted_count: int = 0
     challenges_converted_count: int = 0
@@ -260,8 +260,8 @@ class PublicVerifiedProfileResponse(BaseModel):
     city: str | None = None
     categories: list[str] | None = None
     badges: list[dict] | None = None
-    total_campaigns_completed: int | None = None
-    average_rating: float | None = None
+    brand_campaigns_completed: int | None = None
+    brand_average_rating: float | None = None
     total_earnings_cents: int | None = None
     last_updated: datetime | None = None
 

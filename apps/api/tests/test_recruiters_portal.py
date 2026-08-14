@@ -30,7 +30,7 @@ def _seed_recruiter_user(db, *, account_status: str = "active") -> None:
 
 
 def _seed_rep(db, *, recruiter_visible: bool = True, categories=None, city="Austin", state="TX", graduation_year=2027,
-              total_campaigns_completed=0, average_rating=None) -> str:
+              brand_campaigns_completed=0, brand_average_rating=None) -> str:
     talent_user_id = str(uuid.uuid4())
     talent_id = str(uuid.uuid4())
     talent_email = f"talent-{talent_user_id}@example.com"
@@ -45,7 +45,7 @@ def _seed_rep(db, *, recruiter_visible: bool = True, categories=None, city="Aust
         """
         INSERT INTO public.talent_profiles
             (id, user_id, display_name, school_name, city, state, graduation_year, categories,
-             recruiter_visible, total_campaigns_completed, average_rating, instagram_handle)
+             recruiter_visible, brand_campaigns_completed, brand_average_rating, instagram_handle)
         VALUES ($1, $2, 'Test Talent', 'Test High', $3, $4, $5, $6, $7, $8, $9, 'test_talent_ig')
         """,
         talent_id,
@@ -55,8 +55,8 @@ def _seed_rep(db, *, recruiter_visible: bool = True, categories=None, city="Aust
         graduation_year,
         categories or ["gaming"],
         recruiter_visible,
-        total_campaigns_completed,
-        average_rating,
+        brand_campaigns_completed,
+        brand_average_rating,
     )
     return talent_id
 

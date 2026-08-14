@@ -222,7 +222,7 @@ def seed_talent_with_parent(db):
         categories: list[str] | None = None,
         profile_completeness_score: int = 50,
         total_earnings_cents: int = 12345,
-        total_campaigns_completed: int = 2,
+        brand_campaigns_completed: int = 2,
         suspended_by_parent_at: datetime | None = None,
         talent_account_status: str = "active",
     ) -> SeededRep:
@@ -246,7 +246,7 @@ def seed_talent_with_parent(db):
             """
             INSERT INTO public.talent_profiles
                 (id, user_id, display_name, school_name, city, state, graduation_year,
-                 categories, profile_completeness_score, total_earnings_cents, total_campaigns_completed)
+                 categories, profile_completeness_score, total_earnings_cents, brand_campaigns_completed)
             VALUES ($1, $2, 'Test Talent', 'Test High', 'Austin', 'TX', 2027, $3, $4, $5, $6)
             """,
             talent_id,
@@ -254,7 +254,7 @@ def seed_talent_with_parent(db):
             categories or ["gaming"],
             profile_completeness_score,
             total_earnings_cents,
-            total_campaigns_completed,
+            brand_campaigns_completed,
         )
         portal_expires_at = datetime.now(timezone.utc) + timedelta(days=portal_expires_in_days)
         db.execute(

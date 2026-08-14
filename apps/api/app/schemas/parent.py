@@ -89,7 +89,7 @@ class DashboardResponse(BaseModel):
     categories: list[str]
     profile_completeness_score: int
     total_earnings_cents: int
-    total_campaigns_completed: int
+    brand_campaigns_completed: int
     challenge_activity: ChallengeActivityResponse
     module_activity: ModuleActivityResponse
     scholarship_activity: ScholarshipActivityResponse

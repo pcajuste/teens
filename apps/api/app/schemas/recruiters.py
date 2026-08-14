@@ -43,8 +43,8 @@ class RecruiterSearchCardResponse(BaseModel):
     school_type: str | None
     categories: list[str]
     profile_completeness_score: int
-    average_rating: float | None
-    total_campaigns_completed: int
+    brand_average_rating: float | None
+    brand_campaigns_completed: int
     challenges_converted_count: int = 0
     challenge_conversion_rate: float | None = None
     badge_count: int = 0
@@ -71,9 +71,9 @@ class RecruiterTalentDetailResponse(BaseModel):
     categories: list[str]
     instagram_handle: str | None
     tiktok_handle: str | None
-    total_campaigns_completed: int
+    brand_campaigns_completed: int
     total_earnings_cents: int
-    average_rating: float | None
+    brand_average_rating: float | None
     profile_completeness_score: int
 
 

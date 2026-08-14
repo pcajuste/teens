@@ -25,7 +25,7 @@ import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.core.config import Settings, get_settings
-from app.core.profile_score import compute_profile_completeness_score
+from app.core.profile_score import compute_brand_completeness_score, compute_cross_track_score
 from app.core.security import AuthenticatedUser, require_role
 from app.db.pool import get_connection
 from app.repositories import learning_modules_repository, talent_goals_repository, talent_profiles_repository
@@ -483,16 +483,28 @@ async def complete_module(
                 "badge_icon": module.badge_icon,
                 "earned_at": now.isoformat(),
             }
-            new_score = compute_profile_completeness_score(
+            new_brand_score = compute_brand_completeness_score(
                 bio=profile.bio,
                 categories=profile.categories,
                 school_type=profile.school_type,
                 instagram_handle=profile.instagram_handle,
                 tiktok_handle=profile.tiktok_handle,
-                total_campaigns_completed=profile.total_campaigns_completed,
+                brand_campaigns_completed=profile.brand_campaigns_completed,
                 badges_earned_count=profile.badges_earned_count + 1,
             )
-            updated_profile = await talent_profiles_repository.append_badge_and_recompute_score(conn, profile.id, badge=badge, new_score=new_score)
+            # D1 decision: badges are a brand-track signal -- new_score here
+            # is the cross-track profile_completeness_score (GREATEST),
+            # matching update_brand_completeness_score's semantics, but
+            # written atomically with the badge append via this single
+            # existing repository call rather than a second UPDATE.
+            new_score = compute_cross_track_score(
+                brand_completeness_score=new_brand_score,
+                athletic_completeness_score=profile.athletic_completeness_score,
+                enabled_tracks=profile.enabled_tracks,
+            )
+            updated_profile = await talent_profiles_repository.append_badge_and_recompute_score(
+                conn, profile.id, badge=badge, new_score=new_score, new_brand_score=new_brand_score
+            )
             if updated_profile is None:
                 raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={"code": "badge_issuance_failed", "message": "Could not issue badge."})
 

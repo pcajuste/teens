@@ -276,8 +276,8 @@ async def search_reps(
             school_type=c.school_type,
             categories=c.categories,
             profile_completeness_score=c.profile_completeness_score,
-            average_rating=c.average_rating,
-            total_campaigns_completed=c.total_campaigns_completed,
+            brand_average_rating=c.brand_average_rating,
+            brand_campaigns_completed=c.brand_campaigns_completed,
             challenges_converted_count=c.challenges_converted_count,
             challenge_conversion_rate=c.challenge_conversion_rate,
             badge_count=c.badge_count,
@@ -326,9 +326,9 @@ async def get_talent_detail(
         categories=talent.categories,
         instagram_handle=talent.instagram_handle,
         tiktok_handle=talent.tiktok_handle,
-        total_campaigns_completed=talent.total_campaigns_completed,
+        brand_campaigns_completed=talent.brand_campaigns_completed,
         total_earnings_cents=talent.total_earnings_cents,
-        average_rating=talent.average_rating,
+        brand_average_rating=talent.brand_average_rating,
         profile_completeness_score=talent.profile_completeness_score,
     )
 

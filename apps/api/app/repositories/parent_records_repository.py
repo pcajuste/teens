@@ -62,7 +62,7 @@ class RepContext:
     categories: list[str]
     profile_completeness_score: int
     total_earnings_cents: int
-    total_campaigns_completed: int
+    brand_campaigns_completed: int
 
 
 async def create_parent_record(
@@ -130,7 +130,7 @@ async def get_talent_context(conn: asyncpg.Connection, talent_id: str) -> RepCon
             u.id AS talent_user_id, u.email AS talent_email, u.account_status AS talent_account_status,
             u.date_of_birth,
             rp.display_name, rp.school_name, rp.graduation_year, rp.categories,
-            rp.profile_completeness_score, rp.total_earnings_cents, rp.total_campaigns_completed
+            rp.profile_completeness_score, rp.total_earnings_cents, rp.brand_campaigns_completed
         FROM public.talent_profiles rp
         JOIN public.users u ON u.id = rp.user_id
         WHERE rp.id = $1
@@ -150,7 +150,7 @@ async def get_talent_context(conn: asyncpg.Connection, talent_id: str) -> RepCon
         categories=list(row["categories"] or []),
         profile_completeness_score=row["profile_completeness_score"],
         total_earnings_cents=row["total_earnings_cents"],
-        total_campaigns_completed=row["total_campaigns_completed"],
+        brand_campaigns_completed=row["brand_campaigns_completed"],
     )
 
 

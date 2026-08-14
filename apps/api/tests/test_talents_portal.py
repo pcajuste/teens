@@ -533,7 +533,7 @@ def test_achievement_record_matches_profile_preview(client, db, talent_headers):
 
 
 def test_achievement_record_reflects_only_confirmed_totals(client, db, talent_headers):
-    """total_campaigns_completed/average_rating are cached fields that
+    """brand_campaigns_completed/brand_average_rating are cached fields that
     recompute_cached_totals only updates from confirmed campaign_talents
     rows -- an unconfirmed/in-progress campaign must not move them."""
     _seed_talent_user(db, age=20)
@@ -544,7 +544,7 @@ def test_achievement_record_reflects_only_confirmed_totals(client, db, talent_he
 
     response  = client.get("/talents/me/achievement-record", headers=talent_headers)
     assert response .status_code == 200
-    assert response .json()["record"]["total_campaigns_completed"] == 0
+    assert response .json()["record"]["brand_campaigns_completed"] == 0
 
 
 def test_achievement_record_role_enforcement_rejects_non_rep(client, db, auth_headers_factory):

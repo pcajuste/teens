@@ -74,7 +74,7 @@ async def dashboard(
         categories=talent.categories,
         profile_completeness_score=talent.profile_completeness_score,
         total_earnings_cents=talent.total_earnings_cents,
-        total_campaigns_completed=talent.total_campaigns_completed,
+        brand_campaigns_completed=talent.brand_campaigns_completed,
         challenge_activity=ChallengeActivityResponse(**activity),
         module_activity=ModuleActivityResponse(**module_activity),
         scholarship_activity=ScholarshipActivityResponse(**scholarship_activity),
