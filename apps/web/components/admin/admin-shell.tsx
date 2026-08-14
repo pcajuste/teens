@@ -14,6 +14,7 @@ const NAV = [
   { href: "/admin/campaigns", label: "Campaigns" },
   { href: "/admin/payments", label: "Payments" },
   { href: "/admin/exclusivity", label: "Exclusivity" },
+  { href: "/admin/athletics", label: "Athletics" },
   { href: "/admin/modules", label: "Modules" },
   { href: "/admin/content-templates", label: "Content review" },
   { href: "/admin/analytics", label: "Analytics" },

@@ -117,3 +117,8 @@ export interface ParentVerifyResponse {
   session_token: string;
   expires_at: string;
 }
+
+// ── Athletics (ATHLETICS-8) ───────────────────────────────────────────
+// Types shared with the talent athletic portal (SportProfile,
+// AthleticSeason, NilEligibility) live in lib/types.ts -- imported
+// directly by GET /parent/athletics's page rather than duplicated here.

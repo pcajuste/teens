@@ -948,6 +948,17 @@ export interface AchievementLinkVisibilityUpdate {
   earnings_visible_on_public_profile: boolean;
 }
 
+export interface PublicAttestedSeason {
+  sport: string;
+  season_year: number;
+  team_name: string;
+  level: string;
+  selected_stats: Record<string, unknown>;
+  achievements: Record<string, unknown>[] | null;
+  coach_verified: boolean;
+  admin_verified: boolean;
+}
+
 export interface PublicVerifiedProfile {
   public: boolean;
   display_name: string | null;
@@ -956,9 +967,11 @@ export interface PublicVerifiedProfile {
   city: string | null;
   categories: string[] | null;
   badges: Badge[] | null;
-  total_campaigns_completed: number | null;
-  average_rating: number | null;
+  brand_campaigns_completed: number | null;
+  brand_average_rating: number | null;
   total_earnings_cents: number | null;
+  athletic_tracks_enabled: boolean;
+  attested_seasons: PublicAttestedSeason[] | null;
   last_updated: string | null;
 }
 
@@ -1435,4 +1448,53 @@ export interface CoachAttestationDecision {
   sport?: string | null;
   season_year?: number | null;
   team_name?: string | null;
+}
+
+// ── Admin athletics (ATHLETICS-8) ────────────────────────────────────
+
+export interface AdminAthleticSeason {
+  id: string;
+  talent_id: string;
+  talent_display_name: string;
+  sport: string;
+  season_year: number;
+  team_name: string;
+  coach_attestation_status: string;
+  status: AthleticSeasonStatus;
+  admin_verified: boolean;
+  admin_flag_reason: string | null;
+  created_at: string;
+}
+
+export interface AdminFlagSeasonRequest {
+  reason: string;
+}
+
+export interface AdminNilStateRule {
+  state: string;
+  nil_eligible: boolean;
+  notes: string | null;
+  effective_date: string;
+  last_updated_at: string;
+}
+
+export interface AdminUpdateNilStateRuleRequest {
+  nil_eligible: boolean;
+  notes: string | null;
+  effective_date: string;
+}
+
+export interface AdminUpdateNilStateRuleResponse {
+  state: string;
+  updated: boolean;
+  talents_affected: number;
+}
+
+// ── Parent athletics (ATHLETICS-8) ───────────────────────────────────
+
+export interface ParentAthleticSummary {
+  athletics_enabled: boolean;
+  sport_profiles: SportProfile[];
+  recent_seasons: AthleticSeason[];
+  nil_eligibility: NilEligibility | null;
 }

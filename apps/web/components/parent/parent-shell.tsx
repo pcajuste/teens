@@ -7,6 +7,7 @@ import { clearParentSession } from "@/lib/parent-session";
 const NAV = [
   { href: "/parent/dashboard", label: "Dashboard" },
   { href: "/parent/campaigns", label: "Campaigns" },
+  { href: "/parent/athletics", label: "Athletics" },
   { href: "/parent/filters", label: "Values filters" },
   { href: "/parent/settings", label: "Settings" },
 ];

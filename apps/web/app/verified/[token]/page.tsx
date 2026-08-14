@@ -7,6 +7,7 @@ import { LogoStacked, LOGO_SIZES } from "@/components/logo";
 import { api, ApiError } from "@/lib/api";
 import type { PublicVerifiedProfile } from "@/lib/types";
 import { CATEGORY_LABELS } from "@/lib/categories";
+import { SPORT_LABELS, SPORT_STATS_FIELDS, SEASON_LEVEL_LABELS, type SupportedSport } from "@/lib/sports";
 
 // Build Prompt 5/6 deliverable 12/9: the public Living Achievement Link
 // page. No navigation to the app, no signup CTA, no auth check --
@@ -72,12 +73,12 @@ export default function VerifiedProfilePage() {
 
             <div className="grid grid-cols-2 gap-3 rounded-[var(--r-md)] bg-[var(--vl-surface)] p-4 text-center sm:grid-cols-3">
               <div>
-                <p className="text-xl font-semibold">{profile.total_campaigns_completed}</p>
+                <p className="text-xl font-semibold">{profile.brand_campaigns_completed}</p>
                 <p className="text-xs text-[var(--vl-text-2)]">Campaigns completed</p>
               </div>
               <div>
                 <p className="text-xl font-semibold">
-                  {profile.average_rating != null ? profile.average_rating.toFixed(1) : "—"}
+                  {profile.brand_average_rating != null ? profile.brand_average_rating.toFixed(1) : "—"}
                 </p>
                 <p className="text-xs text-[var(--vl-text-2)]">Average rating</p>
               </div>
@@ -107,6 +108,64 @@ export default function VerifiedProfilePage() {
                     </span>
                   ))}
                 </div>
+              </div>
+            ) : null}
+
+            {profile.athletic_tracks_enabled && profile.attested_seasons && profile.attested_seasons.length > 0 ? (
+              <div className="flex flex-col gap-3 border-t border-[var(--vl-border)] pt-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-[var(--vl-text-2)]">
+                  Athletic Record
+                </p>
+                {profile.attested_seasons.map((s, i) => (
+                  <div
+                    key={i}
+                    className="flex flex-col gap-2 rounded-[var(--r-md)] border border-[var(--vl-border)] bg-[var(--vl-surface)] p-4"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="rounded-md border border-[var(--vl-border)] bg-[var(--vl-chip-bg)] px-2 py-0.5 text-xs font-medium text-[var(--vl-chip-text)]">
+                          {SPORT_LABELS[s.sport as SupportedSport] ?? s.sport}
+                        </span>
+                        <span className="text-sm text-[var(--vl-text-2)]">
+                          {s.season_year} · {s.team_name}
+                          {s.level ? ` · ${SEASON_LEVEL_LABELS[s.level as keyof typeof SEASON_LEVEL_LABELS] ?? s.level}` : ""}
+                        </span>
+                      </div>
+                      <div className="flex gap-1.5">
+                        {s.coach_verified ? (
+                          <UiBadge variant="earned">Coach Verified</UiBadge>
+                        ) : null}
+                        {s.admin_verified ? (
+                          <UiBadge variant="success">Platform Verified</UiBadge>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    {Object.keys(s.selected_stats).length > 0 ? (
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 sm:grid-cols-3">
+                        {(SPORT_STATS_FIELDS[s.sport as SupportedSport] ?? [])
+                          .filter((f) => s.selected_stats[f.key] !== undefined)
+                          .map((f) => (
+                            <div key={f.key} className="flex flex-col">
+                              <span className="text-xs text-[var(--vl-text-2)]">{f.label}</span>
+                              <span className="text-sm font-medium">{String(s.selected_stats[f.key])}</span>
+                            </div>
+                          ))}
+                      </div>
+                    ) : null}
+
+                    {s.achievements && s.achievements.length > 0 ? (
+                      <div className="flex flex-col gap-1">
+                        {s.achievements.map((a, j) => (
+                          <p key={j} className="text-sm">
+                            {String(a.title)}{" "}
+                            <span className="text-[var(--vl-text-2)]">({String(a.type)})</span>
+                          </p>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
               </div>
             ) : null}
 
