@@ -583,9 +583,12 @@ async def unsave_rep(
 
 @recruiters_router.get("/saved", response_model=list[SavedProfileResponse])
 async def list_saved(
+    track: str | None = None,
     user: AuthenticatedUser = Depends(require_role("recruiter")),
     conn: asyncpg.Connection = Depends(get_connection),
 ) -> list[SavedProfileResponse]:
+    """track="athletics" or track="brand" filters saved talents by
+    enabled track (ATHLETICS-7 deliverable 3); omitted returns all."""
     recruiter = await _get_own_recruiter_profile(conn, user)
-    rows = await recruiter_saved_profiles_repository.list_for_recruiter(conn, recruiter.id)
+    rows = await recruiter_saved_profiles_repository.list_for_recruiter(conn, recruiter.id, track=track)
     return [SavedProfileResponse(talent_id=r.talent_id, list_name=r.list_name, saved_at=r.saved_at) for r in rows]

@@ -9,7 +9,8 @@ import { Label } from "@/components/ui/label";
 import { RecruiterShell } from "@/components/recruiter/recruiter-shell";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import type { InstitutionType, RecruiterProfile } from "@/lib/types";
+import { SUPPORTED_SPORTS, SPORT_LABELS, type SupportedSport } from "@/lib/sports";
+import type { InstitutionType, RecruiterProfile, SportsOfInterestResponse } from "@/lib/types";
 
 const INSTITUTION_TYPES: { value: InstitutionType; label: string }[] = [
   { value: "college", label: "College / University" },
@@ -29,6 +30,10 @@ export default function RecruiterProfilePage() {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
+  const [sportsOfInterest, setSportsOfInterest] = useState<SupportedSport[]>([]);
+  const [sportsPending, setSportsPending] = useState(false);
+  const [sportsSaved, setSportsSaved] = useState(false);
+
   useEffect(() => {
     api
       .get<RecruiterProfile>("/recruiters/me")
@@ -47,7 +52,38 @@ export default function RecruiterProfilePage() {
         }
       })
       .finally(() => setLoading(false));
+
+    api
+      .get<SportsOfInterestResponse>("/recruiters/me/sports-of-interest")
+      .then((res) => setSportsOfInterest(res.sports_of_interest as SupportedSport[]))
+      .catch(() => {
+        // Not applicable for employer-type recruiters or before onboarding.
+      });
   }, []);
+
+  function toggleSportOfInterest(s: SupportedSport) {
+    setSportsOfInterest((prev) =>
+      prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s],
+    );
+  }
+
+  async function handleSaveSportsOfInterest() {
+    setSportsPending(true);
+    setSportsSaved(false);
+    setError(null);
+    try {
+      await api.put("/recruiters/me/sports-of-interest", {
+        sports_of_interest: sportsOfInterest,
+      });
+      setSportsSaved(true);
+    } catch (err) {
+      setError(
+        err instanceof ApiError ? err.message : "Could not save sports of interest.",
+      );
+    } finally {
+      setSportsPending(false);
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -162,6 +198,42 @@ export default function RecruiterProfilePage() {
           </Button>
         </div>
       </form>
+
+      {institutionType === "college" ? (
+        <div className="mt-8 flex max-w-xl flex-col gap-3 border-t border-border-muted pt-6">
+          <div>
+            <h2 className="text-base font-semibold">Sports you recruit for</h2>
+            <p className="text-sm text-text-2">
+              When searching for athletes, your selected sports will be applied by default. You can override
+              this in any search.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {SUPPORTED_SPORTS.map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => toggleSportOfInterest(s)}
+                className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                  sportsOfInterest.includes(s)
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border-muted bg-transparent text-text-2 hover:text-foreground"
+                }`}
+              >
+                {SPORT_LABELS[s]}
+              </button>
+            ))}
+          </div>
+          {sportsSaved ? (
+            <p className="rounded-lg bg-success/10 px-3 py-2 text-sm text-success">Saved.</p>
+          ) : null}
+          <div>
+            <Button type="button" onClick={handleSaveSportsOfInterest} disabled={sportsPending}>
+              {sportsPending ? "Saving..." : "Save sports of interest"}
+            </Button>
+          </div>
+        </div>
+      ) : null}
     </RecruiterShell>
   );
 }

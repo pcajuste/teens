@@ -56,9 +56,26 @@ async def unsave(conn: asyncpg.Connection, *, recruiter_id: str, talent_id: str)
     return result != "DELETE 0"
 
 
-async def list_for_recruiter(conn: asyncpg.Connection, recruiter_id: str) -> list[SavedProfile]:
+async def list_for_recruiter(conn: asyncpg.Connection, recruiter_id: str, *, track: str | None = None) -> list[SavedProfile]:
+    """track filters against talent_profiles.enabled_tracks -- 'athletics'
+    or 'brand' (ATHLETICS-7 deliverable 3). None returns everything."""
+    if track is None:
+        rows = await conn.fetch(
+            f"SELECT {_COLUMNS} FROM public.recruiter_saved_profiles WHERE recruiter_id = $1 ORDER BY saved_at DESC",
+            recruiter_id,
+        )
+        return [SavedProfile.from_row(row) for row in rows]
+
+    prefixed_columns = ", ".join(f"sp.{c.strip()}" for c in _COLUMNS.split(","))
     rows = await conn.fetch(
-        f"SELECT {_COLUMNS} FROM public.recruiter_saved_profiles WHERE recruiter_id = $1 ORDER BY saved_at DESC",
+        f"""
+        SELECT {prefixed_columns}
+        FROM public.recruiter_saved_profiles sp
+        JOIN public.talent_profiles tp ON tp.id = sp.talent_id
+        WHERE sp.recruiter_id = $1 AND $2 = ANY(tp.enabled_tracks)
+        ORDER BY sp.saved_at DESC
+        """,
         recruiter_id,
+        track,
     )
     return [SavedProfile.from_row(row) for row in rows]

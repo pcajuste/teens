@@ -1351,3 +1351,88 @@ export interface PublicNilStateRule {
   notes: string | null;
   effective_date: string;
 }
+
+// ── Athletic recruiter search / detail (ATHLETICS-7) ────────────────
+
+/** GET /recruiters/talents/search?track=athletics -- no PII, no credit
+ * cost, same rule as RecruiterSearchCard. */
+export interface AthleticRecruiterSearchCard {
+  talent_id: string;
+  city: string;
+  state: string;
+  graduation_year: number;
+  school_type: SchoolType | null;
+  categories: string[];
+  athletic_completeness_score: number;
+  athletic_seasons_completed: number;
+  athletic_recruiter_interest_count: number;
+  sports: string[];
+  top_sport_positions: string[];
+  top_sport_gpa: number | null;
+  has_film_url: boolean;
+}
+
+export interface AthleticSeasonSummary {
+  sport: string;
+  season_year: number;
+  season_type: string;
+  team_name: string;
+  level: string;
+  sport_stats: Record<string, unknown>;
+  coach_name: string | null;
+  status: AthleticSeasonStatus;
+}
+
+/** GET /recruiters/talents/:id?track=athletics -- full identifying
+ * profile, costs 1 credit. No brand-track fields (earnings, campaigns,
+ * ratings) -- irrelevant to an athletic recruiter. */
+export interface AthleticTalentDetail {
+  talent_id: string;
+  display_name: string;
+  school_name: string;
+  school_type: SchoolType | null;
+  city: string;
+  state: string;
+  graduation_year: number;
+  bio: string | null;
+  categories: string[];
+  instagram_handle: string | null;
+  tiktok_handle: string | null;
+  athletic_completeness_score: number;
+  athletic_seasons_completed: number;
+  athletic_recruiter_interest_count: number;
+  sport_profiles: SportProfile[];
+  recent_seasons: AthleticSeasonSummary[];
+  nil_acknowledged: boolean;
+}
+
+export interface SportsOfInterestResponse {
+  sports_of_interest: string[];
+  note?: string | null;
+}
+
+export interface SportsOfInterestUpdateRequest {
+  sports_of_interest: string[];
+}
+
+// ── Coach attestation landing (ATHLETICS-7) ──────────────────────────
+
+export interface CoachAttestationToken {
+  valid: boolean;
+  reason?: string | null;
+  talent_display_name?: string | null;
+  sport?: string | null;
+  season_year?: number | null;
+  team_name?: string | null;
+  level?: string | null;
+  sport_stats?: Record<string, unknown> | null;
+  coach_name?: string | null;
+}
+
+export interface CoachAttestationDecision {
+  success: boolean;
+  reason?: string | null;
+  sport?: string | null;
+  season_year?: number | null;
+  team_name?: string | null;
+}
