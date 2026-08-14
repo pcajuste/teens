@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, field_validator
+
+from app.schemas.athletics import SportProfileResponse
 
 InstitutionType = Literal["college", "employer"]
 
@@ -24,6 +26,7 @@ class RecruiterProfileResponse(BaseModel):
     institution_type: InstitutionType
     website: str | None
     verified: bool
+    sports_of_interest: list[str] | None = None
 
 
 class CreditsResponse(BaseModel):
@@ -43,8 +46,8 @@ class RecruiterSearchCardResponse(BaseModel):
     school_type: str | None
     categories: list[str]
     profile_completeness_score: int
-    average_rating: float | None
-    total_campaigns_completed: int
+    brand_average_rating: float | None
+    brand_campaigns_completed: int
     challenges_converted_count: int = 0
     challenge_conversion_rate: float | None = None
     badge_count: int = 0
@@ -71,10 +74,82 @@ class RecruiterTalentDetailResponse(BaseModel):
     categories: list[str]
     instagram_handle: str | None
     tiktok_handle: str | None
-    total_campaigns_completed: int
+    brand_campaigns_completed: int
     total_earnings_cents: int
-    average_rating: float | None
+    brand_average_rating: float | None
     profile_completeness_score: int
+
+
+class AthleticRecruiterSearchCardResponse(BaseModel):
+    """GET /recruiters/talents/search?track=athletics -- no PII, no
+    credit cost. Mirrors talent_profiles_repository.AthleticRecruiterSearchCard.
+    No display_name/school_name/bio -- same no-PII shape as
+    RecruiterSearchCardResponse."""
+
+    talent_id: str
+    city: str
+    state: str
+    graduation_year: int
+    school_type: str | None
+    categories: list[str]
+    athletic_completeness_score: int
+    athletic_seasons_completed: int
+    athletic_recruiter_interest_count: int
+    sports: list[str]
+    top_sport_positions: list[str]
+    top_sport_gpa: float | None
+    has_film_url: bool
+
+
+class AthleticSeasonSummaryResponse(BaseModel):
+    """Recruiter-facing season summary (AthleticTalentDetailResponse's
+    recent_seasons) -- deliberately excludes coach_email. A coach is
+    never a platform user and their personal email is not the talent's
+    to hand to a third party just because the season is attested."""
+
+    sport: str
+    season_year: int
+    season_type: str
+    team_name: str
+    level: str
+    sport_stats: dict[str, Any]
+    coach_name: str | None
+    status: str
+
+
+class AthleticTalentDetailResponse(BaseModel):
+    """GET /recruiters/talents/:id?track=athletics -- full identifying
+    athletic profile, costs 1 credit (deducted server-side before this
+    is ever returned). total_earnings_cents is deliberately OMITTED --
+    the athletic track has no monetary component at MVP and athletic
+    recruiters are not brand buyers."""
+
+    talent_id: str
+    display_name: str
+    school_name: str
+    school_type: str | None
+    city: str
+    state: str
+    graduation_year: int
+    bio: str | None
+    categories: list[str]
+    instagram_handle: str | None
+    tiktok_handle: str | None
+    athletic_completeness_score: int
+    athletic_seasons_completed: int
+    athletic_recruiter_interest_count: int
+    sport_profiles: list[SportProfileResponse]
+    recent_seasons: list[AthleticSeasonSummaryResponse]
+    nil_acknowledged: bool
+
+
+class SportsOfInterestResponse(BaseModel):
+    sports_of_interest: list[str] | None
+    note: str | None = None
+
+
+class SportsOfInterestUpdateRequest(BaseModel):
+    sports_of_interest: list[str]
 
 
 class ContactRequest(BaseModel):

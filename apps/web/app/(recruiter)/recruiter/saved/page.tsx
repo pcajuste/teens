@@ -11,7 +11,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { api, ApiError } from "@/lib/api";
 import type { RecruiterSavedProfile } from "@/lib/types";
 
+type Track = "brand" | "athletics";
+
 export default function RecruiterSavedPage() {
+  const [track, setTrack] = useState<Track>("brand");
   const [saved, setSaved] = useState<RecruiterSavedProfile[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -20,14 +23,17 @@ export default function RecruiterSavedPage() {
   const [renameValue, setRenameValue] = useState("");
 
   useEffect(() => {
-    load();
-  }, []);
+    load(track);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [track]);
 
-  async function load() {
+  async function load(forTrack: Track = track) {
     setLoading(true);
     setError(null);
     try {
-      const rows = await api.get<RecruiterSavedProfile[]>("/recruiters/saved");
+      const rows = await api.get<RecruiterSavedProfile[]>(
+        `/recruiters/saved?track=${forTrack}`,
+      );
       setSaved(rows);
     } catch (err) {
       setError(
@@ -118,6 +124,30 @@ export default function RecruiterSavedPage() {
 
   return (
     <RecruiterShell title="Saved profiles">
+      <div className="flex gap-2 border-b border-border-muted">
+        <button
+          type="button"
+          onClick={() => setTrack("brand")}
+          className={`px-3 py-2 text-sm font-medium ${
+            track === "brand"
+              ? "border-b-2 border-primary text-foreground"
+              : "text-text-2 hover:text-foreground"
+          }`}
+        >
+          Saved
+        </button>
+        <button
+          type="button"
+          onClick={() => setTrack("athletics")}
+          className={`px-3 py-2 text-sm font-medium ${
+            track === "athletics"
+              ? "border-b-2 border-primary text-foreground"
+              : "text-text-2 hover:text-foreground"
+          }`}
+        >
+          Athletes I&rsquo;m tracking
+        </button>
+      </div>
       {error ? (
         <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {error}

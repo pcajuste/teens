@@ -247,9 +247,9 @@ def test_full_campaign_lifecycle_creation_to_paid_out_rep(client, db, settings, 
     assert final["paid_at"] is not None
 
     talent_totals = db.fetch(
-        "SELECT total_campaigns_completed, total_earnings_cents FROM public.talent_profiles WHERE id = $1", talent_id
+        "SELECT brand_campaigns_completed, total_earnings_cents FROM public.talent_profiles WHERE id = $1", talent_id
     )[0]
-    assert talent_totals["total_campaigns_completed"] == 1
+    assert talent_totals["brand_campaigns_completed"] == 1
     assert talent_totals["total_earnings_cents"] == created["payout_per_talent_cents"]
 
 

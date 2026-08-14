@@ -53,6 +53,11 @@ export const DEMO_TALENT_PROFILE: TalentProfile = {
     },
   ],
   badges_earned_count: 1,
+  enabled_tracks: [],
+  brand_completeness_score: 100,
+  athletic_completeness_score: 0,
+  athletic_seasons_completed: 0,
+  athletic_recruiter_interest_count: 0,
 };
 
 export const DEMO_AVAILABLE_CAMPAIGN_ID = "demo-campaign-summit-trail";

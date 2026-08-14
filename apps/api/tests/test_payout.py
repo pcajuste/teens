@@ -325,12 +325,12 @@ def test_transfer_paid_marks_paid_and_recomputes_talent_totals(client, db, brand
     assert row["paid_at"] is not None
 
     talent = db.fetch(
-        "SELECT total_campaigns_completed, total_earnings_cents, average_rating FROM public.talent_profiles WHERE id = $1",
+        "SELECT brand_campaigns_completed, total_earnings_cents, brand_average_rating FROM public.talent_profiles WHERE id = $1",
         talent_id,
     )[0]
-    assert talent["total_campaigns_completed"] == 1
+    assert talent["brand_campaigns_completed"] == 1
     assert talent["total_earnings_cents"] == created["payout_per_talent_cents"]
-    assert float(talent["average_rating"]) == 4.0
+    assert float(talent["brand_average_rating"]) == 4.0
 
 
 def test_transfer_paid_for_unknown_transfer_is_noop(client, settings):

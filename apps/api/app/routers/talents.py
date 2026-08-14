@@ -23,7 +23,7 @@ import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 
 from app.core.config import Settings, get_settings
-from app.core.profile_score import compute_profile_completeness_score
+from app.core.profile_score import compute_brand_completeness_score, compute_cross_track_score
 from app.core.security import AuthenticatedUser, require_role
 from app.db.pool import get_connection
 from app.repositories import admin_repository
@@ -109,15 +109,23 @@ def _eighteenth_birthday_utc(date_of_birth: date) -> datetime:
     return datetime.combine(birthday, time.min, tzinfo=timezone.utc)
 
 
-def _score(profile: talent_profiles_repository.TalentProfile) -> int:
-    return compute_profile_completeness_score(
+def _brand_score(profile: talent_profiles_repository.TalentProfile) -> int:
+    return compute_brand_completeness_score(
         bio=profile.bio,
         categories=profile.categories,
         school_type=profile.school_type,
         instagram_handle=profile.instagram_handle,
         tiktok_handle=profile.tiktok_handle,
-        total_campaigns_completed=profile.total_campaigns_completed,
+        brand_campaigns_completed=profile.brand_campaigns_completed,
         badges_earned_count=profile.badges_earned_count,
+    )
+
+
+def _cross_track_score(profile: talent_profiles_repository.TalentProfile) -> int:
+    return compute_cross_track_score(
+        brand_completeness_score=profile.brand_completeness_score,
+        athletic_completeness_score=profile.athletic_completeness_score,
+        enabled_tracks=profile.enabled_tracks,
     )
 
 
@@ -135,9 +143,9 @@ def _to_profile_response(p: talent_profiles_repository.TalentProfile) -> TalentP
         instagram_handle=p.instagram_handle,
         tiktok_handle=p.tiktok_handle,
         recruiter_visible=p.recruiter_visible,
-        total_campaigns_completed=p.total_campaigns_completed,
+        brand_campaigns_completed=p.brand_campaigns_completed,
         total_earnings_cents=p.total_earnings_cents,
-        average_rating=p.average_rating,
+        brand_average_rating=p.brand_average_rating,
         profile_completeness_score=p.profile_completeness_score,
         stripe_onboarding_complete=p.stripe_onboarding_complete,
         challenges_submitted_count=p.challenges_submitted_count,
@@ -145,6 +153,11 @@ def _to_profile_response(p: talent_profiles_repository.TalentProfile) -> TalentP
         challenge_conversion_rate=p.challenge_conversion_rate,
         badges=p.badges,
         badges_earned_count=p.badges_earned_count,
+        enabled_tracks=p.enabled_tracks,
+        brand_completeness_score=p.brand_completeness_score,
+        athletic_completeness_score=p.athletic_completeness_score,
+        athletic_seasons_completed=p.athletic_seasons_completed,
+        athletic_recruiter_interest_count=p.athletic_recruiter_interest_count,
     )
 
 
@@ -164,8 +177,8 @@ def _to_preview_response(p: talent_profiles_repository.TalentProfile) -> TalentP
         categories=p.categories,
         instagram_handle=p.instagram_handle,
         tiktok_handle=p.tiktok_handle,
-        total_campaigns_completed=p.total_campaigns_completed,
-        average_rating=p.average_rating,
+        brand_campaigns_completed=p.brand_campaigns_completed,
+        brand_average_rating=p.brand_average_rating,
         profile_completeness_score=p.profile_completeness_score,
         challenges_submitted_count=p.challenges_submitted_count,
         challenges_converted_count=p.challenges_converted_count,
@@ -381,10 +394,14 @@ async def put_me(
                 tiktok_handle=body.tiktok_handle,
             )
 
-        new_score = _score(profile)
+        # AFTER (brand score + cross-track, D1 decision): update_brand_completeness_score
+        # writes both brand_completeness_score and profile_completeness_score
+        # (GREATEST(brand, athletic)) atomically -- see talent_profiles_repository.
+        # athletic_completeness_score is updated separately, from athletics_router.
+        brand_score = _brand_score(profile)
         newly_completed_goals: list[talent_goals_repository.TalentGoal] = []
-        if new_score != profile.profile_completeness_score:
-            await talent_profiles_repository.update_profile_completeness_score(conn, profile.id, new_score)
+        if brand_score != profile.brand_completeness_score:
+            await talent_profiles_repository.update_brand_completeness_score(conn, profile.id, brand_score)
             profile = await talent_profiles_repository.get_by_id(conn, profile.id)
             # Build Prompt 5 deliverable 13: only profile_completeness
             # goals can move from this endpoint, but recompute_progress
@@ -559,7 +576,7 @@ async def goal_suggestions(
     active_types = {g.goal_type for g in active_goals if g.status == "active"}
 
     candidates: list[GoalSuggestion] = []
-    if profile.total_campaigns_completed < 5 and "campaigns_completed" not in active_types:
+    if profile.brand_campaigns_completed < 5 and "campaigns_completed" not in active_types:
         candidates.append(GoalSuggestion(goal_type="campaigns_completed", label="Complete 5 campaigns", suggested_target_value=5))
     if profile.profile_completeness_score < 80 and "profile_completeness" not in active_types:
         candidates.append(GoalSuggestion(goal_type="profile_completeness", label="Reach 80% profile completeness", suggested_target_value=80))

@@ -14,14 +14,20 @@ from app.core.config import Settings, get_settings
 from app.core.security import ParentSession, get_active_parent_session
 from app.db.pool import get_connection
 from app.repositories import (
+    athletic_seasons_repository,
     campaign_talents_repository,
     challenges_repository,
     insight_feedback_repository,
     learning_modules_repository,
+    nil_eligibility_repository,
     parent_records_repository,
     scholarships_repository,
+    sport_profiles_repository,
+    talent_profiles_repository,
 )
 from app.repositories.users_repository import set_account_status
+from app.routers.athletics import _to_season_response, _to_sport_profile_response
+from app.schemas.athletics import NilEligibilityResponse
 from app.schemas.parent import (
     AccountControlResponse,
     ApprovalRequiredRequest,
@@ -32,6 +38,7 @@ from app.schemas.parent import (
     DigestSettingRequest,
     InsightFeedbackActivityResponse,
     ModuleActivityResponse,
+    ParentAthleticSummaryResponse,
     PendingCampaignResponse,
     ScholarshipActivityResponse,
     SettingsResponse,
@@ -74,7 +81,7 @@ async def dashboard(
         categories=talent.categories,
         profile_completeness_score=talent.profile_completeness_score,
         total_earnings_cents=talent.total_earnings_cents,
-        total_campaigns_completed=talent.total_campaigns_completed,
+        brand_campaigns_completed=talent.brand_campaigns_completed,
         challenge_activity=ChallengeActivityResponse(**activity),
         module_activity=ModuleActivityResponse(**module_activity),
         scholarship_activity=ScholarshipActivityResponse(**scholarship_activity),
@@ -293,3 +300,37 @@ async def unsuspend_account(
     await auth_client.update_app_metadata(talent.talent_user_id, {"role": "talent", "account_status": "active"})
 
     return AccountControlResponse(account_status=updated.account_status)
+
+
+@router.get("/athletics", response_model=ParentAthleticSummaryResponse)
+async def athletic_summary(
+    session: ParentSession = Depends(get_active_parent_session),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> ParentAthleticSummaryResponse:
+    """Informational only (ATHLETICS-8) -- no approve/block equivalent
+    exists for athletic seasons. Coach attestation isn't a commercial
+    transaction the parent needs to gate the way a paid brand campaign
+    invite is."""
+    talent = await talent_profiles_repository.get_by_id(conn, session.talent_id)
+    if talent is None or "athletics" not in talent.enabled_tracks:
+        return ParentAthleticSummaryResponse(athletics_enabled=False)
+
+    sport_profiles = await sport_profiles_repository.list_for_talent(conn, talent.id)
+    seasons = await athletic_seasons_repository.list_for_talent(conn, talent.id)
+    nil_record = await nil_eligibility_repository.get_by_talent_id(conn, talent.id)
+
+    return ParentAthleticSummaryResponse(
+        athletics_enabled=True,
+        sport_profiles=[_to_sport_profile_response(sp) for sp in sport_profiles],
+        recent_seasons=[_to_season_response(s) for s in seasons[:5]],
+        nil_eligibility=(
+            NilEligibilityResponse(
+                state=nil_record.state,
+                nil_eligible_in_state=nil_record.nil_eligible_in_state,
+                school_association_rules_acknowledged=nil_record.school_association_rules_acknowledged,
+                acknowledged_at=nil_record.acknowledged_at,
+            )
+            if nil_record is not None
+            else None
+        ),
+    )

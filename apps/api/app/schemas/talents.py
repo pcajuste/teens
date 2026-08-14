@@ -15,8 +15,8 @@ _MAX_GRAD_YEAR = 2035
 
 class TalentProfileUpdateRequest(BaseModel):
     """PUT /talents/me body. Only talent-writable fields -- cached/computed
-    fields (total_campaigns_completed, total_earnings_cents,
-    average_rating, profile_completeness_score, recruiter_visible) are
+    fields (brand_campaigns_completed, total_earnings_cents,
+    brand_average_rating, profile_completeness_score, recruiter_visible) are
     absent on purpose; they cannot be set by this request at all, not
     even ignored silently -- there is no field here to send them in."""
 
@@ -63,9 +63,9 @@ class TalentProfileResponse(BaseModel):
     instagram_handle: str | None
     tiktok_handle: str | None
     recruiter_visible: bool
-    total_campaigns_completed: int
+    brand_campaigns_completed: int
     total_earnings_cents: int
-    average_rating: float | None
+    brand_average_rating: float | None
     profile_completeness_score: int
     stripe_onboarding_complete: bool
     challenges_submitted_count: int = 0
@@ -73,6 +73,11 @@ class TalentProfileResponse(BaseModel):
     challenge_conversion_rate: float | None = None
     badges: list[dict] = []
     badges_earned_count: int = 0
+    enabled_tracks: list[str] = []
+    brand_completeness_score: int = 0
+    athletic_completeness_score: int = 0
+    athletic_seasons_completed: int = 0
+    athletic_recruiter_interest_count: int = 0
 
 
 class TalentProfilePreviewResponse(BaseModel):
@@ -93,8 +98,8 @@ class TalentProfilePreviewResponse(BaseModel):
     categories: list[str]
     instagram_handle: str | None
     tiktok_handle: str | None
-    total_campaigns_completed: int
-    average_rating: float | None
+    brand_campaigns_completed: int
+    brand_average_rating: float | None
     profile_completeness_score: int
     challenges_submitted_count: int = 0
     challenges_converted_count: int = 0
@@ -247,6 +252,24 @@ class PseudonymResponse(BaseModel):
     handle: str
 
 
+class PublicAttestedSeasonResponse(BaseModel):
+    """One entry in PublicVerifiedProfileResponse.attested_seasons
+    (ATHLETICS-8) -- a credential document, not a scouting report:
+    selected_stats is a curated subset (top 3-5 significant fields for
+    the sport), not the full sport_stats dump. achievements only appear
+    when the season is admin_verified=True -- coach attestation alone
+    is not enough to publish an achievement claim publicly."""
+
+    sport: str
+    season_year: int
+    team_name: str
+    level: str
+    selected_stats: dict[str, object]
+    achievements: list[dict] | None = None
+    coach_verified: bool
+    admin_verified: bool
+
+
 class PublicVerifiedProfileResponse(BaseModel):
     """GET /verified/:token -- public, unauthenticated. `public` is False
     when the token is valid but the talent has verified_profile_public
@@ -260,15 +283,24 @@ class PublicVerifiedProfileResponse(BaseModel):
     city: str | None = None
     categories: list[str] | None = None
     badges: list[dict] | None = None
-    total_campaigns_completed: int | None = None
-    average_rating: float | None = None
+    brand_campaigns_completed: int | None = None
+    brand_average_rating: float | None = None
     total_earnings_cents: int | None = None
+    athletic_tracks_enabled: bool = False
+    attested_seasons: list[PublicAttestedSeasonResponse] | None = None
     last_updated: datetime | None = None
 
 
 # ── Goal Setting and Progress Tracking (Build Prompt 5 deliverable 13) ─
 
-GoalType = Literal["campaigns_completed", "earnings_total", "categories_active", "badges_earned", "profile_completeness"]
+GoalType = Literal[
+    "campaigns_completed",
+    "earnings_total",
+    "categories_active",
+    "badges_earned",
+    "profile_completeness",
+    "athletic_seasons_completed",
+]
 
 _GOAL_MIN_TARGETS: dict[str, int] = {
     "campaigns_completed": 1,
@@ -276,6 +308,7 @@ _GOAL_MIN_TARGETS: dict[str, int] = {
     "categories_active": 1,
     "badges_earned": 1,
     "profile_completeness": 1,
+    "athletic_seasons_completed": 1,
 }
 _GOAL_MAX_TARGETS: dict[str, int] = {
     "profile_completeness": 100,

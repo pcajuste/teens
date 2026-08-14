@@ -289,7 +289,7 @@ def _to_talent_card_response(card: challenges_repository.ChallengeSubmissionTale
         categories=card.categories,
         profile_completeness_score=card.profile_completeness_score,
         campaigns_completed=card.campaigns_completed,
-        average_rating=card.average_rating,
+        brand_average_rating=card.brand_average_rating,
         challenges_converted_count=card.challenges_converted_count,
         challenge_conversion_rate=card.challenge_conversion_rate,
     )
@@ -367,7 +367,7 @@ async def review_submission(
         talent=_to_talent_card_response(card) if card else _to_talent_card_response(
             challenges_repository.ChallengeSubmissionTalentCard(
                 talent_id=final.talent_id, display_name="", city="", categories=[], profile_completeness_score=0,
-                campaigns_completed=0, average_rating=None, challenges_converted_count=0, challenge_conversion_rate=None,
+                campaigns_completed=0, brand_average_rating=None, challenges_converted_count=0, challenge_conversion_rate=None,
             )
         ),
         submission_text=final.submission_text,
@@ -530,7 +530,7 @@ async def decline_submission(
         talent=_to_talent_card_response(card) if card else _to_talent_card_response(
             challenges_repository.ChallengeSubmissionTalentCard(
                 talent_id=final.talent_id, display_name="", city="", categories=[], profile_completeness_score=0,
-                campaigns_completed=0, average_rating=None, challenges_converted_count=0, challenge_conversion_rate=None,
+                campaigns_completed=0, brand_average_rating=None, challenges_converted_count=0, challenge_conversion_rate=None,
             )
         ),
         submission_text=final.submission_text,

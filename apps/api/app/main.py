@@ -18,6 +18,7 @@ from app.db.pool import close_pool, init_pool
 from app.jobs.runner import router as jobs_router
 from app.routers import (
     admin,
+    athletics,
     auth,
     brands,
     challenges,
@@ -64,6 +65,8 @@ def create_app() -> FastAPI:
     app.include_router(parent.router)
     app.include_router(talents.talents_router)
     app.include_router(talents.campaigns_router)
+    app.include_router(athletics.athletics_router)
+    app.include_router(athletics.athletics_public_router)
     app.include_router(brands.brands_router)
     app.include_router(challenges.brands_challenges_router)
     app.include_router(challenges.talents_challenges_router)

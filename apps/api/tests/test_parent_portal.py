@@ -114,7 +114,7 @@ def test_expired_portal_session_rejected_on_every_request(client, parent_headers
 
 def test_dashboard_returns_talent_summary(client, parent_headers_factory, seed_talent_with_parent):
     seeded = seed_talent_with_parent(
-        categories=["gaming", "tech"], profile_completeness_score=80, total_earnings_cents=99900, total_campaigns_completed=4
+        categories=["gaming", "tech"], profile_completeness_score=80, total_earnings_cents=99900, brand_campaigns_completed=4
     )
     headers = parent_headers_factory(parent_id=seeded.parent_id, talent_id=seeded.talent_id)
 
@@ -125,7 +125,7 @@ def test_dashboard_returns_talent_summary(client, parent_headers_factory, seed_t
     assert body["categories"] == ["gaming", "tech"]
     assert body["profile_completeness_score"] == 80
     assert body["total_earnings_cents"] == 99900
-    assert body["total_campaigns_completed"] == 4
+    assert body["brand_campaigns_completed"] == 4
 
 
 def test_dashboard_without_session_returns_401(client):

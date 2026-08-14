@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { RecruiterShell } from "@/components/recruiter/recruiter-shell";
+import { AthleticTalentCard } from "@/components/recruiter/athletic-talent-card";
 import { LogoMark } from "@/components/logo";
 import { CreditConfirmDialog } from "@/components/recruiter/credit-confirm-dialog";
 import { Badge } from "@/components/ui/badge";
@@ -19,11 +21,15 @@ import {
   CATEGORY_LABELS,
   type Category,
 } from "@/lib/categories";
+import { SUPPORTED_SPORTS, SPORT_LABELS, type SupportedSport } from "@/lib/sports";
 import type {
   RecruiterCredits,
   RecruiterTalentDetail,
   RecruiterSearchCard,
+  AthleticRecruiterSearchCard,
 } from "@/lib/types";
+
+type Track = "brand" | "athletics";
 
 interface Filters {
   graduation_year: string;
@@ -43,6 +49,22 @@ const EMPTY_FILTERS: Filters = {
   min_rating: "",
 };
 
+interface AthleticFilters {
+  graduation_year: string;
+  city: string;
+  state: string;
+  sports: SupportedSport[];
+  min_seasons: string;
+}
+
+const EMPTY_ATHLETIC_FILTERS: AthleticFilters = {
+  graduation_year: "",
+  city: "",
+  state: "",
+  sports: [],
+  min_seasons: "",
+};
+
 function buildQuery(filters: Filters): string {
   const params = new URLSearchParams();
   if (filters.graduation_year)
@@ -56,15 +78,35 @@ function buildQuery(filters: Filters): string {
   return params.toString();
 }
 
+function buildAthleticQuery(filters: AthleticFilters): string {
+  const params = new URLSearchParams();
+  params.set("track", "athletics");
+  if (filters.graduation_year)
+    params.set("graduation_year", filters.graduation_year);
+  if (filters.city) params.set("city", filters.city);
+  if (filters.state) params.set("state", filters.state);
+  if (filters.sports.length) params.set("sports", filters.sports.join(","));
+  if (filters.min_seasons) params.set("min_seasons", filters.min_seasons);
+  return params.toString();
+}
+
 export default function RecruiterSearchPage() {
+  const router = useRouter();
+  const [track, setTrack] = useState<Track>("brand");
+
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [results, setResults] = useState<RecruiterSearchCard[] | null>(null);
+
+  const [athleticFilters, setAthleticFilters] = useState<AthleticFilters>(EMPTY_ATHLETIC_FILTERS);
+  const [athleticResults, setAthleticResults] = useState<AthleticRecruiterSearchCard[] | null>(null);
+
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [credits, setCredits] = useState<RecruiterCredits | null>(null);
 
   // Profile-view credit flow
   const [pendingRepId, setPendingRepId] = useState<string | null>(null);
+  const [pendingTrack, setPendingTrack] = useState<Track>("brand");
   const [detail, setDetail] = useState<RecruiterTalentDetail | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
 
@@ -78,6 +120,13 @@ export default function RecruiterSearchPage() {
     loadCredits();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (track === "athletics" && athleticResults === null) {
+      runAthleticSearch();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [track]);
 
   async function loadCredits() {
     try {
@@ -106,6 +155,28 @@ export default function RecruiterSearchPage() {
     }
   }
 
+  async function runAthleticSearch() {
+    setSearching(true);
+    setError(null);
+    try {
+      const query = buildAthleticQuery(athleticFilters);
+      const cards = await api.get<AthleticRecruiterSearchCard[]>(
+        `/recruiters/talents/search?${query}`,
+      );
+      setAthleticResults(cards);
+      trackEvent("athletic_recruiter_search", {
+        track: "athletics",
+        has_sport_filter: athleticFilters.sports.length > 0,
+      });
+    } catch (err) {
+      setError(
+        err instanceof ApiError ? err.message : "Could not run this search.",
+      );
+    } finally {
+      setSearching(false);
+    }
+  }
+
   function toggleCategory(c: Category) {
     setFilters((prev) => ({
       ...prev,
@@ -115,14 +186,32 @@ export default function RecruiterSearchPage() {
     }));
   }
 
-  function handleViewProfile(repId: string) {
+  function toggleSport(s: SupportedSport) {
+    setAthleticFilters((prev) => ({
+      ...prev,
+      sports: prev.sports.includes(s)
+        ? prev.sports.filter((x) => x !== s)
+        : [...prev.sports, s],
+    }));
+  }
+
+  function handleViewProfile(repId: string, forTrack: Track) {
     setDetailError(null);
     setDetail(null);
+    setPendingTrack(forTrack);
     setPendingRepId(repId);
   }
 
   async function confirmViewProfile() {
     if (!pendingRepId) return;
+    if (pendingTrack === "athletics") {
+      // Athletic talent detail is a distinct shape/screen (no brand
+      // fields at all) -- routed to its own page rather than reused
+      // inline in this dialog.
+      router.push(`/recruiter/athletes/${pendingRepId}`);
+      setPendingRepId(null);
+      return;
+    }
     try {
       // The response  is the sole source of truth for the new credit
       // balance -- no local decrement anywhere in this flow.
@@ -188,233 +277,386 @@ export default function RecruiterSearchPage() {
     }
   }
 
+  const creditsBadge = credits ? (
+    <div className="flex items-center gap-2">
+      {/* DS Section 8: >5 credits is neutral information; 1-3 is
+          gold (scarcity of a premium resource warrants the
+          credential accent); 0 is danger. */}
+      <Badge
+        className={
+          credits.contact_credits_remaining === 0
+            ? "border-danger-border bg-danger-dim text-danger"
+            : credits.contact_credits_remaining <= 3
+              ? "border-gold-border bg-gold-dim text-gold"
+              : undefined
+        }
+        variant={credits.contact_credits_remaining === 0 ? "destructive" : "secondary"}
+      >
+        {credits.contact_credits_remaining} credit
+        {credits.contact_credits_remaining === 1 ? "" : "s"} left
+      </Badge>
+      {credits.low_credit_warning ? (
+        <a
+          href="/recruiter/subscription"
+          className="text-xs font-medium text-primary hover:underline"
+        >
+          Top up
+        </a>
+      ) : null}
+    </div>
+  ) : undefined;
+
   return (
-    <RecruiterShell
-      title="Search talents"
-      action={
-        credits ? (
-          <div className="flex items-center gap-2">
-            {/* DS Section 8: >5 credits is neutral information; 1-3 is
-                gold (scarcity of a premium resource warrants the
-                credential accent); 0 is danger. */}
-            <Badge
-              className={
-                credits.contact_credits_remaining === 0
-                  ? "border-danger-border bg-danger-dim text-danger"
-                  : credits.contact_credits_remaining <= 3
-                    ? "border-gold-border bg-gold-dim text-gold"
-                    : undefined
-              }
-              variant={credits.contact_credits_remaining === 0 ? "destructive" : "secondary"}
-            >
-              {credits.contact_credits_remaining} credit
-              {credits.contact_credits_remaining === 1 ? "" : "s"} left
-            </Badge>
-            {credits.low_credit_warning ? (
-              <a
-                href="/recruiter/subscription"
-                className="text-xs font-medium text-primary hover:underline"
-              >
-                Top up
-              </a>
-            ) : null}
-          </div>
-        ) : undefined
-      }
-    >
-      <Card>
-        <CardContent>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="grad_year">Graduation year</Label>
-              <Input
-                id="grad_year"
-                type="number"
-                inputMode="numeric"
-                value={filters.graduation_year}
-                onChange={(e) =>
-                  setFilters((prev) => ({
-                    ...prev,
-                    graduation_year: e.target.value,
-                  }))
-                }
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="city">City</Label>
-              <Input
-                id="city"
-                value={filters.city}
-                onChange={(e) =>
-                  setFilters((prev) => ({ ...prev, city: e.target.value }))
-                }
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="state">State</Label>
-              <Input
-                id="state"
-                value={filters.state}
-                onChange={(e) =>
-                  setFilters((prev) => ({ ...prev, state: e.target.value }))
-                }
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="min_campaigns">Min. campaigns completed</Label>
-              <Input
-                id="min_campaigns"
-                type="number"
-                inputMode="numeric"
-                value={filters.min_campaigns}
-                onChange={(e) =>
-                  setFilters((prev) => ({
-                    ...prev,
-                    min_campaigns: e.target.value,
-                  }))
-                }
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="min_rating">Min. average rating</Label>
-              <Input
-                id="min_rating"
-                type="number"
-                step="0.1"
-                min={0}
-                max={5}
-                inputMode="decimal"
-                value={filters.min_rating}
-                onChange={(e) =>
-                  setFilters((prev) => ({
-                    ...prev,
-                    min_rating: e.target.value,
-                  }))
-                }
-              />
-            </div>
-          </div>
+    <RecruiterShell title="Search talents" action={creditsBadge}>
+      <div className="flex gap-2 border-b border-border-muted">
+        <button
+          type="button"
+          onClick={() => setTrack("brand")}
+          className={`px-3 py-2 text-sm font-medium ${
+            track === "brand"
+              ? "border-b-2 border-primary text-foreground"
+              : "text-text-2 hover:text-foreground"
+          }`}
+        >
+          Brand Talent
+        </button>
+        <button
+          type="button"
+          onClick={() => setTrack("athletics")}
+          className={`px-3 py-2 text-sm font-medium ${
+            track === "athletics"
+              ? "border-b-2 border-primary text-foreground"
+              : "text-text-2 hover:text-foreground"
+          }`}
+        >
+          Athletes
+        </button>
+      </div>
 
-          <div className="mt-4 flex flex-col gap-1.5">
-            <Label>Categories</Label>
-            <div className="flex flex-wrap gap-2">
-              {BASE_CATEGORIES.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => toggleCategory(c)}
-                  className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-                    filters.categories.includes(c)
-                      ? "border-primary bg-primary/10 text-primary"
-                      : "border-border-muted bg-transparent text-text-2 hover:text-foreground"
-                  }`}
-                >
-                  {CATEGORY_LABELS[c]}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="mt-4 flex flex-wrap items-center gap-3">
-            <Button type="button" onClick={runSearch} disabled={searching}>
-              {searching ? "Searching..." : "Search"}
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => {
-                setFilters(EMPTY_FILTERS);
-              }}
-            >
-              Clear filters
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {error ? (
-        <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {error}
-        </p>
-      ) : null}
-      {contactNotice ? (
-        <p className="rounded-lg bg-success/15 px-3 py-2 text-sm text-success">
-          {contactNotice}
-        </p>
-      ) : null}
-
-      {searching && results === null ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {[0, 1, 2].map((i) => (
-            <Skeleton key={i} className="h-40 w-full" />
-          ))}
-        </div>
-      ) : results && results.length === 0 ? (
-        <EmptyState
-          title="No talents match these filters"
-          description="Try widening your graduation year range, clearing city/state, or removing a category."
-        />
-      ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {results?.map((card) => (
-            <Card key={card.talent_id} className="hover:shadow-md">
-              <CardContent>
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <p className="font-semibold">
-                      {card.city}, {card.state}
-                    </p>
-                    <p className="text-sm text-text-2">
-                      Class of {card.graduation_year}
-                    </p>
-                  </div>
-                  {card.school_type ? (
-                    <Badge variant="pending">{card.school_type}</Badge>
-                  ) : null}
+      {track === "brand" ? (
+        <>
+          <Card>
+            <CardContent>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="grad_year">Graduation year</Label>
+                  <Input
+                    id="grad_year"
+                    type="number"
+                    inputMode="numeric"
+                    value={filters.graduation_year}
+                    onChange={(e) =>
+                      setFilters((prev) => ({
+                        ...prev,
+                        graduation_year: e.target.value,
+                      }))
+                    }
+                  />
                 </div>
-                <div className="mt-2 flex flex-wrap gap-1">
-                  {card.categories.map((c) => (
-                    <Badge key={c} variant="active">
-                      {CATEGORY_LABELS[c as Category] ?? c}
-                    </Badge>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="city">City</Label>
+                  <Input
+                    id="city"
+                    value={filters.city}
+                    onChange={(e) =>
+                      setFilters((prev) => ({ ...prev, city: e.target.value }))
+                    }
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="state">State</Label>
+                  <Input
+                    id="state"
+                    value={filters.state}
+                    onChange={(e) =>
+                      setFilters((prev) => ({ ...prev, state: e.target.value }))
+                    }
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="min_campaigns">Min. campaigns completed</Label>
+                  <Input
+                    id="min_campaigns"
+                    type="number"
+                    inputMode="numeric"
+                    value={filters.min_campaigns}
+                    onChange={(e) =>
+                      setFilters((prev) => ({
+                        ...prev,
+                        min_campaigns: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="min_rating">Min. average rating</Label>
+                  <Input
+                    id="min_rating"
+                    type="number"
+                    step="0.1"
+                    min={0}
+                    max={5}
+                    inputMode="decimal"
+                    value={filters.min_rating}
+                    onChange={(e) =>
+                      setFilters((prev) => ({
+                        ...prev,
+                        min_rating: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="mt-4 flex flex-col gap-1.5">
+                <Label>Categories</Label>
+                <div className="flex flex-wrap gap-2">
+                  {BASE_CATEGORIES.map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => toggleCategory(c)}
+                      className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                        filters.categories.includes(c)
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-border-muted bg-transparent text-text-2 hover:text-foreground"
+                      }`}
+                    >
+                      {CATEGORY_LABELS[c]}
+                    </button>
                   ))}
                 </div>
-                <div className="mt-3 flex items-center gap-4 text-sm text-text-2">
-                  <span>{card.total_campaigns_completed} campaigns</span>
-                  <span>
-                    {card.average_rating != null ? (
-                      // DS Section 7/8: an exceptional track record (>=4.5)
-                      // is a credential signal worth surfacing in gold.
-                      <span className={card.average_rating >= 4.5 ? "font-semibold text-gold" : undefined}>
-                        {card.average_rating.toFixed(1)}★
+              </div>
+
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <Button type="button" onClick={runSearch} disabled={searching}>
+                  {searching ? "Searching..." : "Search"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => {
+                    setFilters(EMPTY_FILTERS);
+                  }}
+                >
+                  Clear filters
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {error ? (
+            <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {error}
+            </p>
+          ) : null}
+          {contactNotice ? (
+            <p className="rounded-lg bg-success/15 px-3 py-2 text-sm text-success">
+              {contactNotice}
+            </p>
+          ) : null}
+
+          {searching && results === null ? (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {[0, 1, 2].map((i) => (
+                <Skeleton key={i} className="h-40 w-full" />
+              ))}
+            </div>
+          ) : results && results.length === 0 ? (
+            <EmptyState
+              title="No talents match these filters"
+              description="Try widening your graduation year range, clearing city/state, or removing a category."
+            />
+          ) : (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {results?.map((card) => (
+                <Card key={card.talent_id} className="hover:shadow-md">
+                  <CardContent>
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="font-semibold">
+                          {card.city}, {card.state}
+                        </p>
+                        <p className="text-sm text-text-2">
+                          Class of {card.graduation_year}
+                        </p>
+                      </div>
+                      {card.school_type ? (
+                        <Badge variant="pending">{card.school_type}</Badge>
+                      ) : null}
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {card.categories.map((c) => (
+                        <Badge key={c} variant="active">
+                          {CATEGORY_LABELS[c as Category] ?? c}
+                        </Badge>
+                      ))}
+                    </div>
+                    <div className="mt-3 flex items-center gap-4 text-sm text-text-2">
+                      <span>{card.total_campaigns_completed} campaigns</span>
+                      <span>
+                        {card.average_rating != null ? (
+                          // DS Section 7/8: an exceptional track record (>=4.5)
+                          // is a credential signal worth surfacing in gold.
+                          <span className={card.average_rating >= 4.5 ? "font-semibold text-gold" : undefined}>
+                            {card.average_rating.toFixed(1)}★
+                          </span>
+                        ) : (
+                          "No rating yet"
+                        )}
                       </span>
-                    ) : (
-                      "No rating yet"
-                    )}
-                  </span>
-                  <span>{card.profile_completeness_score}% complete</span>
+                      <span>{card.profile_completeness_score}% complete</span>
+                    </div>
+                    <div className="mt-4 flex gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => handleViewProfile(card.talent_id, "brand")}
+                      >
+                        View full profile
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleSave(card.talent_id)}
+                      >
+                        Save
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          <Card>
+            <CardContent>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="a_grad_year">Graduation year</Label>
+                  <Input
+                    id="a_grad_year"
+                    type="number"
+                    inputMode="numeric"
+                    value={athleticFilters.graduation_year}
+                    onChange={(e) =>
+                      setAthleticFilters((prev) => ({
+                        ...prev,
+                        graduation_year: e.target.value,
+                      }))
+                    }
+                  />
                 </div>
-                <div className="mt-4 flex gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={() => handleViewProfile(card.talent_id)}
-                  >
-                    View full profile
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleSave(card.talent_id)}
-                  >
-                    Save
-                  </Button>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="a_city">City</Label>
+                  <Input
+                    id="a_city"
+                    value={athleticFilters.city}
+                    onChange={(e) =>
+                      setAthleticFilters((prev) => ({ ...prev, city: e.target.value }))
+                    }
+                  />
                 </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="a_state">State</Label>
+                  <Input
+                    id="a_state"
+                    value={athleticFilters.state}
+                    onChange={(e) =>
+                      setAthleticFilters((prev) => ({ ...prev, state: e.target.value }))
+                    }
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="a_min_seasons">Minimum attested seasons</Label>
+                  <Input
+                    id="a_min_seasons"
+                    type="number"
+                    inputMode="numeric"
+                    value={athleticFilters.min_seasons}
+                    onChange={(e) =>
+                      setAthleticFilters((prev) => ({
+                        ...prev,
+                        min_seasons: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="mt-4 flex flex-col gap-1.5">
+                <Label>Sport</Label>
+                <div className="flex flex-wrap gap-2">
+                  {SUPPORTED_SPORTS.map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => toggleSport(s)}
+                      className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                        athleticFilters.sports.includes(s)
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-border-muted bg-transparent text-text-2 hover:text-foreground"
+                      }`}
+                    >
+                      {SPORT_LABELS[s]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <Button type="button" onClick={runAthleticSearch} disabled={searching}>
+                  {searching ? "Searching..." : "Search"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => setAthleticFilters(EMPTY_ATHLETIC_FILTERS)}
+                >
+                  Clear filters
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {error ? (
+            <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {error}
+            </p>
+          ) : null}
+          {contactNotice ? (
+            <p className="rounded-lg bg-success/15 px-3 py-2 text-sm text-success">
+              {contactNotice}
+            </p>
+          ) : null}
+
+          {searching && athleticResults === null ? (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {[0, 1, 2].map((i) => (
+                <Skeleton key={i} className="h-40 w-full" />
+              ))}
+            </div>
+          ) : athleticResults && athleticResults.length === 0 ? (
+            <EmptyState
+              title="No athletes match these filters"
+              description="Try widening your graduation year range, clearing city/state, or removing a sport."
+            />
+          ) : (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {athleticResults?.map((card) => (
+                <AthleticTalentCard
+                  key={card.talent_id}
+                  card={card}
+                  onViewProfile={(id) => handleViewProfile(id, "athletics")}
+                  onSave={handleSave}
+                />
+              ))}
+            </div>
+          )}
+        </>
       )}
 
       {/* Step 1: explicit cost confirmation before any credit is spent. */}

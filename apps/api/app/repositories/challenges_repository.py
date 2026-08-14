@@ -682,7 +682,7 @@ class ChallengeSubmissionTalentCard:
     categories: list[str]
     profile_completeness_score: int
     campaigns_completed: int
-    average_rating: float | None
+    brand_average_rating: float | None
     challenges_converted_count: int
     challenge_conversion_rate: float | None
 
@@ -824,7 +824,7 @@ async def get_submission_talent_card(conn: asyncpg.Connection, talent_id: str) -
     row = await conn.fetchrow(
         """
         SELECT id, display_name, city, categories, profile_completeness_score,
-               total_campaigns_completed, average_rating,
+               brand_campaigns_completed, brand_average_rating,
                challenges_submitted_count, challenges_converted_count
         FROM public.talent_profiles WHERE id = $1
         """,
@@ -841,8 +841,8 @@ async def get_submission_talent_card(conn: asyncpg.Connection, talent_id: str) -
         city=row["city"],
         categories=list(row["categories"] or []),
         profile_completeness_score=row["profile_completeness_score"],
-        campaigns_completed=row["total_campaigns_completed"],
-        average_rating=float(row["average_rating"]) if row["average_rating"] is not None else None,
+        campaigns_completed=row["brand_campaigns_completed"],
+        brand_average_rating=float(row["brand_average_rating"]) if row["brand_average_rating"] is not None else None,
         challenges_converted_count=converted,
         challenge_conversion_rate=rate,
     )

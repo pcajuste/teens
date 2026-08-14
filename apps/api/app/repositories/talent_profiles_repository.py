@@ -19,10 +19,12 @@ import asyncpg
 _COLUMNS = (
     "id, user_id, display_name, school_name, school_type, city, state, graduation_year, "
     "bio, categories, instagram_handle, tiktok_handle, recruiter_visible, "
-    "total_campaigns_completed, total_earnings_cents, average_rating, "
+    "brand_campaigns_completed, total_earnings_cents, brand_average_rating, "
     "profile_completeness_score, stripe_account_id, stripe_onboarding_complete, "
     "challenges_submitted_count, challenges_converted_count, badges, badges_earned_count, "
     "achievement_link_token, verified_profile_public, earnings_visible_on_public_profile, "
+    "enabled_tracks, brand_completeness_score, athletic_completeness_score, "
+    "athletic_seasons_completed, athletic_recruiter_interest_count, "
     "created_at, updated_at"
 )
 
@@ -42,9 +44,9 @@ class TalentProfile:
     instagram_handle: str | None
     tiktok_handle: str | None
     recruiter_visible: bool
-    total_campaigns_completed: int
+    brand_campaigns_completed: int
     total_earnings_cents: int
-    average_rating: float | None
+    brand_average_rating: float | None
     profile_completeness_score: int
     stripe_account_id: str | None
     stripe_onboarding_complete: bool
@@ -55,6 +57,11 @@ class TalentProfile:
     achievement_link_token: str | None
     verified_profile_public: bool
     earnings_visible_on_public_profile: bool
+    enabled_tracks: list[str]
+    brand_completeness_score: int
+    athletic_completeness_score: int
+    athletic_seasons_completed: int
+    athletic_recruiter_interest_count: int
     created_at: datetime
     updated_at: datetime
 
@@ -83,9 +90,9 @@ class TalentProfile:
             instagram_handle=row["instagram_handle"],
             tiktok_handle=row["tiktok_handle"],
             recruiter_visible=row["recruiter_visible"],
-            total_campaigns_completed=row["total_campaigns_completed"],
+            brand_campaigns_completed=row["brand_campaigns_completed"],
             total_earnings_cents=row["total_earnings_cents"],
-            average_rating=float(row["average_rating"]) if row["average_rating"] is not None else None,
+            brand_average_rating=float(row["brand_average_rating"]) if row["brand_average_rating"] is not None else None,
             profile_completeness_score=row["profile_completeness_score"],
             stripe_account_id=row["stripe_account_id"],
             stripe_onboarding_complete=row["stripe_onboarding_complete"],
@@ -96,6 +103,11 @@ class TalentProfile:
             achievement_link_token=row["achievement_link_token"],
             verified_profile_public=row["verified_profile_public"],
             earnings_visible_on_public_profile=row["earnings_visible_on_public_profile"],
+            enabled_tracks=list(row["enabled_tracks"] or []),
+            brand_completeness_score=row["brand_completeness_score"],
+            athletic_completeness_score=row["athletic_completeness_score"],
+            athletic_seasons_completed=row["athletic_seasons_completed"],
+            athletic_recruiter_interest_count=row["athletic_recruiter_interest_count"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )
@@ -165,8 +177,8 @@ async def update_talent_profile(
     tiktok_handle: str | None,
 ) -> TalentProfile:
     """Full-record update -- PUT /talents/me replaces every talent-writable
-    field in one call. Cached/computed fields (total_campaigns_completed,
-    total_earnings_cents, average_rating, profile_completeness_score,
+    field in one call. Cached/computed fields (brand_campaigns_completed,
+    total_earnings_cents, brand_average_rating, profile_completeness_score,
     recruiter_visible) are deliberately absent from the parameter list:
     they are never written from this function, only from
     update_profile_completeness_score / the campaign/payout pipeline."""
@@ -202,9 +214,222 @@ async def update_profile_completeness_score(conn: asyncpg.Connection, talent_id:
     )
 
 
+async def update_brand_completeness_score(conn: asyncpg.Connection, talent_id: str, score: int) -> None:
+    """D1 decision: writes brand_completeness_score and recomputes the
+    cross-track profile_completeness_score (GREATEST) in the same
+    statement, so the two never drift out of sync between calls."""
+    await conn.execute(
+        """
+        UPDATE public.talent_profiles
+        SET brand_completeness_score = $2,
+            profile_completeness_score = GREATEST($2, athletic_completeness_score),
+            updated_at = now()
+        WHERE id = $1
+        """,
+        talent_id,
+        score,
+    )
+
+
+async def update_athletic_completeness_score(conn: asyncpg.Connection, talent_id: str, score: int) -> None:
+    """D1 decision: writes athletic_completeness_score and recomputes the
+    cross-track profile_completeness_score (GREATEST) in the same
+    statement."""
+    await conn.execute(
+        """
+        UPDATE public.talent_profiles
+        SET athletic_completeness_score = $2,
+            profile_completeness_score = GREATEST(brand_completeness_score, $2),
+            updated_at = now()
+        WHERE id = $1
+        """,
+        talent_id,
+        score,
+    )
+
+
+async def enable_athletic_track(conn: asyncpg.Connection, talent_id: str) -> TalentProfile:
+    """POST /talents/athletics/enable (idempotent -- adding 'athletics' to
+    an enabled_tracks array that already contains it is a no-op array
+    append thanks to the NOT 'athletics' = ANY(...) guard)."""
+    row = await conn.fetchrow(
+        f"""
+        UPDATE public.talent_profiles
+        SET enabled_tracks = CASE
+                WHEN 'athletics' = ANY(enabled_tracks) THEN enabled_tracks
+                ELSE enabled_tracks || ARRAY['athletics']::text[]
+            END,
+            updated_at = now()
+        WHERE id = $1
+        RETURNING {_COLUMNS}
+        """,
+        talent_id,
+    )
+    return TalentProfile.from_row(row)
+
+
+async def recompute_athletic_cached_totals(conn: asyncpg.Connection, talent_id: str) -> None:
+    """Recomputes athletic_seasons_completed, athletic_completeness_score,
+    and the cross-track profile_completeness_score after an athletic
+    verification event.
+    D6: triggered by coach attestation completion, not payment -- see
+    app/services/athletic_intelligence_service.py and ATHLETICS-4 (not
+    yet wired to any route/job as of ATHLETICS-1; this function is
+    correct and ready, but nothing calls it yet).
+    D2: no athletic_average_rating -- stats + attestation are the
+    quality signal, athletic_recruiter_interest_count is untouched here
+    (that's a recruiter-engagement counter, not part of this recompute)."""
+    profile = await get_by_id(conn, talent_id)
+    if profile is None:
+        return
+
+    season_row = await conn.fetchrow(
+        """
+        SELECT
+            COUNT(*) FILTER (WHERE status IN ('attested', 'verified')) AS athletic_seasons_completed,
+            BOOL_OR(status IN ('attested', 'verified')) AS has_attested_season
+        FROM public.athletic_seasons
+        WHERE talent_id = $1
+        """,
+        talent_id,
+    )
+    sport_row = await conn.fetchrow(
+        """
+        SELECT
+            BOOL_OR(TRUE) AS has_sport_profile,
+            BOOL_OR(gpa IS NOT NULL) AS has_gpa,
+            BOOL_OR(hudl_url IS NOT NULL OR maxpreps_url IS NOT NULL) AS has_film_url
+        FROM public.sport_profiles
+        WHERE talent_id = $1
+        """,
+        talent_id,
+    )
+    nil_acknowledged = await conn.fetchval(
+        """
+        SELECT BOOL_OR(school_association_rules_acknowledged)
+        FROM public.nil_eligibility_records
+        WHERE talent_id = $1
+        """,
+        talent_id,
+    )
+
+    from app.core.profile_score import compute_athletic_completeness_score, compute_cross_track_score
+
+    athletic_score = compute_athletic_completeness_score(
+        has_sport_profile=bool(sport_row["has_sport_profile"]) if sport_row else False,
+        has_gpa=bool(sport_row["has_gpa"]) if sport_row else False,
+        has_attested_season=bool(season_row["has_attested_season"]) if season_row else False,
+        has_film_url=bool(sport_row["has_film_url"]) if sport_row else False,
+        nil_acknowledged=bool(nil_acknowledged),
+    )
+    cross_score = compute_cross_track_score(
+        brand_completeness_score=profile.brand_completeness_score,
+        athletic_completeness_score=athletic_score,
+        enabled_tracks=profile.enabled_tracks,
+    )
+
+    await conn.execute(
+        """
+        UPDATE public.talent_profiles
+        SET athletic_seasons_completed = $2,
+            athletic_completeness_score = $3,
+            profile_completeness_score = $4,
+            updated_at = now()
+        WHERE id = $1
+        """,
+        talent_id,
+        season_row["athletic_seasons_completed"] if season_row else 0,
+        athletic_score,
+        cross_score,
+    )
+
+
+async def _fetch_athletic_completeness_inputs(conn: asyncpg.Connection, talent_id: str) -> dict[str, bool]:
+    """Single-query fetch of the five athletic completeness inputs (D1
+    decision weights) -- LEFT JOINs so a talent with zero sport_profiles/
+    seasons/nil records still gets one row of all-False rather than no
+    row at all."""
+    row = await conn.fetchrow(
+        """
+        SELECT
+            EXISTS (SELECT 1 FROM public.sport_profiles WHERE talent_id = $1) AS has_sport_profile,
+            EXISTS (SELECT 1 FROM public.sport_profiles WHERE talent_id = $1 AND gpa IS NOT NULL) AS has_gpa,
+            EXISTS (
+                SELECT 1 FROM public.athletic_seasons
+                WHERE talent_id = $1 AND status IN ('attested', 'verified')
+            ) AS has_attested_season,
+            EXISTS (
+                SELECT 1 FROM public.sport_profiles
+                WHERE talent_id = $1 AND (hudl_url IS NOT NULL OR maxpreps_url IS NOT NULL)
+            ) AS has_film_url,
+            EXISTS (
+                SELECT 1 FROM public.nil_eligibility_records
+                WHERE talent_id = $1 AND school_association_rules_acknowledged = TRUE
+            ) AS nil_acknowledged
+        """,
+        talent_id,
+    )
+    return {
+        "has_sport_profile": bool(row["has_sport_profile"]),
+        "has_gpa": bool(row["has_gpa"]),
+        "has_attested_season": bool(row["has_attested_season"]),
+        "has_film_url": bool(row["has_film_url"]),
+        "nil_acknowledged": bool(row["nil_acknowledged"]),
+    }
+
+
+async def recompute_all_completeness_scores(conn: asyncpg.Connection, talent_id: str) -> None:
+    """Recomputes brand_completeness_score, athletic_completeness_score,
+    and profile_completeness_score (cross-track GREATEST) in one call.
+    Called after any state change that could affect either score --
+    ATHLETICS-4 trigger wiring. Fetches brand inputs from the
+    just-committed talent_profiles row and athletic inputs via
+    _fetch_athletic_completeness_inputs, so a caller never needs to
+    hand-assemble either score's inputs itself."""
+    from app.core.profile_score import (
+        compute_athletic_completeness_score,
+        compute_brand_completeness_score,
+        compute_cross_track_score,
+    )
+
+    profile = await get_by_id(conn, talent_id)
+    if profile is None:
+        return
+    brand_score = compute_brand_completeness_score(
+        bio=profile.bio,
+        categories=profile.categories,
+        school_type=profile.school_type,
+        instagram_handle=profile.instagram_handle,
+        tiktok_handle=profile.tiktok_handle,
+        brand_campaigns_completed=profile.brand_campaigns_completed,
+        badges_earned_count=profile.badges_earned_count,
+    )
+    athletic_inputs = await _fetch_athletic_completeness_inputs(conn, talent_id)
+    athletic_score = compute_athletic_completeness_score(**athletic_inputs)
+    cross_score = compute_cross_track_score(
+        brand_completeness_score=brand_score,
+        athletic_completeness_score=athletic_score,
+        enabled_tracks=profile.enabled_tracks,
+    )
+    await conn.execute(
+        """
+        UPDATE public.talent_profiles
+        SET brand_completeness_score = $2,
+            athletic_completeness_score = $3,
+            profile_completeness_score = $4,
+            updated_at = now()
+        WHERE id = $1
+        """,
+        talent_id,
+        brand_score,
+        athletic_score,
+        cross_score,
+    )
+
+
 async def recompute_cached_totals(conn: asyncpg.Connection, talent_id: str) -> None:
-    """Recomputes total_campaigns_completed, total_earnings_cents, and
-    average_rating from campaign_talents (Build Prompt 10 deliverable 7).
+    """Recomputes brand_campaigns_completed, total_earnings_cents, and
+    brand_average_rating from campaign_talents (Build Prompt 10 deliverable 7).
     Section 7's schema comment leaves the mechanism open ("updated via
     trigger or background job") and Prompt 2 only produced a design
     note, never an implemented trigger (no such trigger exists in any
@@ -223,7 +448,7 @@ async def recompute_cached_totals(conn: asyncpg.Connection, talent_id: str) -> N
     itself is never set (each milestone is paid individually via
     campaign_talent_milestones, not one lump transfer), so leaving this
     query as flat-only would silently under-report a milestone-earning
-    talent's lifetime total. total_campaigns_completed is left as
+    talent's lifetime total. brand_campaigns_completed is left as
     flat-status-'paid'-only for now (a milestone campaign's
     campaign_talents.status reaches 'confirmed', not 'paid', after its
     final milestone -- see app/routers/brands.py's confirm_milestone --
@@ -248,24 +473,24 @@ async def recompute_cached_totals(conn: asyncpg.Connection, talent_id: str) -> N
             WHERE cs.talent_id = $1 AND cs.payout_status = 'paid'
         )
         SELECT
-            (SELECT COUNT(*) FROM talents WHERE status = 'paid') AS total_campaigns_completed,
+            (SELECT COUNT(*) FROM talents WHERE status = 'paid') AS brand_campaigns_completed,
             (SELECT COALESCE(SUM(payout_cents), 0) FROM talents WHERE status = 'paid')
               + (SELECT total FROM paid_milestones)
               + (SELECT total FROM paid_challenge_bonuses) AS total_earnings_cents,
-            (SELECT AVG(brand_rating) FROM talents WHERE brand_rating IS NOT NULL) AS average_rating
+            (SELECT AVG(brand_rating) FROM talents WHERE brand_rating IS NOT NULL) AS brand_average_rating
         """,
         talent_id,
     )
     await conn.execute(
         """
         UPDATE public.talent_profiles
-        SET total_campaigns_completed = $2, total_earnings_cents = $3, average_rating = $4, updated_at = now()
+        SET brand_campaigns_completed = $2, total_earnings_cents = $3, brand_average_rating = $4, updated_at = now()
         WHERE id = $1
         """,
         talent_id,
-        row["total_campaigns_completed"],
+        row["brand_campaigns_completed"],
         row["total_earnings_cents"],
-        row["average_rating"],
+        row["brand_average_rating"],
     )
 
 
@@ -284,23 +509,28 @@ async def increment_challenges_converted_count(conn: asyncpg.Connection, talent_
 
 
 async def append_badge_and_recompute_score(
-    conn: asyncpg.Connection, talent_id: str, *, badge: dict, new_score: int
+    conn: asyncpg.Connection, talent_id: str, *, badge: dict, new_score: int, new_brand_score: int | None = None
 ) -> TalentProfile | None:
     """Atomic badge issuance (Build Prompt 8H deliverable 5g): appends
     `badge` to talent_profiles.badges, increments badges_earned_count, and
-    recomputes profile_completeness_score in one UPDATE. Called inside
-    the same transaction as
+    recomputes profile_completeness_score (and, per the D1 track split,
+    brand_completeness_score -- badges are a brand-track signal) in one
+    UPDATE. Called inside the same transaction as
     learning_modules_repository.mark_passed -- if this UPDATE fails for
     any reason, the caller's transaction rolls back the completion
     status change too, so a talent is never left 'passed' without a badge
     (spec: "if the badges jsonb append fails, the completion status
-    must not be set to 'passed'")."""
+    must not be set to 'passed'").
+
+    new_brand_score defaults to new_score for backward compatibility
+    with any caller that hasn't adopted the brand/cross-track split."""
     row = await conn.fetchrow(
         f"""
         UPDATE public.talent_profiles
         SET badges = badges || $2::jsonb,
             badges_earned_count = badges_earned_count + 1,
             profile_completeness_score = $3,
+            brand_completeness_score = $4,
             updated_at = now()
         WHERE id = $1
         RETURNING {_COLUMNS}
@@ -308,6 +538,7 @@ async def append_badge_and_recompute_score(
         talent_id,
         json.dumps([badge]),
         new_score,
+        new_brand_score if new_brand_score is not None else new_score,
     )
     return TalentProfile.from_row(row) if row else None
 
@@ -379,8 +610,8 @@ class TalentBrowseCard:
     school_type: str | None
     categories: list[str]
     profile_completeness_score: int
-    average_rating: float | None
-    total_campaigns_completed: int
+    brand_average_rating: float | None
+    brand_campaigns_completed: int
     challenges_converted_count: int = 0
     challenge_conversion_rate: float | None = None
     badge_count: int = 0
@@ -406,8 +637,8 @@ class RecruiterSearchCard:
     school_type: str | None
     categories: list[str]
     profile_completeness_score: int
-    average_rating: float | None
-    total_campaigns_completed: int
+    brand_average_rating: float | None
+    brand_campaigns_completed: int
     challenges_converted_count: int = 0
     challenge_conversion_rate: float | None = None
     badge_count: int = 0
@@ -429,7 +660,7 @@ async def search_for_recruiter(
     rows = await conn.fetch(
         """
         SELECT id, city, state, graduation_year, school_type, categories,
-               profile_completeness_score, average_rating, total_campaigns_completed,
+               profile_completeness_score, brand_average_rating, brand_campaigns_completed,
                challenges_submitted_count, challenges_converted_count, badges, badges_earned_count
         FROM public.talent_profiles
         WHERE recruiter_visible = TRUE
@@ -437,8 +668,8 @@ async def search_for_recruiter(
           AND ($2::text IS NULL OR city = $2)
           AND ($3::text IS NULL OR state = $3)
           AND ($4::text[] IS NULL OR categories && $4::text[])
-          AND ($5::int IS NULL OR total_campaigns_completed >= $5)
-          AND ($6::numeric IS NULL OR average_rating >= $6)
+          AND ($5::int IS NULL OR brand_campaigns_completed >= $5)
+          AND ($6::numeric IS NULL OR brand_average_rating >= $6)
         ORDER BY profile_completeness_score DESC
         LIMIT $7 OFFSET $8
         """,
@@ -460,8 +691,8 @@ async def search_for_recruiter(
             school_type=row["school_type"],
             categories=list(row["categories"] or []),
             profile_completeness_score=row["profile_completeness_score"],
-            average_rating=float(row["average_rating"]) if row["average_rating"] is not None else None,
-            total_campaigns_completed=row["total_campaigns_completed"],
+            brand_average_rating=float(row["brand_average_rating"]) if row["brand_average_rating"] is not None else None,
+            brand_campaigns_completed=row["brand_campaigns_completed"],
             challenges_converted_count=row["challenges_converted_count"],
             challenge_conversion_rate=(
                 round(row["challenges_converted_count"] / row["challenges_submitted_count"], 2)
@@ -475,6 +706,120 @@ async def search_for_recruiter(
     ]
 
 
+@dataclass(frozen=True, slots=True)
+class AthleticRecruiterSearchCard:
+    """GET /recruiters/talents/search?track=athletics (ATHLETICS-5).
+    No-PII field set, athletic-specific -- not reused from
+    RecruiterSearchCard since the two searches filter/order on
+    independently evolving athletic vs. brand fields."""
+
+    talent_id: str
+    city: str
+    state: str
+    graduation_year: int
+    school_type: str | None
+    categories: list[str]
+    athletic_completeness_score: int
+    athletic_seasons_completed: int
+    athletic_recruiter_interest_count: int
+    sports: list[str]
+    top_sport_positions: list[str]
+    top_sport_gpa: float | None
+    has_film_url: bool
+
+
+async def search_for_athletic_recruiter(
+    conn: asyncpg.Connection,
+    *,
+    sports: list[str] | None,
+    min_seasons: int | None,
+    limit: int,
+    offset: int,
+) -> list[AthleticRecruiterSearchCard]:
+    """"Top sport" (for top_sport_positions/top_sport_gpa) is the sport
+    with the most attested/verified seasons for that talent, ties broken
+    alphabetically; a talent with sport_profiles but zero seasons still
+    gets a deterministic top sport (attested_count=0 for all, alpha
+    order wins)."""
+    rows = await conn.fetch(
+        """
+        WITH sport_activity AS (
+            SELECT sp.talent_id, sp.sport, sp.positions, sp.gpa,
+                   COALESCE(sc.attested_count, 0) AS attested_count
+            FROM public.sport_profiles sp
+            LEFT JOIN (
+                SELECT talent_id, sport,
+                       COUNT(*) FILTER (WHERE status IN ('attested', 'verified')) AS attested_count
+                FROM public.athletic_seasons
+                GROUP BY talent_id, sport
+            ) sc ON sc.talent_id = sp.talent_id AND sc.sport = sp.sport
+        ),
+        top_sport AS (
+            SELECT DISTINCT ON (talent_id)
+                talent_id, positions AS top_sport_positions, gpa AS top_sport_gpa
+            FROM sport_activity
+            ORDER BY talent_id, attested_count DESC, sport
+        ),
+        sport_agg AS (
+            SELECT talent_id,
+                   array_agg(DISTINCT sport ORDER BY sport) AS sports,
+                   BOOL_OR(hudl_url IS NOT NULL OR maxpreps_url IS NOT NULL) AS has_film_url
+            FROM public.sport_profiles
+            GROUP BY talent_id
+        )
+        SELECT
+            tp.id, tp.city, tp.state, tp.graduation_year, tp.school_type, tp.categories,
+            tp.athletic_completeness_score, tp.athletic_seasons_completed, tp.athletic_recruiter_interest_count,
+            COALESCE(sa.sports, ARRAY[]::text[]) AS sports,
+            COALESCE(sa.has_film_url, FALSE) AS has_film_url,
+            COALESCE(ts.top_sport_positions, ARRAY[]::text[]) AS top_sport_positions,
+            ts.top_sport_gpa
+        FROM public.talent_profiles tp
+        LEFT JOIN sport_agg sa ON sa.talent_id = tp.id
+        LEFT JOIN top_sport ts ON ts.talent_id = tp.id
+        WHERE tp.recruiter_visible = TRUE
+          AND 'athletics' = ANY(tp.enabled_tracks)
+          AND ($1::text[] IS NULL OR sa.sports && $1::text[])
+          AND ($2::int IS NULL OR tp.athletic_seasons_completed >= $2)
+        ORDER BY tp.athletic_completeness_score DESC
+        LIMIT $3 OFFSET $4
+        """,
+        sports or None,
+        min_seasons,
+        limit,
+        offset,
+    )
+    return [
+        AthleticRecruiterSearchCard(
+            talent_id=str(row["id"]),
+            city=row["city"],
+            state=row["state"],
+            graduation_year=row["graduation_year"],
+            school_type=row["school_type"],
+            categories=list(row["categories"] or []),
+            athletic_completeness_score=row["athletic_completeness_score"],
+            athletic_seasons_completed=row["athletic_seasons_completed"],
+            athletic_recruiter_interest_count=row["athletic_recruiter_interest_count"],
+            sports=list(row["sports"] or []),
+            top_sport_positions=list(row["top_sport_positions"] or []),
+            top_sport_gpa=float(row["top_sport_gpa"]) if row["top_sport_gpa"] is not None else None,
+            has_film_url=bool(row["has_film_url"]),
+        )
+        for row in rows
+    ]
+
+
+async def increment_athletic_recruiter_interest(conn: asyncpg.Connection, talent_id: str) -> None:
+    """D2 engagement signal (ATHLETICS-5): a recruiter spending a credit
+    to view, or saving, an athletic-track talent's profile. Never
+    decremented on unsave/unview -- interest was genuine when expressed."""
+    await conn.execute(
+        "UPDATE public.talent_profiles SET athletic_recruiter_interest_count = athletic_recruiter_interest_count + 1, "
+        "updated_at = now() WHERE id = $1",
+        talent_id,
+    )
+
+
 async def browse_for_brand(
     conn: asyncpg.Connection, *, categories: list[str], city: str | None
 ) -> list[TalentBrowseCard]:
@@ -486,7 +831,7 @@ async def browse_for_brand(
     rows = await conn.fetch(
         """
         SELECT id, city, state, graduation_year, school_type, categories,
-               profile_completeness_score, average_rating, total_campaigns_completed,
+               profile_completeness_score, brand_average_rating, brand_campaigns_completed,
                challenges_submitted_count, challenges_converted_count, badges, badges_earned_count
         FROM public.talent_profiles
         WHERE recruiter_visible = TRUE
@@ -506,8 +851,8 @@ async def browse_for_brand(
             school_type=row["school_type"],
             categories=list(row["categories"] or []),
             profile_completeness_score=row["profile_completeness_score"],
-            average_rating=float(row["average_rating"]) if row["average_rating"] is not None else None,
-            total_campaigns_completed=row["total_campaigns_completed"],
+            brand_average_rating=float(row["brand_average_rating"]) if row["brand_average_rating"] is not None else None,
+            brand_campaigns_completed=row["brand_campaigns_completed"],
             challenges_converted_count=row["challenges_converted_count"],
             challenge_conversion_rate=(
                 round(row["challenges_converted_count"] / row["challenges_submitted_count"], 2)
@@ -565,16 +910,18 @@ class PublicVerifiedProfile:
     recruiter messages, parent info), regardless of what the SELECT
     below happens to fetch."""
 
+    id: str
     display_name: str
     school_name: str
     graduation_year: int
     city: str
     categories: list[str]
     badges: list[dict]
-    total_campaigns_completed: int
-    average_rating: float | None
+    brand_campaigns_completed: int
+    brand_average_rating: float | None
     total_earnings_cents: int | None  # None when earnings_visible_on_public_profile is False
     verified_profile_public: bool
+    enabled_tracks: list[str]
     updated_at: datetime
 
 
@@ -586,9 +933,9 @@ async def get_public_profile_by_token(conn: asyncpg.Connection, token: str) -> P
     talent may share the link before flipping visibility on)."""
     row = await conn.fetchrow(
         """
-        SELECT display_name, school_name, graduation_year, city, categories, badges,
-               total_campaigns_completed, average_rating, total_earnings_cents,
-               verified_profile_public, earnings_visible_on_public_profile, updated_at
+        SELECT id, display_name, school_name, graduation_year, city, categories, badges,
+               brand_campaigns_completed, brand_average_rating, total_earnings_cents,
+               verified_profile_public, earnings_visible_on_public_profile, enabled_tracks, updated_at
         FROM public.talent_profiles
         WHERE achievement_link_token = $1
         """,
@@ -597,15 +944,17 @@ async def get_public_profile_by_token(conn: asyncpg.Connection, token: str) -> P
     if row is None:
         return None
     return PublicVerifiedProfile(
+        id=str(row["id"]),
         display_name=row["display_name"],
         school_name=row["school_name"],
         graduation_year=row["graduation_year"],
         city=row["city"],
         categories=list(row["categories"] or []),
         badges=json.loads(row["badges"]) if isinstance(row["badges"], str) else list(row["badges"] or []),
-        total_campaigns_completed=row["total_campaigns_completed"],
-        average_rating=float(row["average_rating"]) if row["average_rating"] is not None else None,
+        brand_campaigns_completed=row["brand_campaigns_completed"],
+        brand_average_rating=float(row["brand_average_rating"]) if row["brand_average_rating"] is not None else None,
         total_earnings_cents=row["total_earnings_cents"] if row["earnings_visible_on_public_profile"] else None,
         verified_profile_public=row["verified_profile_public"],
+        enabled_tracks=list(row["enabled_tracks"] or []),
         updated_at=row["updated_at"],
     )

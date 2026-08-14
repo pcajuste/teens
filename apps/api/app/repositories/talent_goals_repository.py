@@ -21,6 +21,7 @@ _DESCRIPTIONS: dict[str, str] = {
     "categories_active": "Work in {n} categories",
     "badges_earned": "Earn {n} badges",
     "profile_completeness": "Reach {n}% profile completeness",
+    "athletic_seasons_completed": "Complete {n} athletic seasons",
 }
 
 
@@ -135,14 +136,15 @@ async def list_goals(conn: asyncpg.Connection, talent_id: str) -> list[TalentGoa
 
 async def current_metric_values(conn: asyncpg.Connection, talent_id: str) -> dict[str, int]:
     """One query per goal_type's source of truth. campaigns_completed and
-    earnings_total intentionally mirror talent_profiles.total_campaigns_completed
+    earnings_total intentionally mirror talent_profiles.brand_campaigns_completed
     / total_earnings_cents exactly (both already paid-status-based, see
     recompute_cached_totals's docstring) rather than a separate
     'confirmed' definition -- a goal progress bar reading differently
     from the dashboard's own completed-campaigns count for the same
     talent would be confusing, not more precise."""
     profile_row = await conn.fetchrow(
-        "SELECT total_campaigns_completed, total_earnings_cents, badges_earned_count, profile_completeness_score "
+        "SELECT brand_campaigns_completed, total_earnings_cents, badges_earned_count, profile_completeness_score, "
+        "athletic_seasons_completed "
         "FROM public.talent_profiles WHERE id = $1",
         talent_id,
     )
@@ -166,11 +168,12 @@ async def current_metric_values(conn: asyncpg.Connection, talent_id: str) -> dic
         talent_id,
     )
     return {
-        "campaigns_completed": profile_row["total_campaigns_completed"],
+        "campaigns_completed": profile_row["brand_campaigns_completed"],
         "earnings_total": profile_row["total_earnings_cents"],
         "badges_earned": profile_row["badges_earned_count"],
         "profile_completeness": profile_row["profile_completeness_score"],
         "categories_active": categories_active or 0,
+        "athletic_seasons_completed": profile_row["athletic_seasons_completed"],
     }
 
 

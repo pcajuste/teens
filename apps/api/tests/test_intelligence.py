@@ -82,7 +82,7 @@ def test_anonymized_table_has_no_identifying_join_path(db, settings):
     column_names = {c["column_name"] for c in cols}
     assert column_names == {
         "id", "category", "city", "state", "school_type", "time_period_bucket",
-        "status", "payout_bucket", "created_at",
+        "status", "payout_bucket", "created_at", "track",
     }
 
 
