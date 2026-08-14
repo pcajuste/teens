@@ -27,16 +27,24 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.core.config import Settings, get_settings
 from app.core.security import AuthenticatedUser, require_role, require_role_any_status
+from app.core.sports import SUPPORTED_SPORTS
 from app.db.pool import get_connection
 from app.repositories import (
+    athletic_seasons_repository,
+    nil_eligibility_repository,
     recruiter_contacts_repository,
     recruiter_profiles_repository,
     recruiter_saved_profiles_repository,
+    sport_profiles_repository,
     talent_profiles_repository,
     users_repository,
 )
+from app.schemas.athletics import SportProfileResponse
 from app.schemas.recruiters import (
     LOW_CREDIT_WARNING_THRESHOLD,
+    AthleticRecruiterSearchCardResponse,
+    AthleticSeasonSummaryResponse,
+    AthleticTalentDetailResponse,
     ContactRequest,
     ContactResponse,
     CreditsResponse,
@@ -49,6 +57,8 @@ from app.schemas.recruiters import (
     RecruiterSearchCardResponse,
     SavedProfileResponse,
     SaveRequest,
+    SportsOfInterestResponse,
+    SportsOfInterestUpdateRequest,
     SubscriptionCheckoutRequest,
     SubscriptionCheckoutResponse,
 )
@@ -80,6 +90,7 @@ def _to_profile_response(p: recruiter_profiles_repository.RecruiterProfile) -> R
         institution_type=p.institution_type,
         website=p.website,
         verified=p.verified,
+        sports_of_interest=p.sports_of_interest,
     )
 
 
@@ -146,6 +157,45 @@ async def put_me(
             website=body.website,
         )
     return _to_profile_response(profile)
+
+
+@recruiters_router.get("/me/sports-of-interest", response_model=SportsOfInterestResponse)
+async def get_sports_of_interest(
+    user: AuthenticatedUser = Depends(require_role_any_status("recruiter")),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> SportsOfInterestResponse:
+    recruiter = await _get_own_recruiter_profile(conn, user)
+    if recruiter.institution_type != "college":
+        return SportsOfInterestResponse(
+            sports_of_interest=[],
+            note="Sports of interest applies to college-type recruiter accounts.",
+        )
+    return SportsOfInterestResponse(sports_of_interest=recruiter.sports_of_interest)
+
+
+@recruiters_router.put("/me/sports-of-interest", response_model=RecruiterProfileResponse)
+async def put_sports_of_interest(
+    body: SportsOfInterestUpdateRequest,
+    user: AuthenticatedUser = Depends(require_role_any_status("recruiter")),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> RecruiterProfileResponse:
+    recruiter = await _get_own_recruiter_profile(conn, user)
+    if recruiter.institution_type != "college":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "not_applicable",
+                "message": "Sports of interest is only available for college recruiter accounts.",
+            },
+        )
+    invalid = sorted(set(body.sports_of_interest) - SUPPORTED_SPORTS)
+    if invalid:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "unsupported_sport", "message": f"Unsupported sport(s): {invalid}. Valid: {sorted(SUPPORTED_SPORTS)}"},
+        )
+    updated = await recruiter_profiles_repository.set_sports_of_interest(conn, recruiter.id, sports=body.sports_of_interest)
+    return _to_profile_response(updated)
 
 
 @recruiters_router.get("/credits", response_model=CreditsResponse)
@@ -237,23 +287,60 @@ async def subscribe(
 # ══════════════════════════════════════════════════════════════════
 
 
-@recruiters_router.get("/talents/search", response_model=list[RecruiterSearchCardResponse])
+@recruiters_router.get("/talents/search", response_model=None)
 async def search_reps(
+    track: str = "brand",
     graduation_year: int | None = None,
     city: str | None = None,
     state: str | None = None,
     categories: str | None = None,
     min_campaigns: int | None = None,
     min_rating: float | None = None,
+    sports: str | None = None,
+    min_seasons: int | None = None,
     limit: int = 20,
     offset: int = 0,
     user: AuthenticatedUser = Depends(require_role("recruiter")),
     conn: asyncpg.Connection = Depends(get_connection),
-) -> list[RecruiterSearchCardResponse]:
+) -> list[RecruiterSearchCardResponse] | list[AthleticRecruiterSearchCardResponse]:
     """No credit cost, no PII (Build Prompt 11 deliverable 2 / acceptance
-    criterion). `categories` is a comma-separated query param, per
-    Section 8."""
-    await _get_own_recruiter_profile(conn, user)
+    criterion). `categories`/`sports` are comma-separated query params,
+    per Section 8. track="athletics" (ATHLETICS-5) routes to the
+    athletic search instead of the brand one -- the response shape
+    differs, so the track param selects it explicitly rather than being
+    inferred from which filters were passed."""
+    recruiter = await _get_own_recruiter_profile(conn, user)
+
+    if track == "athletics":
+        sport_list = [s.strip() for s in sports.split(",") if s.strip()] if sports else None
+        if sport_list is None and recruiter.sports_of_interest:
+            sport_list = recruiter.sports_of_interest
+        athletic_cards = await talent_profiles_repository.search_for_athletic_recruiter(
+            conn,
+            sports=sport_list,
+            min_seasons=min_seasons,
+            limit=limit,
+            offset=offset,
+        )
+        return [
+            AthleticRecruiterSearchCardResponse(
+                talent_id=c.talent_id,
+                city=c.city,
+                state=c.state,
+                graduation_year=c.graduation_year,
+                school_type=c.school_type,
+                categories=c.categories,
+                athletic_completeness_score=c.athletic_completeness_score,
+                athletic_seasons_completed=c.athletic_seasons_completed,
+                athletic_recruiter_interest_count=c.athletic_recruiter_interest_count,
+                sports=c.sports,
+                top_sport_positions=c.top_sport_positions,
+                top_sport_gpa=c.top_sport_gpa,
+                has_film_url=c.has_film_url,
+            )
+            for c in athletic_cards
+        ]
+
     category_list = [c.strip() for c in categories.split(",") if c.strip()] if categories else None
 
     cards = await talent_profiles_repository.search_for_recruiter(
@@ -287,16 +374,19 @@ async def search_reps(
     ]
 
 
-@recruiters_router.get("/talents/{talent_id}", response_model=RecruiterTalentDetailResponse)
+@recruiters_router.get("/talents/{talent_id}", response_model=None)
 async def get_talent_detail(
     talent_id: str,
+    track: str = "brand",
     user: AuthenticatedUser = Depends(require_role("recruiter")),
     conn: asyncpg.Connection = Depends(get_connection),
-) -> RecruiterTalentDetailResponse:
+) -> RecruiterTalentDetailResponse | AthleticTalentDetailResponse:
     """Costs 1 credit, deducted server-side in the same request as the
     read (Build Prompt 11 deliverable 3) -- the atomic decrement runs
     BEFORE the profile is fetched, so a talent's identifying fields are
-    never returned on a failed/declined charge."""
+    never returned on a failed/declined charge. track="athletics"
+    (ATHLETICS-5) returns AthleticTalentDetailResponse instead -- never
+    inferred, always explicit via the query param."""
     recruiter = await _get_own_recruiter_profile(conn, user)
     await _require_subscription_active(recruiter)
 
@@ -312,6 +402,57 @@ async def get_talent_detail(
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
             detail={"code": "insufficient_credits", "message": "No contact credits remaining."},
+        )
+
+    if track == "athletics":
+        await talent_profiles_repository.increment_athletic_recruiter_interest(conn, talent.id)
+        sport_profiles = await sport_profiles_repository.list_for_talent(conn, talent.id)
+        seasons = await athletic_seasons_repository.list_for_talent(conn, talent.id)
+        recent_seasons = [s for s in seasons if s.status in ("attested", "verified")][:5]
+        nil_record = await nil_eligibility_repository.get_by_talent_id(conn, talent.id)
+
+        return AthleticTalentDetailResponse(
+            talent_id=talent.id,
+            display_name=talent.display_name,
+            school_name=talent.school_name,
+            school_type=talent.school_type,
+            city=talent.city,
+            state=talent.state,
+            graduation_year=talent.graduation_year,
+            bio=talent.bio,
+            categories=talent.categories,
+            instagram_handle=talent.instagram_handle,
+            tiktok_handle=talent.tiktok_handle,
+            athletic_completeness_score=talent.athletic_completeness_score,
+            athletic_seasons_completed=talent.athletic_seasons_completed,
+            athletic_recruiter_interest_count=talent.athletic_recruiter_interest_count,
+            sport_profiles=[
+                SportProfileResponse(
+                    id=sp.id,
+                    sport=sp.sport,
+                    positions=sp.positions,
+                    gpa=sp.gpa,
+                    hudl_url=sp.hudl_url,
+                    maxpreps_url=sp.maxpreps_url,
+                    created_at=sp.created_at,
+                    updated_at=sp.updated_at,
+                )
+                for sp in sport_profiles
+            ],
+            recent_seasons=[
+                AthleticSeasonSummaryResponse(
+                    sport=s.sport,
+                    season_year=s.season_year,
+                    season_type=s.season_type,
+                    team_name=s.team_name,
+                    level=s.level,
+                    sport_stats=s.sport_stats,
+                    coach_name=s.coach_name,
+                    status=s.status,
+                )
+                for s in recent_seasons
+            ],
+            nil_acknowledged=bool(nil_record.school_association_rules_acknowledged) if nil_record else False,
         )
 
     return RecruiterTalentDetailResponse(
@@ -422,6 +563,11 @@ async def save_rep(
 ) -> SavedProfileResponse:
     recruiter = await _get_own_recruiter_profile(conn, user)
     saved = await recruiter_saved_profiles_repository.save(conn, recruiter_id=recruiter.id, talent_id=talent_id, list_name=body.list_name)
+
+    talent = await talent_profiles_repository.get_by_id(conn, talent_id)
+    if talent is not None and "athletics" in talent.enabled_tracks:
+        await talent_profiles_repository.increment_athletic_recruiter_interest(conn, talent_id)
+
     return SavedProfileResponse(talent_id=saved.talent_id, list_name=saved.list_name, saved_at=saved.saved_at)
 
 

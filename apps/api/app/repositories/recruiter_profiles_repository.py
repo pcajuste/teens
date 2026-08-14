@@ -22,7 +22,7 @@ import asyncpg
 _COLUMNS = (
     "id, user_id, institution_name, institution_type, website, verified, "
     "contact_credits_remaining, credits_reset_date, stripe_customer_id, "
-    "stripe_subscription_id, created_at, updated_at"
+    "stripe_subscription_id, sports_of_interest, created_at, updated_at"
 )
 
 
@@ -38,6 +38,7 @@ class RecruiterProfile:
     credits_reset_date: date | None
     stripe_customer_id: str | None
     stripe_subscription_id: str | None
+    sports_of_interest: list[str] | None
     created_at: datetime
     updated_at: datetime
 
@@ -54,6 +55,7 @@ class RecruiterProfile:
             credits_reset_date=row["credits_reset_date"],
             stripe_customer_id=row["stripe_customer_id"],
             stripe_subscription_id=row["stripe_subscription_id"],
+            sports_of_interest=list(row["sports_of_interest"]) if row["sports_of_interest"] is not None else None,
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )
@@ -134,6 +136,22 @@ async def set_stripe_customer_id(conn: asyncpg.Connection, recruiter_id: str, st
         recruiter_id,
         stripe_customer_id,
     )
+
+
+async def set_sports_of_interest(conn: asyncpg.Connection, recruiter_id: str, *, sports: list[str]) -> RecruiterProfile | None:
+    """ATHLETICS-5, D4 decision: college-type recruiters only -- caller
+    (router) enforces the institution_type check before calling this."""
+    row = await conn.fetchrow(
+        f"""
+        UPDATE public.recruiter_profiles
+        SET sports_of_interest = $2, updated_at = now()
+        WHERE id = $1
+        RETURNING {_COLUMNS}
+        """,
+        recruiter_id,
+        sports,
+    )
+    return RecruiterProfile.from_row(row) if row else None
 
 
 async def decrement_credit(conn: asyncpg.Connection, recruiter_id: str) -> RecruiterProfile | None:

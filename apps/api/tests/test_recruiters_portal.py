@@ -655,3 +655,173 @@ def test_messages_role_enforcement_rejects_non_recruiter(client, auth_headers_fa
     response  = client.get("/recruiters/messages", headers=auth_headers_factory("brand"))
     assert response .status_code == 403
     assert response .json()["error"]["code"] == "role_mismatch"
+
+
+# ---------------------------------------------------------------------
+# ATHLETICS-5: athletic recruiter backend
+# ---------------------------------------------------------------------
+
+
+def _seed_athletic_talent(
+    db, *, sport="football", positions=None, gpa=None, hudl_url=None, attested_seasons=0,
+    athletic_completeness_score=50, recruiter_visible=True, enabled_tracks=None,
+) -> str:
+    talent_user_id = str(uuid.uuid4())
+    talent_id = str(uuid.uuid4())
+    talent_email = f"athlete-{talent_user_id}@example.com"
+    db.execute("INSERT INTO auth.users (id, email) VALUES ($1, $2)", talent_user_id, talent_email)
+    db.execute(
+        "INSERT INTO public.users (id, email, role, account_status, date_of_birth) "
+        "VALUES ($1, $2, 'talent', 'active', '2008-06-01')",
+        talent_user_id,
+        talent_email,
+    )
+    db.execute(
+        """
+        INSERT INTO public.talent_profiles
+            (id, user_id, display_name, school_name, city, state, graduation_year, categories,
+             recruiter_visible, enabled_tracks, athletic_completeness_score)
+        VALUES ($1, $2, 'Test Athlete', 'Test High', 'Austin', 'TX', 2027, ARRAY['gaming'],
+                $3, $4, $5)
+        """,
+        talent_id,
+        talent_user_id,
+        recruiter_visible,
+        enabled_tracks if enabled_tracks is not None else ["brand", "athletics"],
+        athletic_completeness_score,
+    )
+    if sport is not None:
+        db.execute(
+            "INSERT INTO public.sport_profiles (talent_id, sport, positions, gpa, hudl_url) "
+            "VALUES ($1, $2, $3, $4, $5)",
+            talent_id,
+            sport,
+            positions or ["QB"],
+            gpa,
+            hudl_url,
+        )
+    for i in range(attested_seasons):
+        db.execute(
+            "INSERT INTO public.athletic_seasons (talent_id, sport, season_year, season_type, team_name, level, status) "
+            "VALUES ($1, $2, $3, 'high_school', 'Wildcats', 'varsity', 'attested')",
+            talent_id,
+            sport,
+            2020 + i,
+        )
+    db.execute(
+        "UPDATE public.talent_profiles SET athletic_seasons_completed = $2 WHERE id = $1",
+        talent_id,
+        attested_seasons,
+    )
+    return talent_id
+
+
+def test_athletic_search_only_returns_athletics_enabled_talents(client, db, recruiter_headers, onboarded_recruiter):
+    brand_only_id = _seed_rep(db)
+    athletic_id = _seed_athletic_talent(db)
+
+    response = client.get("/recruiters/talents/search", params={"track": "athletics"}, headers=recruiter_headers)
+    assert response.status_code == 200
+    ids = [r["talent_id"] for r in response.json()]
+    assert athletic_id in ids
+    assert brand_only_id not in ids
+
+
+def test_athletic_search_filters_by_sport(client, db, recruiter_headers, onboarded_recruiter):
+    football_id = _seed_athletic_talent(db, sport="football")
+    soccer_id = _seed_athletic_talent(db, sport="soccer")
+
+    response = client.get(
+        "/recruiters/talents/search", params={"track": "athletics", "sports": "football"}, headers=recruiter_headers
+    )
+    assert response.status_code == 200
+    ids = [r["talent_id"] for r in response.json()]
+    assert football_id in ids
+    assert soccer_id not in ids
+
+
+def test_athletic_search_auto_populates_from_sports_of_interest(client, db, recruiter_headers, onboarded_recruiter):
+    recruiter_id = _recruiter_id(db)
+    client.put("/recruiters/me/sports-of-interest", json={"sports_of_interest": ["basketball"]}, headers=recruiter_headers)
+
+    basketball_id = _seed_athletic_talent(db, sport="basketball")
+    football_id = _seed_athletic_talent(db, sport="football")
+
+    response = client.get("/recruiters/talents/search", params={"track": "athletics"}, headers=recruiter_headers)
+    assert response.status_code == 200
+    ids = [r["talent_id"] for r in response.json()]
+    assert basketball_id in ids
+    assert football_id not in ids
+
+
+def test_athletic_search_ordered_by_athletic_completeness_desc(client, db, recruiter_headers, onboarded_recruiter):
+    low_id = _seed_athletic_talent(db, athletic_completeness_score=20)
+    high_id = _seed_athletic_talent(db, athletic_completeness_score=80)
+
+    response = client.get("/recruiters/talents/search", params={"track": "athletics"}, headers=recruiter_headers)
+    ids = [r["talent_id"] for r in response.json()]
+    assert ids.index(high_id) < ids.index(low_id)
+
+
+def test_athletic_search_never_returns_pii(client, db, recruiter_headers, onboarded_recruiter):
+    _seed_athletic_talent(db)
+    response = client.get("/recruiters/talents/search", params={"track": "athletics"}, headers=recruiter_headers)
+    for card in response.json():
+        for key in ("display_name", "school_name", "bio", "instagram_handle", "tiktok_handle"):
+            assert key not in card
+
+
+def test_athletic_detail_costs_one_credit_and_excludes_earnings(client, db, recruiter_headers, onboarded_recruiter):
+    talent_id = _seed_athletic_talent(db, gpa=3.5, attested_seasons=1)
+    recruiter_id = _recruiter_id(db)
+    _grant_credits(db, recruiter_id, credits=2)
+
+    response = client.get(f"/recruiters/talents/{talent_id}", params={"track": "athletics"}, headers=recruiter_headers)
+    assert response.status_code == 200
+    body = response.json()
+    assert "total_earnings_cents" not in body
+    assert len(body["sport_profiles"]) == 1
+    assert len(body["recent_seasons"]) == 1
+    assert body["nil_acknowledged"] is False
+
+    credits = client.get("/recruiters/credits", headers=recruiter_headers).json()
+    assert credits["contact_credits_remaining"] == 1
+
+    talent_row = db.fetch("SELECT athletic_recruiter_interest_count FROM public.talent_profiles WHERE id = $1", talent_id)
+    assert talent_row[0]["athletic_recruiter_interest_count"] == 1
+
+
+def test_athletic_detail_at_zero_credits_returns_402(client, db, recruiter_headers, onboarded_recruiter):
+    talent_id = _seed_athletic_talent(db)
+    recruiter_id = _recruiter_id(db)
+    _grant_credits(db, recruiter_id, credits=0)
+    db.execute("UPDATE public.recruiter_profiles SET stripe_subscription_id = 'sub_test123' WHERE id = $1", recruiter_id)
+
+    response = client.get(f"/recruiters/talents/{talent_id}", params={"track": "athletics"}, headers=recruiter_headers)
+    assert response.status_code == 402
+
+
+def test_put_sports_of_interest_rejects_unsupported_sport(client, db, recruiter_headers, onboarded_recruiter):
+    response = client.put("/recruiters/me/sports-of-interest", json={"sports_of_interest": ["fencing"]}, headers=recruiter_headers)
+    assert response.status_code == 422
+
+
+def test_put_sports_of_interest_succeeds_for_college(client, db, recruiter_headers, onboarded_recruiter):
+    response = client.put("/recruiters/me/sports-of-interest", json={"sports_of_interest": ["football", "basketball"]}, headers=recruiter_headers)
+    assert response.status_code == 200
+
+    get_resp = client.get("/recruiters/me/sports-of-interest", headers=recruiter_headers)
+    assert get_resp.status_code == 200
+    assert set(get_resp.json()["sports_of_interest"]) == {"football", "basketball"}
+
+
+def test_put_sports_of_interest_rejects_employer_type(client, db, recruiter_headers):
+    _seed_recruiter_user(db)
+    client.put(
+        "/recruiters/me",
+        json={"institution_name": "Acme Inc", "institution_type": "employer", "website": None},
+        headers=recruiter_headers,
+    )
+    response = client.put("/recruiters/me/sports-of-interest", json={"sports_of_interest": ["football"]}, headers=recruiter_headers)
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "not_applicable"

@@ -706,6 +706,120 @@ async def search_for_recruiter(
     ]
 
 
+@dataclass(frozen=True, slots=True)
+class AthleticRecruiterSearchCard:
+    """GET /recruiters/talents/search?track=athletics (ATHLETICS-5).
+    No-PII field set, athletic-specific -- not reused from
+    RecruiterSearchCard since the two searches filter/order on
+    independently evolving athletic vs. brand fields."""
+
+    talent_id: str
+    city: str
+    state: str
+    graduation_year: int
+    school_type: str | None
+    categories: list[str]
+    athletic_completeness_score: int
+    athletic_seasons_completed: int
+    athletic_recruiter_interest_count: int
+    sports: list[str]
+    top_sport_positions: list[str]
+    top_sport_gpa: float | None
+    has_film_url: bool
+
+
+async def search_for_athletic_recruiter(
+    conn: asyncpg.Connection,
+    *,
+    sports: list[str] | None,
+    min_seasons: int | None,
+    limit: int,
+    offset: int,
+) -> list[AthleticRecruiterSearchCard]:
+    """"Top sport" (for top_sport_positions/top_sport_gpa) is the sport
+    with the most attested/verified seasons for that talent, ties broken
+    alphabetically; a talent with sport_profiles but zero seasons still
+    gets a deterministic top sport (attested_count=0 for all, alpha
+    order wins)."""
+    rows = await conn.fetch(
+        """
+        WITH sport_activity AS (
+            SELECT sp.talent_id, sp.sport, sp.positions, sp.gpa,
+                   COALESCE(sc.attested_count, 0) AS attested_count
+            FROM public.sport_profiles sp
+            LEFT JOIN (
+                SELECT talent_id, sport,
+                       COUNT(*) FILTER (WHERE status IN ('attested', 'verified')) AS attested_count
+                FROM public.athletic_seasons
+                GROUP BY talent_id, sport
+            ) sc ON sc.talent_id = sp.talent_id AND sc.sport = sp.sport
+        ),
+        top_sport AS (
+            SELECT DISTINCT ON (talent_id)
+                talent_id, positions AS top_sport_positions, gpa AS top_sport_gpa
+            FROM sport_activity
+            ORDER BY talent_id, attested_count DESC, sport
+        ),
+        sport_agg AS (
+            SELECT talent_id,
+                   array_agg(DISTINCT sport ORDER BY sport) AS sports,
+                   BOOL_OR(hudl_url IS NOT NULL OR maxpreps_url IS NOT NULL) AS has_film_url
+            FROM public.sport_profiles
+            GROUP BY talent_id
+        )
+        SELECT
+            tp.id, tp.city, tp.state, tp.graduation_year, tp.school_type, tp.categories,
+            tp.athletic_completeness_score, tp.athletic_seasons_completed, tp.athletic_recruiter_interest_count,
+            COALESCE(sa.sports, ARRAY[]::text[]) AS sports,
+            COALESCE(sa.has_film_url, FALSE) AS has_film_url,
+            COALESCE(ts.top_sport_positions, ARRAY[]::text[]) AS top_sport_positions,
+            ts.top_sport_gpa
+        FROM public.talent_profiles tp
+        LEFT JOIN sport_agg sa ON sa.talent_id = tp.id
+        LEFT JOIN top_sport ts ON ts.talent_id = tp.id
+        WHERE tp.recruiter_visible = TRUE
+          AND 'athletics' = ANY(tp.enabled_tracks)
+          AND ($1::text[] IS NULL OR sa.sports && $1::text[])
+          AND ($2::int IS NULL OR tp.athletic_seasons_completed >= $2)
+        ORDER BY tp.athletic_completeness_score DESC
+        LIMIT $3 OFFSET $4
+        """,
+        sports or None,
+        min_seasons,
+        limit,
+        offset,
+    )
+    return [
+        AthleticRecruiterSearchCard(
+            talent_id=str(row["id"]),
+            city=row["city"],
+            state=row["state"],
+            graduation_year=row["graduation_year"],
+            school_type=row["school_type"],
+            categories=list(row["categories"] or []),
+            athletic_completeness_score=row["athletic_completeness_score"],
+            athletic_seasons_completed=row["athletic_seasons_completed"],
+            athletic_recruiter_interest_count=row["athletic_recruiter_interest_count"],
+            sports=list(row["sports"] or []),
+            top_sport_positions=list(row["top_sport_positions"] or []),
+            top_sport_gpa=float(row["top_sport_gpa"]) if row["top_sport_gpa"] is not None else None,
+            has_film_url=bool(row["has_film_url"]),
+        )
+        for row in rows
+    ]
+
+
+async def increment_athletic_recruiter_interest(conn: asyncpg.Connection, talent_id: str) -> None:
+    """D2 engagement signal (ATHLETICS-5): a recruiter spending a credit
+    to view, or saving, an athletic-track talent's profile. Never
+    decremented on unsave/unview -- interest was genuine when expressed."""
+    await conn.execute(
+        "UPDATE public.talent_profiles SET athletic_recruiter_interest_count = athletic_recruiter_interest_count + 1, "
+        "updated_at = now() WHERE id = $1",
+        talent_id,
+    )
+
+
 async def browse_for_brand(
     conn: asyncpg.Connection, *, categories: list[str], city: str | None
 ) -> list[TalentBrowseCard]:
