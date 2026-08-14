@@ -38,6 +38,7 @@ from app.repositories import (
     users_repository,
 )
 from app.schemas.athletics import (
+    AthleticProfileSummaryResponse,
     AthleticSeasonResponse,
     CoachAttestationDecisionResponse,
     CoachAttestationTokenResponse,
@@ -172,6 +173,43 @@ async def enable_athletics(
     # case; recompute unconditionally rather than special-casing.
     await talent_profiles_repository.recompute_all_completeness_scores(conn, profile.id)
     return EnableAthleticTrackResponse(enabled_tracks=updated.enabled_tracks)
+
+
+@athletics_router.get("/summary", response_model=AthleticProfileSummaryResponse)
+async def get_athletic_summary(
+    user: AuthenticatedUser = Depends(require_role("talent")),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> AthleticProfileSummaryResponse:
+    """GET /talents/athletics/summary -- single call for the talent's
+    athletic dashboard (ATHLETICS-6), parallel to GET /talents/me for
+    the brand track. No track-gate 403 here -- a talent who hasn't
+    enabled athletics just sees enabled_tracks without 'athletics' and
+    everything else zeroed/empty, so the frontend can render the
+    enable-track card without a separate existence check."""
+    profile = await _get_own_profile(conn, user)
+    sport_profiles = await sport_profiles_repository.list_for_talent(conn, profile.id)
+    seasons = await athletic_seasons_repository.list_for_talent(conn, profile.id)
+
+    nil_eligibility: NilEligibilityResponse | None = None
+    if "athletics" in profile.enabled_tracks:
+        nil_record = await nil_eligibility_repository.get_by_talent_id(conn, profile.id)
+        if nil_record is not None:
+            nil_eligibility = NilEligibilityResponse(
+                state=nil_record.state,
+                nil_eligible_in_state=nil_record.nil_eligible_in_state,
+                school_association_rules_acknowledged=nil_record.school_association_rules_acknowledged,
+                acknowledged_at=nil_record.acknowledged_at,
+            )
+
+    return AthleticProfileSummaryResponse(
+        enabled_tracks=profile.enabled_tracks,
+        athletic_seasons_completed=profile.athletic_seasons_completed,
+        athletic_completeness_score=profile.athletic_completeness_score,
+        athletic_recruiter_interest_count=profile.athletic_recruiter_interest_count,
+        sport_profiles=[_to_sport_profile_response(sp) for sp in sport_profiles],
+        recent_seasons=[_to_season_response(s) for s in seasons[:3]],
+        nil_eligibility=nil_eligibility,
+    )
 
 
 @athletics_router.get("/sports", response_model=list[SportProfileResponse])

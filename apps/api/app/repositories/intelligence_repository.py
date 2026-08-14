@@ -92,6 +92,7 @@ class AnonymizedEvent:
     time_period_bucket: str
     status: str
     payout_bucket: str
+    track: str = "brand"
 
 
 async def insert_events(conn: asyncpg.Connection, events: list[AnonymizedEvent]) -> None:
@@ -100,11 +101,11 @@ async def insert_events(conn: asyncpg.Connection, events: list[AnonymizedEvent])
     await conn.executemany(
         """
         INSERT INTO public.intelligence_events_anonymized
-            (category, city, state, school_type, time_period_bucket, status, payout_bucket)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+            (category, city, state, school_type, time_period_bucket, status, payout_bucket, track)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         """,
         [
-            (e.category, e.city, e.state, e.school_type, e.time_period_bucket, e.status, e.payout_bucket)
+            (e.category, e.city, e.state, e.school_type, e.time_period_bucket, e.status, e.payout_bucket, e.track)
             for e in events
         ],
     )

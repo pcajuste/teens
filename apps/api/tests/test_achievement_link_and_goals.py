@@ -81,6 +81,8 @@ def test_verified_token_not_public_by_default(client, talent_headers, onboarded_
         "brand_campaigns_completed": None,
         "brand_average_rating": None,
         "total_earnings_cents": None,
+        "athletic_tracks_enabled": False,
+        "attested_seasons": None,
         "last_updated": None,
     }
 

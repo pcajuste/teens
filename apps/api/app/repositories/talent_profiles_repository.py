@@ -910,6 +910,7 @@ class PublicVerifiedProfile:
     recruiter messages, parent info), regardless of what the SELECT
     below happens to fetch."""
 
+    id: str
     display_name: str
     school_name: str
     graduation_year: int
@@ -920,6 +921,7 @@ class PublicVerifiedProfile:
     brand_average_rating: float | None
     total_earnings_cents: int | None  # None when earnings_visible_on_public_profile is False
     verified_profile_public: bool
+    enabled_tracks: list[str]
     updated_at: datetime
 
 
@@ -931,9 +933,9 @@ async def get_public_profile_by_token(conn: asyncpg.Connection, token: str) -> P
     talent may share the link before flipping visibility on)."""
     row = await conn.fetchrow(
         """
-        SELECT display_name, school_name, graduation_year, city, categories, badges,
+        SELECT id, display_name, school_name, graduation_year, city, categories, badges,
                brand_campaigns_completed, brand_average_rating, total_earnings_cents,
-               verified_profile_public, earnings_visible_on_public_profile, updated_at
+               verified_profile_public, earnings_visible_on_public_profile, enabled_tracks, updated_at
         FROM public.talent_profiles
         WHERE achievement_link_token = $1
         """,
@@ -942,6 +944,7 @@ async def get_public_profile_by_token(conn: asyncpg.Connection, token: str) -> P
     if row is None:
         return None
     return PublicVerifiedProfile(
+        id=str(row["id"]),
         display_name=row["display_name"],
         school_name=row["school_name"],
         graduation_year=row["graduation_year"],
@@ -952,5 +955,6 @@ async def get_public_profile_by_token(conn: asyncpg.Connection, token: str) -> P
         brand_average_rating=float(row["brand_average_rating"]) if row["brand_average_rating"] is not None else None,
         total_earnings_cents=row["total_earnings_cents"] if row["earnings_visible_on_public_profile"] else None,
         verified_profile_public=row["verified_profile_public"],
+        enabled_tracks=list(row["enabled_tracks"] or []),
         updated_at=row["updated_at"],
     )

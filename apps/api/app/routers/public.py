@@ -8,11 +8,31 @@ from __future__ import annotations
 import asyncpg
 from fastapi import APIRouter, Depends
 
+from app.core.sport_stats_schemas import SPORT_STATS_SCHEMAS
 from app.db.pool import get_connection
-from app.repositories import nil_state_rules_repository, talent_profiles_repository
+from app.repositories import athletic_seasons_repository, nil_state_rules_repository, talent_profiles_repository
 from app.schemas.athletics import PublicNilStateRuleResponse
 from app.schemas.recruiters import RecruiterSearchCardResponse
-from app.schemas.talents import PublicVerifiedProfileResponse
+from app.schemas.talents import PublicAttestedSeasonResponse, PublicVerifiedProfileResponse
+
+_MAX_PUBLIC_STATS = 5
+
+
+def _select_public_stats(sport: str, sport_stats: dict) -> dict:
+    """Curated subset for the public credential document -- the top
+    (schema-definition-order) significant fields for the sport that are
+    actually present in this season's stats, capped at 5. Not the full
+    stats dump (spec: "this is a credential document, not a scouting
+    report"). 'achievements' is never included here -- it's gated
+    separately by admin_verified."""
+    schema_fields = [f for f in SPORT_STATS_SCHEMAS.get(sport, {}) if f != "achievements"]
+    selected = {}
+    for field in schema_fields:
+        if field in sport_stats and sport_stats[field] is not None:
+            selected[field] = sport_stats[field]
+        if len(selected) >= _MAX_PUBLIC_STATS:
+            break
+    return selected
 
 router = APIRouter(tags=["public"])
 
@@ -46,6 +66,31 @@ async def get_verified_profile(
     profile = await talent_profiles_repository.get_public_profile_by_token(conn, token)
     if profile is None or not profile.verified_profile_public:
         return PublicVerifiedProfileResponse(public=False)
+
+    athletic_tracks_enabled = "athletics" in profile.enabled_tracks
+    attested_seasons: list[PublicAttestedSeasonResponse] | None = None
+    if athletic_tracks_enabled:
+        seasons = await athletic_seasons_repository.list_for_talent(conn, profile.id)
+        # Drafts/pending_attestation never appear publicly -- only
+        # attested/verified seasons are a confirmed credential.
+        published = [s for s in seasons if s.status in ("attested", "verified")]
+        attested_seasons = [
+            PublicAttestedSeasonResponse(
+                sport=s.sport,
+                season_year=s.season_year,
+                team_name=s.team_name,
+                level=s.level,
+                selected_stats=_select_public_stats(s.sport, s.sport_stats),
+                # Achievements are a claim, not just a confirmed stat --
+                # only published once admin has verified the season,
+                # never on coach attestation alone.
+                achievements=(s.sport_stats.get("achievements") if s.admin_verified else None),
+                coach_verified=True,
+                admin_verified=s.admin_verified,
+            )
+            for s in published
+        ]
+
     return PublicVerifiedProfileResponse(
         public=True,
         display_name=profile.display_name,
@@ -57,6 +102,8 @@ async def get_verified_profile(
         brand_campaigns_completed=profile.brand_campaigns_completed,
         brand_average_rating=profile.brand_average_rating,
         total_earnings_cents=profile.total_earnings_cents,
+        athletic_tracks_enabled=athletic_tracks_enabled,
+        attested_seasons=attested_seasons,
         last_updated=profile.updated_at,
     )
 

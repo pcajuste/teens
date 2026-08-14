@@ -187,8 +187,48 @@ class AdminUpdateNilStateRuleResponse(BaseModel):
     talents_affected: int
 
 
+class AdminAthleticSeasonResponse(BaseModel):
+    """GET /admin/athletics/seasons, GET /admin/athletics/seasons/pending-verification --
+    admin-internal view, includes talent_display_name (never exposed to
+    recruiters/public)."""
+
+    id: str
+    talent_id: str
+    talent_display_name: str
+    sport: str
+    season_year: int
+    team_name: str
+    coach_attestation_status: str
+    status: str
+    admin_verified: bool
+    admin_flag_reason: str | None
+    created_at: datetime
+
+
+class AdminFlagSeasonRequest(BaseModel):
+    reason: str
+
+    @field_validator("reason")
+    @classmethod
+    def _non_empty(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("reason must not be empty")
+        return value
+
+
+class AdminNilStateRuleResponse(BaseModel):
+    """GET /admin/nil-rules -- admin view, includes last_updated_at
+    (omitted from the public GET /public/nil-rules endpoint)."""
+
+    state: str
+    nil_eligible: bool
+    notes: str | None
+    effective_date: date
+    last_updated_at: datetime
+
+
 class AthleticProfileSummaryResponse(BaseModel):
-    """GET /talents/me/athletic-summary -- the complete athletic profile
+    """GET /talents/athletics/summary -- the complete athletic profile
     for the talent's own dashboard view. Parallel to TalentProfileResponse
     for the brand track."""
     enabled_tracks: list[str]

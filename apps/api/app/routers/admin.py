@@ -24,6 +24,7 @@ from app.core.security import AuthenticatedUser, require_role
 from app.db.pool import get_connection
 from app.repositories import (
     admin_repository,
+    athletic_seasons_repository,
     brand_profiles_repository,
     campaign_milestones_repository,
     campaign_talents_repository,
@@ -38,7 +39,15 @@ from app.repositories import (
     talent_profiles_repository,
     users_repository,
 )
-from app.schemas.athletics import AdminUpdateNilStateRuleRequest, AdminUpdateNilStateRuleResponse
+from app.routers.athletics import _to_season_response as _to_athletic_season_response
+from app.schemas.athletics import (
+    AdminAthleticSeasonResponse,
+    AdminFlagSeasonRequest,
+    AdminNilStateRuleResponse,
+    AdminUpdateNilStateRuleRequest,
+    AdminUpdateNilStateRuleResponse,
+    AthleticSeasonResponse,
+)
 from app.schemas.admin import (
     AccountType,
     ApprovalActionResponse,
@@ -882,3 +891,108 @@ async def update_nil_rule(
         talents_affected = await nil_state_rules_repository.revoke_acknowledgments_for_state(conn, state)
 
     return AdminUpdateNilStateRuleResponse(state=updated.state, updated=True, talents_affected=talents_affected)
+
+
+def _to_admin_season_response(row: athletic_seasons_repository.AdminAthleticSeasonRow) -> AdminAthleticSeasonResponse:
+    return AdminAthleticSeasonResponse(
+        id=row.id,
+        talent_id=row.talent_id,
+        talent_display_name=row.talent_display_name,
+        sport=row.sport,
+        season_year=row.season_year,
+        team_name=row.team_name,
+        coach_attestation_status=row.coach_attestation_status,
+        status=row.status,
+        admin_verified=row.admin_verified,
+        admin_flag_reason=row.admin_flag_reason,
+        created_at=row.created_at,
+    )
+
+
+@admin_router.get("/athletics/seasons", response_model=list[AdminAthleticSeasonResponse])
+async def list_athletic_seasons(
+    status_filter: str | None = Query(default=None, alias="status"),
+    sport: str | None = None,
+    graduation_year: int | None = None,
+    admin_verified: bool | None = None,
+    limit: int = 50,
+    offset: int = 0,
+    admin: AuthenticatedUser = Depends(require_role("admin")),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> list[AdminAthleticSeasonResponse]:
+    rows = await athletic_seasons_repository.list_for_admin(
+        conn,
+        status=status_filter,
+        sport=sport,
+        graduation_year=graduation_year,
+        admin_verified=admin_verified,
+        limit=limit,
+        offset=offset,
+    )
+    return [_to_admin_season_response(r) for r in rows]
+
+
+@admin_router.get("/athletics/seasons/pending-verification", response_model=list[AdminAthleticSeasonResponse])
+async def list_pending_verification_seasons(
+    admin: AuthenticatedUser = Depends(require_role("admin")),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> list[AdminAthleticSeasonResponse]:
+    """Shortcut: status='attested' AND admin_verified=FALSE -- coaches
+    have confirmed these, admin has not yet elevated them to 'verified'."""
+    rows = await athletic_seasons_repository.list_pending_verification(conn)
+    return [_to_admin_season_response(r) for r in rows]
+
+
+@admin_router.post("/athletics/seasons/{season_id}/verify", response_model=AthleticSeasonResponse)
+async def verify_athletic_season(
+    season_id: str,
+    admin: AuthenticatedUser = Depends(require_role("admin")),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> AthleticSeasonResponse:
+    """Legal only from 'attested' -- a sanity check on coach-confirmed
+    stats, not a fact-check. Does not touch athletic_seasons_completed
+    (an 'attested' season already counts; 'verified' isn't a second
+    count)."""
+    updated = await athletic_seasons_repository.admin_verify(
+        conn, season_id, admin_id=admin.id, at=datetime.now(timezone.utc)
+    )
+    if updated is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "illegal_transition", "message": "Only an attested season can be admin-verified."},
+        )
+    return _to_athletic_season_response(updated)
+
+
+@admin_router.post("/athletics/seasons/{season_id}/flag", response_model=AthleticSeasonResponse)
+async def flag_athletic_season(
+    season_id: str,
+    body: AdminFlagSeasonRequest,
+    admin: AuthenticatedUser = Depends(require_role("admin")),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> AthleticSeasonResponse:
+    """Admin-internal note -- reverts admin_verified to FALSE if it was
+    TRUE, does not change season.status. The talent is NOT notified."""
+    updated = await athletic_seasons_repository.admin_flag(conn, season_id, reason=body.reason)
+    if updated is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "athletic_season_not_found", "message": "No season found for that id."},
+        )
+    return _to_athletic_season_response(updated)
+
+
+@admin_router.get("/nil-rules", response_model=list[AdminNilStateRuleResponse])
+async def list_nil_rules_admin(
+    admin: AuthenticatedUser = Depends(require_role("admin")),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> list[AdminNilStateRuleResponse]:
+    """Admin view -- includes last_updated_at, unlike GET /public/nil-rules."""
+    rules = await nil_state_rules_repository.list_all(conn)
+    return [
+        AdminNilStateRuleResponse(
+            state=r.state, nil_eligible=r.nil_eligible, notes=r.notes,
+            effective_date=r.effective_date, last_updated_at=r.last_updated_at,
+        )
+        for r in rules
+    ]

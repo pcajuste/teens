@@ -28,10 +28,12 @@ from datetime import datetime, timedelta, timezone
 from app.core.config import get_settings
 from app.db.pool import get_pool
 from app.repositories import campaign_milestones_repository, campaign_talents_repository, challenges_repository, exclusivity_repository
+from app.repositories.athletic_seasons_repository import expire_stale_pending_attestations
 from app.repositories.campaign_talents_repository import auto_decline_expired_parent_approvals
 from app.repositories.intelligence_repository import insert_events, list_pending_events, mark_written
 from app.repositories.parent_records_repository import list_digest_enabled
 from app.services import payout_service
+from app.services.athletic_intelligence_service import write_athletic_intelligence_events
 from app.services.intelligence_service import anonymize
 from app.services.parent_service import send_digest_email
 from app.services.resend_client import get_resend_client
@@ -42,7 +44,7 @@ _logger = logging.getLogger("teenure.jobs.milestone_auto_release")
 
 MILESTONE_AUTO_RELEASE_WINDOW_HOURS = 24
 
-JobFn = Callable[[], Awaitable[None]]
+JobFn = Callable[[], Awaitable[None | dict]]
 
 JOB_REGISTRY: Final[dict[str, JobFn]] = {}
 
@@ -216,6 +218,36 @@ async def challenge_auto_close_job() -> None:
             )
 
 
+@register_job("athletics_attestation_expiry_sweep")
+async def athletics_attestation_expiry_sweep_job() -> None:
+    """Runs every 6 hours (ATHLETICS-8). Reverts pending_attestation
+    seasons with no live coach_attestation_tokens row back to draft --
+    covers an expired token nobody responded to, a decline the talent
+    never manually withdrew, and a superseded token whose replacement
+    also expired. Idempotent by construction: expire_stale_pending_attestations's
+    own WHERE status = 'pending_attestation' guard means a season
+    already reverted by an earlier run simply doesn't match a second
+    time. Silent -- no talent email, per spec (they see the status
+    change on next dashboard load)."""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        reverted = await expire_stale_pending_attestations(conn)
+        for season_id in reverted:
+            _logger.info("athletics_attestation_expiry_sweep: athletic_season_id=%s status=draft", season_id)
+
+
+@register_job("athletics_intelligence_pipeline")
+async def athletics_intelligence_pipeline_job() -> dict:
+    """Runs every 6 hours, same cadence as the expiry sweep. Build
+    ATHLETICS-8 deliverable 3: anonymizes attested/verified
+    athletic_seasons into intelligence_events_anonymized (track=
+    'athletics'), idempotent via intelligence_event_written_at."""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        events_written = await write_athletic_intelligence_events(conn)
+    return {"events_written": events_written}
+
+
 router = APIRouter(prefix="/internal/jobs", tags=["jobs"])
 
 
@@ -235,5 +267,8 @@ async def run_job(job_name: str, x_jobs_runner_secret: str | None = Header(defau
             detail={"code": "unknown_job", "message": f"No job registered as '{job_name}'."},
         )
 
-    await job()
-    return {"job": job_name, "status": "ok"}
+    result = await job()
+    response = {"job": job_name, "status": "ok"}
+    if isinstance(result, dict):
+        response.update(result)
+    return response

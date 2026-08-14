@@ -6,6 +6,7 @@ from typing import Literal
 from pydantic import BaseModel, EmailStr, field_validator
 
 from app.core.categories import ALL_VALUES_FILTER_CATEGORIES
+from app.schemas.athletics import AthleticSeasonResponse, NilEligibilityResponse, SportProfileResponse
 
 
 class RequestLinkRequest(BaseModel):
@@ -150,6 +151,20 @@ class DigestPreviewResponse(BaseModel):
     profile_completeness_score: int
     profile_completeness_change: int | None
     active_categories: list[str]
+
+
+class ParentAthleticSummaryResponse(BaseModel):
+    """GET /parent/athletics (ATHLETICS-8). Informational only -- the
+    parent portal has no approve/block equivalent for athletic seasons
+    (coach attestation is not a commercial transaction the parent needs
+    to gate, unlike a brand campaign invite). athletics_enabled=False
+    means every other field is empty/default; the frontend shows an
+    explainer card instead of the summary."""
+
+    athletics_enabled: bool
+    sport_profiles: list[SportProfileResponse] = []
+    recent_seasons: list[AthleticSeasonResponse] = []
+    nil_eligibility: NilEligibilityResponse | None = None
 
 
 class AccountControlResponse(BaseModel):

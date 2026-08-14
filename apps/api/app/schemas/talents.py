@@ -252,6 +252,24 @@ class PseudonymResponse(BaseModel):
     handle: str
 
 
+class PublicAttestedSeasonResponse(BaseModel):
+    """One entry in PublicVerifiedProfileResponse.attested_seasons
+    (ATHLETICS-8) -- a credential document, not a scouting report:
+    selected_stats is a curated subset (top 3-5 significant fields for
+    the sport), not the full sport_stats dump. achievements only appear
+    when the season is admin_verified=True -- coach attestation alone
+    is not enough to publish an achievement claim publicly."""
+
+    sport: str
+    season_year: int
+    team_name: str
+    level: str
+    selected_stats: dict[str, object]
+    achievements: list[dict] | None = None
+    coach_verified: bool
+    admin_verified: bool
+
+
 class PublicVerifiedProfileResponse(BaseModel):
     """GET /verified/:token -- public, unauthenticated. `public` is False
     when the token is valid but the talent has verified_profile_public
@@ -268,6 +286,8 @@ class PublicVerifiedProfileResponse(BaseModel):
     brand_campaigns_completed: int | None = None
     brand_average_rating: float | None = None
     total_earnings_cents: int | None = None
+    athletic_tracks_enabled: bool = False
+    attested_seasons: list[PublicAttestedSeasonResponse] | None = None
     last_updated: datetime | None = None
 
 
