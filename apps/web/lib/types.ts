@@ -22,6 +22,16 @@ export interface TalentProfile {
   challenge_conversion_rate?: number | null;
   badges: Badge[];
   badges_earned_count: number;
+  // Multi-track fields (ATHLETICS-4): brand_completeness_score is the
+  // renamed/parallel counterpart to profile_completeness_score for the
+  // athletic track's sibling; profile_completeness_score itself stays
+  // the cross-track GREATEST computed server-side, so it's still safe
+  // to read directly for a single "your profile is N% complete" number.
+  enabled_tracks: string[];
+  brand_completeness_score: number;
+  athletic_completeness_score: number;
+  athletic_seasons_completed: number;
+  athletic_recruiter_interest_count: number;
 }
 
 export type TalentProfilePreview = Omit<
@@ -1247,4 +1257,97 @@ export interface InsightBrandResults {
   responses_submitted: number;
   responses_required: number;
   results: InsightBrandResult[];
+}
+
+// ── Athletic track (ATHLETICS-6) ─────────────────────────────────────
+
+export type AthleticSeasonStatus =
+  | "draft"
+  | "pending_attestation"
+  | "attested"
+  | "verified";
+
+export interface SportProfile {
+  id: string;
+  sport: string;
+  positions: string[];
+  gpa: number | null;
+  hudl_url: string | null;
+  maxpreps_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SportProfileUpdateRequest {
+  sport: string;
+  positions: string[];
+  gpa: number | null;
+  hudl_url: string | null;
+  maxpreps_url: string | null;
+}
+
+export interface AthleticSeason {
+  id: string;
+  sport: string;
+  season_year: number;
+  season_type: string;
+  team_name: string;
+  level: string;
+  sport_stats: Record<string, unknown>;
+  coach_name: string | null;
+  coach_email: string | null;
+  coach_attestation_status: string;
+  coach_attested_at: string | null;
+  admin_verified: boolean;
+  admin_verified_at: string | null;
+  status: AthleticSeasonStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateAthleticSeasonRequest {
+  sport: string;
+  season_year: number;
+  season_type: string;
+  team_name: string;
+  level: string;
+  sport_stats: Record<string, unknown>;
+  coach_name: string | null;
+  coach_email: string | null;
+}
+
+export interface EnableAthleticTrackResponse {
+  enabled_tracks: string[];
+}
+
+export interface RequestCoachAttestationResponse {
+  success: boolean;
+  rate_limited: boolean;
+  hours_until_resend_allowed: number | null;
+  message: string;
+}
+
+export interface NilEligibility {
+  state: string;
+  nil_eligible_in_state: boolean;
+  school_association_rules_acknowledged: boolean;
+  acknowledged_at: string | null;
+  notes?: string | null;
+}
+
+export interface AthleticProfileSummary {
+  enabled_tracks: string[];
+  athletic_seasons_completed: number;
+  athletic_completeness_score: number;
+  athletic_recruiter_interest_count: number;
+  sport_profiles: SportProfile[];
+  recent_seasons: AthleticSeason[];
+  nil_eligibility: NilEligibility | null;
+}
+
+export interface PublicNilStateRule {
+  state: string;
+  nil_eligible: boolean;
+  notes: string | null;
+  effective_date: string;
 }

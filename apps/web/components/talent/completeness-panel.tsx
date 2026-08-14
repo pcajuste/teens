@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { TalentProfile } from "@/lib/types";
 
 function missingFieldPrompts(profile: TalentProfile): string[] {
@@ -34,6 +35,15 @@ export function CompletenessPanel({ profile }: { profile: TalentProfile }) {
       ) : (
         <p className="text-sm text-muted-foreground">Your profile is fully filled out.</p>
       )}
+      {profile.enabled_tracks.includes("athletics") ? (
+        // ATHLETICS-6 spec: "a brief line ... not a second full panel."
+        <Link
+          href="/talent/athletics"
+          className="mt-1 text-sm font-medium text-teal hover:underline"
+        >
+          Athletic track: {profile.athletic_completeness_score}% complete →
+        </Link>
+      ) : null}
     </div>
   );
 }
