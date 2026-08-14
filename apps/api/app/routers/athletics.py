@@ -172,6 +172,7 @@ async def enable_athletics(
     # score but who already has some athletic data seeded is an edge
     # case; recompute unconditionally rather than special-casing.
     await talent_profiles_repository.recompute_all_completeness_scores(conn, profile.id)
+    _log_posthog_event("athletics_track_enabled", {"track": "athletics"})
     return EnableAthleticTrackResponse(enabled_tracks=updated.enabled_tracks)
 
 
@@ -258,6 +259,7 @@ async def upsert_sport_profile(
     # the cross-track GREATEST) via the shared helper so this call site
     # never drifts from the NIL/attestation/enable trigger points.
     await talent_profiles_repository.recompute_all_completeness_scores(conn, profile.id)
+    _log_posthog_event("sport_profile_created", {"sport": sport, "track": "athletics"})
 
     return _to_sport_profile_response(sport_profile)
 
@@ -294,6 +296,7 @@ async def create_season(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail={"code": "invalid_sport_stats", "message": str(e)},
         ) from e
+    _log_posthog_event("athletic_season_created", {"sport": season.sport, "season_year": season.season_year})
     return _to_season_response(season)
 
 
@@ -463,6 +466,8 @@ async def request_attestation(
     except Exception:
         logger.exception("Failed to send coach attestation email for season %s", season_id)
 
+    _log_posthog_event("attestation_requested", {"sport": season.sport, "season_year": season.season_year})
+
     return RequestCoachAttestationResponse(
         success=True,
         rate_limited=False,
@@ -598,6 +603,7 @@ async def acknowledge_nil_rules(
             },
         )
     await talent_profiles_repository.recompute_all_completeness_scores(conn, profile.id)
+    _log_posthog_event("nil_acknowledged", {"state": updated.state})
     return NilEligibilityResponse(
         state=updated.state,
         nil_eligible_in_state=updated.nil_eligible_in_state,
@@ -753,5 +759,7 @@ async def decline_attestation(
                 )
             except Exception:
                 logger.exception("Failed to send coach-declined notification for season %s", season.id)
+
+    _log_posthog_event("attestation_declined", {"sport": season.sport, "season_year": season.season_year})
 
     return CoachAttestationDecisionResponse(success=True)
