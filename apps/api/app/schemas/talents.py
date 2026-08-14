@@ -73,6 +73,11 @@ class TalentProfileResponse(BaseModel):
     challenge_conversion_rate: float | None = None
     badges: list[dict] = []
     badges_earned_count: int = 0
+    enabled_tracks: list[str] = []
+    brand_completeness_score: int = 0
+    athletic_completeness_score: int = 0
+    athletic_seasons_completed: int = 0
+    athletic_recruiter_interest_count: int = 0
 
 
 class TalentProfilePreviewResponse(BaseModel):
@@ -268,7 +273,14 @@ class PublicVerifiedProfileResponse(BaseModel):
 
 # ── Goal Setting and Progress Tracking (Build Prompt 5 deliverable 13) ─
 
-GoalType = Literal["campaigns_completed", "earnings_total", "categories_active", "badges_earned", "profile_completeness"]
+GoalType = Literal[
+    "campaigns_completed",
+    "earnings_total",
+    "categories_active",
+    "badges_earned",
+    "profile_completeness",
+    "athletic_seasons_completed",
+]
 
 _GOAL_MIN_TARGETS: dict[str, int] = {
     "campaigns_completed": 1,
@@ -276,6 +288,7 @@ _GOAL_MIN_TARGETS: dict[str, int] = {
     "categories_active": 1,
     "badges_earned": 1,
     "profile_completeness": 1,
+    "athletic_seasons_completed": 1,
 }
 _GOAL_MAX_TARGETS: dict[str, int] = {
     "profile_completeness": 100,

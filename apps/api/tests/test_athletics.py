@@ -690,3 +690,121 @@ def test_admin_update_nil_rule_non_admin_forbidden(client, db, talent_headers):
         headers=talent_headers,
     )
     assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------------
+# ATHLETICS-4: completeness score trigger wiring
+# ---------------------------------------------------------------------
+
+
+def test_sport_profile_gpa_raises_athletic_score(client, db, athletics_talent_id, talent_headers):
+    resp = client.put(
+        "/talents/athletics/sports/football",
+        json={"sport": "football", "positions": ["QB"], "gpa": 3.8, "hudl_url": None, "maxpreps_url": None},
+        headers=talent_headers,
+    )
+    assert resp.status_code == 200
+
+    me = client.get("/talents/me", headers=talent_headers).json()
+    # 30 (sport profile) + 20 (gpa) = 50, no attested season/film/nil yet.
+    assert me["athletic_completeness_score"] == 50
+    assert me["profile_completeness_score"] == max(me["brand_completeness_score"], 50)
+
+
+def test_confirm_attestation_raises_athletic_score_and_seasons_completed(
+    client, db, athletics_talent_id, talent_headers, fake_resend_client
+):
+    client.put(
+        "/talents/athletics/sports/football",
+        json={"sport": "football", "positions": ["QB"], "gpa": None, "hudl_url": None, "maxpreps_url": None},
+        headers=talent_headers,
+    )
+    create_resp = client.post("/talents/athletics/seasons", json=_create_season_body(), headers=talent_headers)
+    season_id = create_resp.json()["id"]
+    token = _request_attestation_token(client, db, season_id, talent_headers)
+
+    resp = client.post(f"/athletics/attest/{token}/confirm")
+    assert resp.status_code == 200
+
+    me = client.get("/talents/me", headers=talent_headers).json()
+    # 30 (sport profile) + 20 (attested season) = 50.
+    assert me["athletic_completeness_score"] == 50
+    assert me["athletic_seasons_completed"] == 1
+
+
+def test_nil_acknowledge_raises_athletic_score(client, db, talent_headers):
+    _onboard_athletics_talent_in_state(client, db, talent_headers, state="FL")
+    client.get("/talents/athletics/nil", headers=talent_headers)
+
+    resp = client.post("/talents/athletics/nil/acknowledge", headers=talent_headers)
+    assert resp.status_code == 200
+
+    me = client.get("/talents/me", headers=talent_headers).json()
+    # 15 (nil acknowledged) only -- no sport profile/season/film yet.
+    assert me["athletic_completeness_score"] == 15
+
+
+def test_profile_completeness_is_greatest_of_both_tracks(client, db, athletics_talent_id, talent_headers):
+    client.put(
+        "/talents/athletics/sports/football",
+        json={"sport": "football", "positions": ["QB"], "gpa": 3.8, "hudl_url": "https://hudl.com/x", "maxpreps_url": None},
+        headers=talent_headers,
+    )
+    me = client.get("/talents/me", headers=talent_headers).json()
+    # 30 + 20 + 15 (film) = 65 athletic, brand starts low from onboarding-only fields.
+    assert me["athletic_completeness_score"] == 65
+    assert me["profile_completeness_score"] == max(me["brand_completeness_score"], 65)
+
+
+def test_brand_profile_update_does_not_lower_athletic_score(client, db, athletics_talent_id, talent_headers):
+    client.put(
+        "/talents/athletics/sports/football",
+        json={"sport": "football", "positions": ["QB"], "gpa": 3.8, "hudl_url": None, "maxpreps_url": None},
+        headers=talent_headers,
+    )
+    before = client.get("/talents/me", headers=talent_headers).json()
+    assert before["athletic_completeness_score"] == 50
+
+    updated_body = dict(_BASE_PROFILE_BODY, bio="Updated bio text.")
+    put_resp = client.put("/talents/me", json=updated_body, headers=talent_headers)
+    assert put_resp.status_code == 200
+
+    after = client.get("/talents/me", headers=talent_headers).json()
+    assert after["athletic_completeness_score"] == 50
+
+
+def test_athletic_seasons_completed_goal_progress(client, db, athletics_talent_id, talent_headers, fake_resend_client):
+    goal_resp = client.post(
+        "/talents/goals",
+        json={"goal_type": "athletic_seasons_completed", "target_value": 2},
+        headers=talent_headers,
+    )
+    assert goal_resp.status_code == 201
+    goal_id = goal_resp.json()["id"]
+
+    goals = client.get("/talents/goals", headers=talent_headers).json()
+    assert next(g for g in goals if g["id"] == goal_id)["progress_percentage"] == 0
+
+    create_resp = client.post("/talents/athletics/seasons", json=_create_season_body(), headers=talent_headers)
+    season_id = create_resp.json()["id"]
+    token = _request_attestation_token(client, db, season_id, talent_headers)
+    confirm_resp = client.post(f"/athletics/attest/{token}/confirm")
+    assert confirm_resp.status_code == 200
+
+    goals = client.get("/talents/goals", headers=talent_headers).json()
+    goal = next(g for g in goals if g["id"] == goal_id)
+    assert goal["current_value"] == 1
+    assert goal["progress_percentage"] == 50
+
+    second_body = _create_season_body(season_type="club")
+    create_resp_2 = client.post("/talents/athletics/seasons", json=second_body, headers=talent_headers)
+    season_id_2 = create_resp_2.json()["id"]
+    token_2 = _request_attestation_token(client, db, season_id_2, talent_headers)
+    confirm_resp_2 = client.post(f"/athletics/attest/{token_2}/confirm")
+    assert confirm_resp_2.status_code == 200
+
+    goals = client.get("/talents/goals", headers=talent_headers).json()
+    goal = next(g for g in goals if g["id"] == goal_id)
+    assert goal["current_value"] == 2
+    assert goal["progress_percentage"] == 100
+    assert goal["status"] == "completed"

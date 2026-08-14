@@ -26,7 +26,6 @@ from app.core.config import Settings, get_settings
 from app.core.security import AuthenticatedUser, require_role
 from app.core.sport_stats_schemas import SportStatsValidationError, validate_sport_stats
 from app.core.sports import SUPPORTED_SPORTS
-from app.core.profile_score import compute_athletic_completeness_score, compute_cross_track_score
 from app.db.pool import get_connection
 from app.repositories import (
     athletic_seasons_repository,
@@ -34,6 +33,7 @@ from app.repositories import (
     nil_eligibility_repository,
     nil_state_rules_repository,
     sport_profiles_repository,
+    talent_goals_repository,
     talent_profiles_repository,
     users_repository,
 )
@@ -50,6 +50,7 @@ from app.schemas.athletics import (
 )
 from app.services.email_service import (
     send_coach_attestation_email,
+    send_goal_completed_email,
     send_talent_coach_attested_notification,
     send_talent_coach_declined_notification,
 )
@@ -164,6 +165,12 @@ async def enable_athletics(
     present. No track-gate check here -- this IS the gate."""
     profile = await _get_own_profile(conn, user)
     updated = await talent_profiles_repository.enable_athletic_track(conn, profile.id)
+    # ATHLETICS-4: enabling the track can change profile_completeness_score
+    # (the cross-track GREATEST) even though athletic_completeness_score
+    # itself hasn't moved -- e.g. a talent with a pre-existing 0 athletic
+    # score but who already has some athletic data seeded is an edge
+    # case; recompute unconditionally rather than special-casing.
+    await talent_profiles_repository.recompute_all_completeness_scores(conn, profile.id)
     return EnableAthleticTrackResponse(enabled_tracks=updated.enabled_tracks)
 
 
@@ -208,25 +215,11 @@ async def upsert_sport_profile(
         maxpreps_url=body.maxpreps_url,
     )
 
-    # D1: a sport_profile upsert is one of the athletic completeness
-    # weighted factors -- recompute inline rather than waiting on
-    # ATHLETICS-4's trigger wiring (that ticket wires the
-    # coach-attestation-driven recompute; this one is triggered by the
-    # sport_profile write itself, which ATHLETICS-1 owns).
-    all_sport_profiles = await sport_profiles_repository.list_for_talent(conn, profile.id)
-    has_gpa = any(sp.gpa is not None for sp in all_sport_profiles)
-    has_film_url = any(sp.hudl_url or sp.maxpreps_url for sp in all_sport_profiles)
-    seasons = await athletic_seasons_repository.list_for_talent(conn, profile.id)
-    has_attested_season = any(s.status in ("attested", "verified") for s in seasons)
-
-    athletic_score = compute_athletic_completeness_score(
-        has_sport_profile=True,
-        has_gpa=has_gpa,
-        has_attested_season=has_attested_season,
-        has_film_url=has_film_url,
-        nil_acknowledged=False,  # ATHLETICS-3 owns NIL acknowledgment wiring
-    )
-    await talent_profiles_repository.update_athletic_completeness_score(conn, profile.id, athletic_score)
+    # ATHLETICS-4: a sport_profile upsert is one of the athletic
+    # completeness weighted factors -- recompute both track scores (and
+    # the cross-track GREATEST) via the shared helper so this call site
+    # never drifts from the NIL/attestation/enable trigger points.
+    await talent_profiles_repository.recompute_all_completeness_scores(conn, profile.id)
 
     return _to_sport_profile_response(sport_profile)
 
@@ -566,7 +559,7 @@ async def acknowledge_nil_rules(
                 "message": f"High school NIL activity is not currently permitted in {record.state}.",
             },
         )
-    # ATHLETICS-4: recompute athletic completeness here
+    await talent_profiles_repository.recompute_all_completeness_scores(conn, profile.id)
     return NilEligibilityResponse(
         state=updated.state,
         nil_eligible_in_state=updated.nil_eligible_in_state,
@@ -653,6 +646,10 @@ async def confirm_attestation(
 
     # updated is None on a race (already attested by a concurrent
     # request) -- still return success, no double-processing.
+    await talent_profiles_repository.recompute_athletic_cached_totals(conn, season.talent_id)
+    await talent_profiles_repository.recompute_all_completeness_scores(conn, season.talent_id)
+    newly_completed_goals = await talent_goals_repository.recompute_progress(conn, season.talent_id)
+
     profile = await talent_profiles_repository.get_by_id(conn, season.talent_id)
     if profile is not None:
         talent_user = await users_repository.get_user_by_id(conn, profile.user_id)
@@ -668,6 +665,15 @@ async def confirm_attestation(
                 )
             except Exception:
                 logger.exception("Failed to send coach-attested notification for season %s", season.id)
+            for goal in newly_completed_goals:
+                try:
+                    await send_goal_completed_email(
+                        talent_user.email,
+                        goal_description=talent_goals_repository.describe_goal(goal.goal_type, goal.target_value),
+                        client=resend_client,
+                    )
+                except Exception:
+                    logger.exception("Failed to send goal-completed email for talent %s", season.talent_id)
 
     _log_posthog_event(
         "coach_attestation_confirmed",

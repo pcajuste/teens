@@ -344,6 +344,89 @@ async def recompute_athletic_cached_totals(conn: asyncpg.Connection, talent_id: 
     )
 
 
+async def _fetch_athletic_completeness_inputs(conn: asyncpg.Connection, talent_id: str) -> dict[str, bool]:
+    """Single-query fetch of the five athletic completeness inputs (D1
+    decision weights) -- LEFT JOINs so a talent with zero sport_profiles/
+    seasons/nil records still gets one row of all-False rather than no
+    row at all."""
+    row = await conn.fetchrow(
+        """
+        SELECT
+            EXISTS (SELECT 1 FROM public.sport_profiles WHERE talent_id = $1) AS has_sport_profile,
+            EXISTS (SELECT 1 FROM public.sport_profiles WHERE talent_id = $1 AND gpa IS NOT NULL) AS has_gpa,
+            EXISTS (
+                SELECT 1 FROM public.athletic_seasons
+                WHERE talent_id = $1 AND status IN ('attested', 'verified')
+            ) AS has_attested_season,
+            EXISTS (
+                SELECT 1 FROM public.sport_profiles
+                WHERE talent_id = $1 AND (hudl_url IS NOT NULL OR maxpreps_url IS NOT NULL)
+            ) AS has_film_url,
+            EXISTS (
+                SELECT 1 FROM public.nil_eligibility_records
+                WHERE talent_id = $1 AND school_association_rules_acknowledged = TRUE
+            ) AS nil_acknowledged
+        """,
+        talent_id,
+    )
+    return {
+        "has_sport_profile": bool(row["has_sport_profile"]),
+        "has_gpa": bool(row["has_gpa"]),
+        "has_attested_season": bool(row["has_attested_season"]),
+        "has_film_url": bool(row["has_film_url"]),
+        "nil_acknowledged": bool(row["nil_acknowledged"]),
+    }
+
+
+async def recompute_all_completeness_scores(conn: asyncpg.Connection, talent_id: str) -> None:
+    """Recomputes brand_completeness_score, athletic_completeness_score,
+    and profile_completeness_score (cross-track GREATEST) in one call.
+    Called after any state change that could affect either score --
+    ATHLETICS-4 trigger wiring. Fetches brand inputs from the
+    just-committed talent_profiles row and athletic inputs via
+    _fetch_athletic_completeness_inputs, so a caller never needs to
+    hand-assemble either score's inputs itself."""
+    from app.core.profile_score import (
+        compute_athletic_completeness_score,
+        compute_brand_completeness_score,
+        compute_cross_track_score,
+    )
+
+    profile = await get_by_id(conn, talent_id)
+    if profile is None:
+        return
+    brand_score = compute_brand_completeness_score(
+        bio=profile.bio,
+        categories=profile.categories,
+        school_type=profile.school_type,
+        instagram_handle=profile.instagram_handle,
+        tiktok_handle=profile.tiktok_handle,
+        brand_campaigns_completed=profile.brand_campaigns_completed,
+        badges_earned_count=profile.badges_earned_count,
+    )
+    athletic_inputs = await _fetch_athletic_completeness_inputs(conn, talent_id)
+    athletic_score = compute_athletic_completeness_score(**athletic_inputs)
+    cross_score = compute_cross_track_score(
+        brand_completeness_score=brand_score,
+        athletic_completeness_score=athletic_score,
+        enabled_tracks=profile.enabled_tracks,
+    )
+    await conn.execute(
+        """
+        UPDATE public.talent_profiles
+        SET brand_completeness_score = $2,
+            athletic_completeness_score = $3,
+            profile_completeness_score = $4,
+            updated_at = now()
+        WHERE id = $1
+        """,
+        talent_id,
+        brand_score,
+        athletic_score,
+        cross_score,
+    )
+
+
 async def recompute_cached_totals(conn: asyncpg.Connection, talent_id: str) -> None:
     """Recomputes brand_campaigns_completed, total_earnings_cents, and
     brand_average_rating from campaign_talents (Build Prompt 10 deliverable 7).

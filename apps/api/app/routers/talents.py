@@ -153,6 +153,11 @@ def _to_profile_response(p: talent_profiles_repository.TalentProfile) -> TalentP
         challenge_conversion_rate=p.challenge_conversion_rate,
         badges=p.badges,
         badges_earned_count=p.badges_earned_count,
+        enabled_tracks=p.enabled_tracks,
+        brand_completeness_score=p.brand_completeness_score,
+        athletic_completeness_score=p.athletic_completeness_score,
+        athletic_seasons_completed=p.athletic_seasons_completed,
+        athletic_recruiter_interest_count=p.athletic_recruiter_interest_count,
     )
 
 

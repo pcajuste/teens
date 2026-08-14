@@ -21,6 +21,7 @@ _DESCRIPTIONS: dict[str, str] = {
     "categories_active": "Work in {n} categories",
     "badges_earned": "Earn {n} badges",
     "profile_completeness": "Reach {n}% profile completeness",
+    "athletic_seasons_completed": "Complete {n} athletic seasons",
 }
 
 
@@ -142,7 +143,8 @@ async def current_metric_values(conn: asyncpg.Connection, talent_id: str) -> dic
     from the dashboard's own completed-campaigns count for the same
     talent would be confusing, not more precise."""
     profile_row = await conn.fetchrow(
-        "SELECT brand_campaigns_completed, total_earnings_cents, badges_earned_count, profile_completeness_score "
+        "SELECT brand_campaigns_completed, total_earnings_cents, badges_earned_count, profile_completeness_score, "
+        "athletic_seasons_completed "
         "FROM public.talent_profiles WHERE id = $1",
         talent_id,
     )
@@ -171,6 +173,7 @@ async def current_metric_values(conn: asyncpg.Connection, talent_id: str) -> dic
         "badges_earned": profile_row["badges_earned_count"],
         "profile_completeness": profile_row["profile_completeness_score"],
         "categories_active": categories_active or 0,
+        "athletic_seasons_completed": profile_row["athletic_seasons_completed"],
     }
 
 
