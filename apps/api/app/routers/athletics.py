@@ -31,6 +31,8 @@ from app.db.pool import get_connection
 from app.repositories import (
     athletic_seasons_repository,
     coach_attestation_tokens_repository,
+    nil_eligibility_repository,
+    nil_state_rules_repository,
     sport_profiles_repository,
     talent_profiles_repository,
     users_repository,
@@ -41,6 +43,7 @@ from app.schemas.athletics import (
     CoachAttestationTokenResponse,
     CreateAthleticSeasonRequest,
     EnableAthleticTrackResponse,
+    NilEligibilityResponse,
     RequestCoachAttestationResponse,
     SportProfileResponse,
     SportProfileUpdateRequest,
@@ -469,6 +472,107 @@ async def withdraw_attestation(
     # to 'draft', it never reaches 'attested').
 
     return _to_season_response(updated)
+
+
+# ══════════════════════════════════════════════════════════════════
+# NIL compliance (ATHLETICS-3)
+# ══════════════════════════════════════════════════════════════════
+
+
+@athletics_router.get("/nil", response_model=NilEligibilityResponse)
+async def get_nil_eligibility(
+    user: AuthenticatedUser = Depends(require_role("talent")),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> NilEligibilityResponse:
+    profile = await _get_own_profile(conn, user)
+    _require_athletics_enabled(profile)
+
+    record = await nil_eligibility_repository.get_by_talent_id(conn, profile.id)
+    if record is not None:
+        return NilEligibilityResponse(
+            state=record.state,
+            nil_eligible_in_state=record.nil_eligible_in_state,
+            school_association_rules_acknowledged=record.school_association_rules_acknowledged,
+            acknowledged_at=record.acknowledged_at,
+        )
+
+    rule = await nil_state_rules_repository.get_by_talent_state(conn, profile.id)
+    if rule is None:
+        # Defensive: talent's state isn't in the seeded table yet.
+        return NilEligibilityResponse(
+            state=profile.state,
+            nil_eligible_in_state=False,
+            school_association_rules_acknowledged=False,
+            acknowledged_at=None,
+            notes="Your state's NIL policy is not yet confirmed. Check back soon.",
+        )
+
+    record = await nil_eligibility_repository.create_or_update(
+        conn, profile.id, state=rule.state, nil_eligible_in_state=rule.nil_eligible
+    )
+    return NilEligibilityResponse(
+        state=record.state,
+        nil_eligible_in_state=record.nil_eligible_in_state,
+        school_association_rules_acknowledged=record.school_association_rules_acknowledged,
+        acknowledged_at=record.acknowledged_at,
+    )
+
+
+@athletics_router.post("/nil/acknowledge", response_model=NilEligibilityResponse)
+async def acknowledge_nil_rules(
+    user: AuthenticatedUser = Depends(require_role("talent")),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> NilEligibilityResponse:
+    profile = await _get_own_profile(conn, user)
+    _require_athletics_enabled(profile)
+
+    record = await nil_eligibility_repository.get_by_talent_id(conn, profile.id)
+    if record is None:
+        rule = await nil_state_rules_repository.get_by_talent_state(conn, profile.id)
+        nil_eligible_in_state = rule.nil_eligible if rule is not None else False
+        record = await nil_eligibility_repository.create_or_update(
+            conn, profile.id, state=profile.state, nil_eligible_in_state=nil_eligible_in_state
+        )
+
+    if not record.nil_eligible_in_state:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "nil_not_eligible_in_state",
+                "message": (
+                    f"High school NIL activity is not currently permitted in {record.state}. "
+                    "Platform rules cannot override state law. Your athletic profile can still "
+                    "be built and discovered by college programs for recruiting purposes -- NIL "
+                    "brand deals require state eligibility."
+                ),
+            },
+        )
+
+    if record.school_association_rules_acknowledged:
+        # Idempotent -- already acknowledged, no-op.
+        return NilEligibilityResponse(
+            state=record.state,
+            nil_eligible_in_state=record.nil_eligible_in_state,
+            school_association_rules_acknowledged=record.school_association_rules_acknowledged,
+            acknowledged_at=record.acknowledged_at,
+        )
+
+    updated = await nil_eligibility_repository.mark_acknowledged(conn, profile.id, at=datetime.now(timezone.utc))
+    if updated is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "nil_not_eligible_in_state",
+                "message": f"High school NIL activity is not currently permitted in {record.state}.",
+            },
+        )
+    # ATHLETICS-4: recompute athletic completeness here
+    return NilEligibilityResponse(
+        state=updated.state,
+        nil_eligible_in_state=updated.nil_eligible_in_state,
+        school_association_rules_acknowledged=updated.school_association_rules_acknowledged,
+        acknowledged_at=updated.acknowledged_at,
+    )
 
 
 # ══════════════════════════════════════════════════════════════════

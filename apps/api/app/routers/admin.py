@@ -33,10 +33,12 @@ from app.repositories import (
     insight_feedback_repository,
     intelligence_repository,
     internships_repository,
+    nil_state_rules_repository,
     scholarships_repository,
     talent_profiles_repository,
     users_repository,
 )
+from app.schemas.athletics import AdminUpdateNilStateRuleRequest, AdminUpdateNilStateRuleResponse
 from app.schemas.admin import (
     AccountType,
     ApprovalActionResponse,
@@ -854,3 +856,29 @@ async def mark_insight_eligibility_reviewed(
     category")."""
     await insight_feedback_repository.mark_manually_reviewed(conn, brand_id, reviewer_id=admin.id)
     return {"brand_id": brand_id, "manually_reviewed": True}
+
+
+@admin_router.put("/nil-rules/{state}", response_model=AdminUpdateNilStateRuleResponse)
+async def update_nil_rule(
+    state: str,
+    body: AdminUpdateNilStateRuleRequest,
+    admin: AuthenticatedUser = Depends(require_role("admin")),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> AdminUpdateNilStateRuleResponse:
+    """ATHLETICS-3: a state flipping eligible -> ineligible revokes any
+    existing acknowledgments for that state -- policy reversals are
+    never grandfathered."""
+    updated = await nil_state_rules_repository.update_rule(
+        conn, state, nil_eligible=body.nil_eligible, notes=body.notes, effective_date=body.effective_date
+    )
+    if updated is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "nil_state_not_found", "message": f"No NIL rule exists for state {state}."},
+        )
+
+    talents_affected = 0
+    if not body.nil_eligible:
+        talents_affected = await nil_state_rules_repository.revoke_acknowledgments_for_state(conn, state)
+
+    return AdminUpdateNilStateRuleResponse(state=updated.state, updated=True, talents_affected=talents_affected)

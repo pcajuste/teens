@@ -554,3 +554,139 @@ def test_get_attestation_token_expired_returns_200(client, db, athletics_talent_
     assert resp.status_code == 200
     assert resp.json()["valid"] is False
     assert resp.json()["reason"] == "expired"
+
+
+# ---------------------------------------------------------------------
+# ATHLETICS-3: NIL compliance module + acknowledgment gate
+# ---------------------------------------------------------------------
+
+
+def _onboard_athletics_talent_in_state(client, db, talent_headers, *, state: str) -> str:
+    _seed_talent_user(db)
+    body = dict(_BASE_PROFILE_BODY, state=state)
+    resp = client.put("/talents/me", json=body, headers=talent_headers)
+    assert resp.status_code == 200
+    talent_id = resp.json()["id"]
+    enable_resp = client.post("/talents/athletics/enable", headers=talent_headers)
+    assert enable_resp.status_code == 200
+    return talent_id
+
+
+def test_get_nil_eligibility_florida_eligible(client, db, talent_headers):
+    _onboard_athletics_talent_in_state(client, db, talent_headers, state="FL")
+    resp = client.get("/talents/athletics/nil", headers=talent_headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["state"] == "FL"
+    assert body["nil_eligible_in_state"] is True
+    assert body["school_association_rules_acknowledged"] is False
+
+
+def test_get_nil_eligibility_new_york_ineligible(client, db, talent_headers):
+    _onboard_athletics_talent_in_state(client, db, talent_headers, state="NY")
+    resp = client.get("/talents/athletics/nil", headers=talent_headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["state"] == "NY"
+    assert body["nil_eligible_in_state"] is False
+
+
+def test_get_nil_eligibility_lazy_creates_once(client, db, talent_headers):
+    talent_id = _onboard_athletics_talent_in_state(client, db, talent_headers, state="FL")
+    client.get("/talents/athletics/nil", headers=talent_headers)
+    client.get("/talents/athletics/nil", headers=talent_headers)
+    rows = db.fetch("SELECT COUNT(*) AS c FROM public.nil_eligibility_records WHERE talent_id = $1", talent_id)
+    assert rows[0]["c"] == 1
+
+
+def test_acknowledge_nil_rules_florida_succeeds(client, db, talent_headers):
+    _onboard_athletics_talent_in_state(client, db, talent_headers, state="FL")
+    client.get("/talents/athletics/nil", headers=talent_headers)
+
+    resp = client.post("/talents/athletics/nil/acknowledge", headers=talent_headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["school_association_rules_acknowledged"] is True
+    assert body["acknowledged_at"] is not None
+
+
+def test_acknowledge_nil_rules_new_york_forbidden(client, db, talent_headers):
+    _onboard_athletics_talent_in_state(client, db, talent_headers, state="NY")
+
+    resp = client.post("/talents/athletics/nil/acknowledge", headers=talent_headers)
+    assert resp.status_code == 403
+    body = resp.json()
+    assert body["error"]["code"] == "nil_not_eligible_in_state"
+    assert "NY" in body["error"]["message"]
+
+
+def test_acknowledge_nil_rules_idempotent(client, db, talent_headers):
+    _onboard_athletics_talent_in_state(client, db, talent_headers, state="FL")
+    first = client.post("/talents/athletics/nil/acknowledge", headers=talent_headers)
+    assert first.status_code == 200
+    first_ack_at = first.json()["acknowledged_at"]
+
+    second = client.post("/talents/athletics/nil/acknowledge", headers=talent_headers)
+    assert second.status_code == 200
+    assert second.json()["acknowledged_at"] == first_ack_at
+
+
+def test_public_nil_rules_no_auth_required(client, db):
+    resp = client.get("/public/nil-rules")
+    assert resp.status_code == 200
+    body = resp.json()
+    states = {row["state"]: row for row in body}
+    assert states["FL"]["nil_eligible"] is True
+    assert states["NY"]["nil_eligible"] is False
+    for row in body:
+        assert "last_updated_at" not in row
+
+
+def test_admin_update_nil_rule_revokes_acknowledgments(client, db, talent_headers, auth_headers_factory):
+    _onboard_athletics_talent_in_state(client, db, talent_headers, state="FL")
+    client.post("/talents/athletics/nil/acknowledge", headers=talent_headers)
+
+    admin_headers = auth_headers_factory("admin")
+    resp = client.put(
+        "/admin/nil-rules/FL",
+        json={"nil_eligible": False, "notes": "State law changed", "effective_date": "2026-08-13"},
+        headers=admin_headers,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["state"] == "FL"
+    assert body["updated"] is True
+    assert body["talents_affected"] == 1
+
+    rows = db.fetch(
+        "SELECT school_association_rules_acknowledged FROM public.nil_eligibility_records WHERE state = 'FL'"
+    )
+    assert all(r["school_association_rules_acknowledged"] is False for r in rows)
+
+    public_resp = client.get("/public/nil-rules")
+    fl = next(r for r in public_resp.json() if r["state"] == "FL")
+    assert fl["nil_eligible"] is False
+
+
+def test_admin_update_nil_rule_flips_to_eligible(client, db, auth_headers_factory):
+    admin_headers = auth_headers_factory("admin")
+    resp = client.put(
+        "/admin/nil-rules/NY",
+        json={"nil_eligible": True, "notes": "State law changed", "effective_date": "2026-08-13"},
+        headers=admin_headers,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["talents_affected"] == 0
+
+    public_resp = client.get("/public/nil-rules")
+    ny = next(r for r in public_resp.json() if r["state"] == "NY")
+    assert ny["nil_eligible"] is True
+
+
+def test_admin_update_nil_rule_non_admin_forbidden(client, db, talent_headers):
+    resp = client.put(
+        "/admin/nil-rules/FL",
+        json={"nil_eligible": False, "notes": None, "effective_date": "2026-08-13"},
+        headers=talent_headers,
+    )
+    assert resp.status_code == 403

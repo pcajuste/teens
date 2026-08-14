@@ -9,11 +9,26 @@ import asyncpg
 from fastapi import APIRouter, Depends
 
 from app.db.pool import get_connection
-from app.repositories import talent_profiles_repository
+from app.repositories import nil_state_rules_repository, talent_profiles_repository
+from app.schemas.athletics import PublicNilStateRuleResponse
 from app.schemas.recruiters import RecruiterSearchCardResponse
 from app.schemas.talents import PublicVerifiedProfileResponse
 
 router = APIRouter(tags=["public"])
+
+
+@router.get("/public/nil-rules", response_model=list[PublicNilStateRuleResponse])
+async def list_nil_rules(conn: asyncpg.Connection = Depends(get_connection)) -> list[PublicNilStateRuleResponse]:
+    """ATHLETICS-3: no authentication required -- used by the public
+    marketing site to display state-by-state NIL eligibility.
+    last_updated_at is intentionally excluded (internal admin field)."""
+    rules = await nil_state_rules_repository.list_all(conn)
+    return [
+        PublicNilStateRuleResponse(
+            state=r.state, nil_eligible=r.nil_eligible, notes=r.notes, effective_date=r.effective_date
+        )
+        for r in rules
+    ]
 
 
 @router.get("/verified/{token}", response_model=PublicVerifiedProfileResponse)

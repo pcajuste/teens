@@ -7,7 +7,7 @@ table).
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from pydantic import BaseModel, field_validator
@@ -163,6 +163,28 @@ class NilEligibilityResponse(BaseModel):
     nil_eligible_in_state: bool
     school_association_rules_acknowledged: bool
     acknowledged_at: datetime | None
+    notes: str | None = None
+
+
+class PublicNilStateRuleResponse(BaseModel):
+    """GET /public/nil-rules item. last_updated_at is deliberately
+    omitted -- internal admin field, not for the public marketing site."""
+    state: str
+    nil_eligible: bool
+    notes: str | None
+    effective_date: date
+
+
+class AdminUpdateNilStateRuleRequest(BaseModel):
+    nil_eligible: bool
+    notes: str | None = None
+    effective_date: date
+
+
+class AdminUpdateNilStateRuleResponse(BaseModel):
+    state: str
+    updated: bool
+    talents_affected: int
 
 
 class AthleticProfileSummaryResponse(BaseModel):
